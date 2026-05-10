@@ -1,0 +1,16 @@
+{
+  "name": "@verseye/planogram",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev -p 3001 --webpack",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "react-icons": "^5.5.0",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,90 @@
+[00:00:03.266] Server  WARN    ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+[00:00:03.675] Server  LOG     ✓ Ready in 3.2s
+[00:00:17.222] Server  LOG     ○ Compiling /login ...
+[00:00:18.670] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:00:21.285] Server  LOG     [login] Setting token cookie: {}
+[00:00:24.439] Server  LOG     ○ Compiling / ...
+[00:00:28.762] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:00:28.831] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:00:28.849] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:00:28.869] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:00:29.013] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:00:31.663] Browser LOG     [Area] handleClick {"editingRackId":null,"isPlacingRack":false,"selectedId":null}
+[00:01:31.772] Browser LOG     [Area] handleClick {"editingRackId":null,"isPlacingRack":false,"selectedId":"area"}
+[00:01:37.913] Server  LOG     ○ Compiling /api/locations/list ...
+[00:01:38.864] Server  ERROR   [ListLocations] Backend error (404): ""
+[00:01:45.042] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:01:48.213] Server  ERROR   [ListLocations] Backend error (404): ""
+[00:04:55.452] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:04:55.499] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:04:55.532] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:04:55.648] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:04:56.252] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:05:10.081] Server  WARN    ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[00:05:10.081] Browser ERROR   uncaughtError: ReferenceError: useCallback is not defined
+[00:05:11.856] Server  ERROR   ⨯ ReferenceError: useCallback is not defined
+[00:05:14.706] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:05:15.039] Server  WARN    ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[00:05:15.040] Browser ERROR   uncaughtError: ChunkLoadError: Loading chunk app/layout failed.
+(missing: http://localhost:3001/_next/static/chunks/app/layout.js)
+[00:05:15.327] Server  WARN    ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[00:05:20.459] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:05:21.010] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:05:21.096] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:05:21.267] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:05:33.177] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:05:34.350] Browser ERROR   uncaughtError: Error: Internal Next.js error: Router action dispatched before initialization.
+[00:05:34.954] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:05:34.998] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:05:35.308] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:05:47.265] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:06:04.177] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:06:04.353] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:06:04.447] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:06:04.565] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:06:10.149] Browser LOG     [Area] handleClick {"editingRackId":null,"isPlacingRack":false,"selectedId":null}
+[00:06:20.198] Server  LOG     ○ Compiling /api/planogram/rows/[id] ...
+[00:06:24.288] Server  ERROR   [AddRackRowByRackSideId] Backend error (404): ""
+[00:06:25.426] Server  ERROR   [GetRackRowByRackSideId] Backend error: 404 ""
+[00:06:25.547] Browser WARN    LoadRowsOnRackSelect: failed to fetch rows Backend returned 404
+[00:06:51.653] Server  ERROR   [AddRackRowByRackSideId] Backend error (404): ""
+[00:08:59.252] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:09:45.359] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:09:48.023] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:09:48.097] Server  ERROR   [GetAllRacks] Backend error 404 ""
+[00:09:48.213] Browser ERROR   AutoPlaceRacks: backend error Backend returned 404
+[00:09:51.438] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:09:55.793] Server  LOG     ○ Compiling /api/locations/list ...
+[00:10:19.515] Server  LOG     [AddRackByLocation] Fetching with token starting with: eyJhbGciOi...
+[00:10:28.459] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:10:28.688] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:10:31.706] Server  ERROR   [GetRackRowByRackSideId] Backend error: 404 "{\"isApiHandled\":true,\"isRequestSuccess\":false,\"statusCode\":404,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:10:32.244] Browser WARN    LoadRowsOnRackSelect: failed to fetch rows {"isApiHandled":true,"isRequestSuccess":false,"statusCode":404,"message":"Rack side not found","data":null,"exception":[]}
+[00:11:59.286] Server  LOG     ○ Compiling /api/racks/add-row-by-side ...
+[00:11:59.838] Server  ERROR   [AddRackRowByRackSideId] Backend error (500): "{\"isApiHandled\":false,\"isRequestSuccess\":false,\"statusCode\":500,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:12:09.098] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:12:10.830] Server  ERROR   [AddRackRowByRackSideId] Backend error (500): "{\"isApiHandled\":false,\"isRequestSuccess\":false,\"statusCode\":500,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:12:31.515] Server  LOG     ○ Compiling /api/racks/removeRacks ...
+[00:12:34.297] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:12:34.358] Server  ERROR   [GetRackRowByRackSideId] Backend error: 404 "{\"isApiHandled\":true,\"isRequestSuccess\":false,\"statusCode\":404,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:12:34.443] Server  ERROR   [GetRackRowByRackSideId] Backend error: 404 "{\"isApiHandled\":true,\"isRequestSuccess\":false,\"statusCode\":404,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:12:34.476] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:12:34.588] Server  ERROR   [GetAllRacks] Backend error 404 "{\"isApiHandled\":true,\"isRequestSuccess\":false,\"statusCode\":404,\"message\":\"No records found\",\"data\":null,\"exception\":[]}"
+[00:12:34.845] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:12:49.503] Server  LOG     ○ Compiling /api/racks/add-by-location ...
+[00:12:49.737] Server  LOG     [AddRackByLocation] Fetching with token starting with: eyJhbGciOi...
+[00:12:53.977] Server  ERROR   [AddRackRowByRackSideId] Backend error (500): "{\"isApiHandled\":false,\"isRequestSuccess\":false,\"statusCode\":500,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:12:54.145] Server  ERROR   [AddRackRowByRackSideId] Backend error (500): "{\"isApiHandled\":false,\"isRequestSuccess\":false,\"statusCode\":500,\"message\":\"Rack side not found\",\"data\":null,\"exception\":[]}"
+[00:14:26.838] Server  LOG     ○ Compiling /import ...
+[00:14:33.575] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:14:34.368] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:16:23.886] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:16:23.986] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:16:32.666] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[00:19:00.847] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:19:03.045] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[00:19:05.786] Browser LOG     THREE.WebGLRenderer: Context Lost.
+[01:27:12.504] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[01:27:14.143] Server  LOG     TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJFbWFpbCI6InZlcnNleWVAdmVyc2V5ZS5haSIsIlVzZXJJZCI6IjcyOTkwNjYzLTJlZGMtNGMxMC1iMzMxLWNkMWM2NWU0NzdlMCIsIlVzZXJUeXBlIjoiU3VwZXJBZG1pbiIsIlJlc291cmNlcyI6IiIsIm5iZiI6MTc3NzQ1NTAwMCwiZXhwIjoxNzc3NDYyMjAwLCJpYXQiOjE3Nzc0NTUwMDB9.To_YPi_YwIC0ssaoIlebCCQ5PxGomZZPMY89TlD1-c8"
+[01:27:17.311] Server  ERROR   [GetAllRacks] Backend error 401 "Unauthorized: Session expired or token mismatch."
+[01:27:18.249] Browser ERROR   AutoPlaceRacks: backend error Unauthorized: Session expired or token mismatch.

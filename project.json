@@ -1,0 +1,43 @@
+{
+  "name": "planogram",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/planogram",
+  "projectType": "application",
+  "tags": ["type:app", "scope:planogram"],
+  "targets": {
+    "build": {
+      "executor": "@nx/next:build",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "dist/apps/planogram"
+      }
+    },
+    "serve": {
+      "executor": "@nx/next:server",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "planogram:build",
+        "dev": true
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev -p 3001 --webpack",
+        "cwd": "apps/planogram"
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "next start -p 3001",
+        "cwd": "apps/planogram"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"]
+    }
+  }
+}
