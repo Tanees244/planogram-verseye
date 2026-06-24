@@ -56,6 +56,8 @@ export function TraditionalView() {
   const [selectedBinId, setSelectedBinId] = useState<string | null>(null)
   const [showProductMgmtModal, setShowProductMgmtModal] = useState(false)
   const [showAttachProductModal, setShowAttachProductModal] = useState(false)
+  const [binNameInput, setBinNameInput] = useState('')
+  const [binNameError, setBinNameError] = useState<string | null>(null)
 
   const [rackForm, setRackForm] = useState({ width: '2.5', length: '2', rackCode: '', plankType: 'standard', sided: 'one' as 'one' | 'two' })
   // Locations for Add Rack (mirror Advanced behaviour)
@@ -592,6 +594,17 @@ export function TraditionalView() {
               <div className="text-base text-gray-600 mb-6">
                 Bin will be automatically sized based on row dimensions
               </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Bin Name</label>
+                <input
+                  value={binNameInput}
+                  onChange={(e) => { setBinNameInput(e.target.value); setBinNameError(null); }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2"
+                  placeholder="Enter bin name"
+                />
+                {binNameError && <div className="text-red-500 text-sm mt-1">{binNameError}</div>}
+              </div>
+
               <div className="flex gap-3 justify-end">
                 <button
                   onClick={() => setShowAddBinModal(false)}
@@ -602,11 +615,21 @@ export function TraditionalView() {
                 <button
                   onClick={async () => {
                     if (!selectedRowId) return
-                    const res = await addBinToServer(selectedRowId)
+                    if (!binNameInput || !binNameInput.trim()) {
+                      setBinNameError('Bin name is required')
+                      return
+                    }
+                    const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
                     if (!res.success) {
                       setAddRackError(res.message)
                     } else {
+                      console.log('[Traditional] CreateBin response ->', res)
+                      if ((res as any).binId) {
+                        setSelectedBinId((res as any).binId)
+                      }
                       setShowAddBinModal(false)
+                      setBinNameInput('')
+                      setBinNameError(null)
                     }
                   }}
                   className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl"
@@ -629,6 +652,7 @@ export function TraditionalView() {
             onClose={() => setShowAttachProductModal(false)}
             binId={selectedBinId}
             onSuccess={handleAttachProductSuccess}
+            logPayload={true}
           />
         )
       }

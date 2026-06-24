@@ -146,12 +146,14 @@ export interface PlanogramState {
     rowExtent1?: number,
     rowExtent2?: number,
     rowHeight?: number,
-  ) => Promise<{ success: boolean; message: string }>;
+    binName?: string,
+  ) => Promise<{ success: boolean; message: string; binId?: string }>;
   addBin: (
     rowId: string,
     rowExtent1?: number,
     rowExtent2?: number,
     rowHeight?: number,
+    binName?: string,
   ) => void;
   addProduct: (
     binId: string,
@@ -546,7 +548,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
 
     return { success: true, message: `Added ${appliedCount} row(s)` };
   },
-  addBinToServer: async (rowId, rowExtent1?, rowExtent2?, rowHeight?) => {
+  addBinToServer: async (rowId: string, rowExtent1?: number, rowExtent2?: number, rowHeight?: number, binName?: string) => {
     const state = get();
     // find the row
     let found = false;
@@ -574,10 +576,13 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
+      const payload: Record<string, any> = { rackRowId: rowId };
+      if (binName != null) payload.binName = binName;
+
       const res = await fetch('/api/bins/add-by-row', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ rackRowId: rowId }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -638,12 +643,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         return { ...s, area: { ...s.area, racks } };
       });
 
-      return { success: true, message: data?.message || 'Bin added' };
+      return { success: true, message: data?.message || 'Bin added', binId: returnedId };
     } catch (err) {
       return { success: false, message: 'Network or server error' };
     }
   },
-  addBin: (rowId, rowExtent1?, rowExtent2?, rowHeight?) =>
+  addBin: (rowId: string, rowExtent1?: number, rowExtent2?: number, rowHeight?: number, binName?: string) =>
     set((state) => {
       const useRowDimensions = rowExtent1 != null && rowExtent2 != null;
       const binHeightUse = rowHeight ?? DEFAULT_BIN_HEIGHT;

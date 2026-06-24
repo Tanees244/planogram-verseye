@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Using the user-provided endpoint directly as requested
-        const response = await fetch('http://163.61.91.33:32115/ProductApi/IBinProductFeature/AttachProductToBin', {
+        const response = await fetch(`${process.env.API_BASE_URL}/ProductApi/IBinProductFeature/AttachProductToBin`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -9,9 +9,10 @@ interface AttachProductToBinModalProps {
     onClose: () => void
     binId: string
     onSuccess: (product: Product, quantity: number) => void
+    logPayload?: boolean
 }
 
-export default function AttachProductToBinModal({ isOpen, onClose, binId, onSuccess }: AttachProductToBinModalProps) {
+export default function AttachProductToBinModal({ isOpen, onClose, binId, onSuccess, logPayload }: AttachProductToBinModalProps) {
     const [products, setProducts] = useState<Product[]>([])
     const [loading, setLoading] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -50,14 +51,16 @@ export default function AttachProductToBinModal({ isOpen, onClose, binId, onSucc
 
         setSubmitting(true)
         try {
+            const payload = {
+                binId,
+                productId: formData.productId,
+                quantity: Number(formData.quantity)
+            }
+            if (logPayload) console.log('[Traditional] AttachProduct payload ->', payload)
             const res = await fetch('/api/bins/attach-product', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    binId,
-                    productId: formData.productId,
-                    quantity: Number(formData.quantity)
-                })
+                body: JSON.stringify(payload)
             })
             const data = await res.json()
             if (data.isRequestSuccess) {

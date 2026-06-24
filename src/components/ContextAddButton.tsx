@@ -711,7 +711,12 @@ export function ContextAddButton() {
               setAddRackError('No row selected');
               return;
             }
-            const res = await addBinToServer(selectedId, rowExtent1, rowExtent2, rowHeightForBin);
+            const name = window.prompt('Enter bin name') || '';
+            if (!name || !name.trim()) {
+              setAddRackError('Bin name is required');
+              return;
+            }
+            const res = await addBinToServer(selectedId, rowExtent1, rowExtent2, rowHeightForBin, name.trim());
             if (!res.success) setAddRackError(res.message);
           }}
           className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
