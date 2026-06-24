@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await fetch(`${API_BASE_URL}/IRackRowFeature/AddRackRowByRackSideId`, {
+    const response = await fetch(`${API_BASE_URL}/ProductApi/IRackRowFeature/AddRackRowByRackSideId`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

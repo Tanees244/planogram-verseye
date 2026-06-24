@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const response = await fetch(`${API_BASE_URL}/IBinFeature/AddBinByRowId`, {
+    const response = await fetch(`${API_BASE_URL}/ProductApi/IBinFeature/AddBinByRowId`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

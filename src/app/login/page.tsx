@@ -1,233 +1,200 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Image from 'next/image'
-import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
-import { Toaster, toast } from 'react-hot-toast'
-import { loginWithEmailPassword } from '@verseye/auth-client'
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { loginWithEmailPassword } from "@verseye/auth-client";
 
-// Custom UI Components for Planogram App
-const Label = ({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) => (
-  <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">
-    {children}
-  </label>
-)
+const brandAssetPaths = {
+    logo: "/images/aisleris-logo.svg",
+    loginHero: "/images/login-hero.svg",
+};
 
-const Input = ({ className = '', ...props }: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <input
-    {...props}
-    className={`w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${className}`}
-  />
-)
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+    left?: React.ReactNode;
+    right?: React.ReactNode;
+};
 
-const Button = ({
-  children,
-  className = '',
-  disabled,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-  <button
-    {...props}
-    disabled={disabled}
-    className={`flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-  >
-    {children}
-  </button>
-)
+function Input({ left, right, className = "", ...props }: InputProps) {
+    return (
+        <div className="relative flex items-center">
+            {left ? (
+                <span className="pointer-events-none absolute left-3 flex items-center text-muted-foreground [&_svg]:size-5">
+                    {left}
+                </span>
+            ) : null}
+            <input
+                {...props}
+                className={`h-11 w-full rounded-md border border-input bg-card text-foreground shadow-sm transition placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring ${left ? "pl-10" : "pl-3"
+                    } ${right ? "pr-10" : "pr-3"} ${className}`}
+            />
+            {right ? (
+                <span className="absolute right-3 flex items-center text-muted-foreground [&_svg]:size-5">
+                    {right}
+                </span>
+            ) : null}
+        </div>
+    );
+}
 
-const Checkbox = ({
-  id,
-  checked,
-  onCheckedChange,
-}: {
-  id: string
-  checked: boolean
-  onCheckedChange: (checked: boolean) => void
-}) => (
-  <input
-    type="checkbox"
-    id={id}
-    checked={checked}
-    onChange={(event) => onCheckedChange(event.target.checked)}
-    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
-  />
-)
+function Button({ className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+    return (
+        <button
+            {...props}
+            className={`inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+        />
+    );
+}
 
-function Spinner() {
-  return <div className="w-5 h-5 border-2 border-t-2 border-t-white border-gray-200 rounded-full animate-spin" />
+function OAuthButtons() {
+    return (
+        <div className="mt-8">
+            <div className="mt-6 flex justify-center gap-4">
+                <button
+                    className="flex size-11 items-center justify-center rounded-full border border-border bg-card text-sm font-bold text-[#EA4335] shadow-sm transition hover:bg-muted"
+                    onClick={() => toast("Connect Google OAuth")}>
+                    G
+                </button>
+                <button
+                    className="flex size-11 items-center justify-center rounded-full border border-border bg-card text-sm font-bold text-[#1877F2] shadow-sm transition hover:bg-muted"
+                    onClick={() => toast("Connect Facebook OAuth")}>
+                    f
+                </button>
+                <button
+                    className="flex size-11 items-center justify-center rounded-full border border-border bg-card text-sm font-bold text-[#1DA1F2] shadow-sm transition hover:bg-muted"
+                    onClick={() => toast("Connect Twitter OAuth")}>
+                    𝕏
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function LoginForm() {
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+
+    const router = useRouter();
+
+    async function onSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setSubmitting(true);
+
+        try {
+            const res = await loginWithEmailPassword({ email, password });
+
+            if (!res.ok) {
+                toast.error(res.message ?? "Sign-in failed");
+                return;
+            }
+
+            toast.success(res.message ?? "Signed in");
+
+            await new Promise((r) => setTimeout(r, 600));
+
+            router.push("/");
+            router.refresh();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Sign-in failed");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    return (
+        <>
+            <form onSubmit={onSubmit} className="mt-14 space-y-5">
+                <label className="grid gap-2 text-sm font-medium text-foreground">
+                    <span>
+                        Email Address <span className="text-red-500">*</span>
+                    </span>
+                    <Input
+                        type="email"
+                        autoComplete="username"
+                        required
+                        placeholder="Enter your email address"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        left={<Mail />}
+                    />
+                </label>
+
+                <label className="grid gap-2 text-sm font-medium text-foreground">
+                    <span>
+                        Password <span className="text-red-500">*</span>
+                    </span>
+                    <Input
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="current-password"
+                        required
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        left={<Lock />}
+                        right={
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((v) => !v)}
+                                className="flex items-center text-muted-foreground transition hover:text-foreground"
+                            >
+                                {showPassword ? <EyeOff /> : <Eye />}
+                            </button>
+                        }
+                    />
+                </label>
+
+                <Button type="submit" disabled={submitting} className="w-full">
+                    {submitting ? "Signing in…" : "Sign In"}
+                </Button>
+            </form>
+
+            <OAuthButtons />
+        </>
+    );
 }
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [showPassword, setShowPassword] = useState<boolean>(false)
-  const [rememberMe, setRememberMe] = useState<boolean>(false)
+    return (
+        <div className="flex min-h-screen flex-col bg-background text-foreground transition-colors duration-200 lg:h-screen lg:flex-row lg:overflow-hidden">
+            <div className="relative flex w-full flex-col justify-between border-border px-6 py-10 sm:px-10 lg:h-full lg:w-1/2 lg:overflow-y-auto lg:border-r lg:px-14 lg:py-12 xl:w-5/12 2xl:w-2/5">
 
-  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setLoading(true)
-
-    const result = await loginWithEmailPassword({ email, password })
-
-    if (!result.ok) {
-      toast.error(result.message ?? 'Invalid credentials')
-      setLoading(false)
-      return
-    }
-
-    toast.success(result.message ?? 'Signed in successfully')
-    router.push('/')
-    setLoading(false)
-  }
-
-  return (
-        <div className="min-h-screen flex bg-white text-primary">
-            <Toaster position="top-right" />
-            {/* Left Side - Form */}
-            <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-                <div className="w-full max-w-md space-y-8">
-                    <div className="text-center">
-                        <div className="inline-flex items-center justify-center w-16 h-16 mb-6">
-                            <Image src="/images/login-logo.svg" alt="Logo" width={100} height={100} />
-                        </div>
-                        <h1 className="text-2xl sm:text-3xl font-bold text-primary">Welcome Back</h1>
-                        <p className="mt-2 text-sm text-slate-500">
-                            Enter your credentials to access your account
+                <div className="mx-auto my-auto w-full max-w-md">
+                    <div className="flex flex-col items-center text-center mt-10">
+                        <Image
+                            src={brandAssetPaths.logo}
+                            alt="AISLERIS"
+                            width={222}
+                            height={32}
+                            priority
+                            className="h-8 w-auto"
+                        />
+                        <p className="mt-4 text-sm text-muted-foreground">
+                            Start your experience with AISLERIS by signing in.
                         </p>
                     </div>
 
-                    <form onSubmit={handleLogin} className="space-y-6">
-                        <div className="space-y-2">
-                            <Label htmlFor="email">Email Address</Label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="name@example.com"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="pl-10 h-11 border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                                <Input
-                                    id="password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    placeholder="Enter your password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="pl-10 h-11 border border-slate-200 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                    required
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                                >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="remember"
-                                    checked={rememberMe}
-                                    onCheckedChange={(checked) => setRememberMe(checked)}
-                                />
-                                <label
-                                    htmlFor="remember"
-                                    className="text-sm font-medium text-slate-600 cursor-pointer"
-                                >
-                                    Remember me
-                                </label>
-                            </div>
-                            <button
-                                type="button"
-                                className="text-sm font-medium text-teal-600 hover:underline"
-                            >
-                                Forgot password?
-                            </button>
-                        </div>
-
-                        <Button
-                            type="submit"
-                            className="w-full h-11 bg-[#002952] hover:bg-[#001f3d] text-white flex items-center justify-center transition-colors font-semibold"
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <div className="flex items-center gap-2">
-                                    <Spinner />
-                                    <span>Signing In...</span>
-                                </div>
-                            ) : (
-                                'Sign In'
-                            )}
-                        </Button>
-                    </form>
-
-                    <p className="text-center text-sm text-slate-500">
-                        Don't have an account?{' '}
-                        <button className="font-medium text-teal-600 hover:underline">
-                            Sign up
-                        </button>
-                    </p>
-
-                    <div className="pt-6 border-t border-slate-100">
-                        <p className="text-center text-xs text-slate-400">
-                            Powered by <span className="font-semibold text-slate-600">QBS Co.</span>
-                        </p>
-                    </div>
+                    <LoginForm />
                 </div>
+
+                <footer className="mx-auto mt-2 w-full max-w-md text-center text-xs text-muted-foreground">
+                    <p>Copyright : AISLERIS, All Right Reserved</p>
+                </footer>
             </div>
 
-            {/* Right Side - Image */}
-            <div className="hidden lg:flex lg:flex-1 relative overflow-hidden bg-primary">
-                <div
-                    className="absolute inset-0 bg-cover bg-center opacity-80"
-                    style={{ backgroundImage: "url('/images/login-right-ban.svg')" }}
+            <div className="relative hidden min-h-[420px] flex-1 lg:block">
+                <Image
+                    src={brandAssetPaths.loginHero}
+                    alt=""
+                    fill
+                    priority
+                    sizes="50vw"
+                    className="object-cover object-right"
                 />
-                <div className="absolute inset-0 bg-gradient-to-br from-[#002952]/80 via-teal-900/60 to-primary/80" />
-
-                <div className="relative z-10 flex items-center justify-center p-12">
-                    <div className="max-w-md text-white">
-                        <h2 className="text-4xl font-bold mb-6">
-                            AI-Powered Business Intelligence
-                        </h2>
-                        <p className="text-lg text-white/90 mb-8">
-                            Leverage advanced analytics and machine learning to gain insights,
-                            automate processes, and make data-driven decisions.
-                        </p>
-                        <div className="space-y-4">
-                            {[
-                                'Real-time Analytics & Monitoring',
-                                'Intelligent Automation',
-                                'Predictive Insights',
-                            ].map((feature) => (
-                                <div key={feature} className="flex items-center space-x-3">
-                                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 backdrop-blur-sm">
-                                        <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    </div>
-                                    <span className="text-white/90">{feature}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
-    )
+    );
 }

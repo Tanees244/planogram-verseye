@@ -37,7 +37,7 @@ export async function GET(
       headers["Authorization"] = `Bearer ${token}`
     }
 
-    const url = `${API_BASE_URL}/IRackRowFeature/GetRackRowByRackSideId?Id=${encodeURIComponent(
+    const url = `${API_BASE_URL}/ProductApi/IRackRowFeature/GetRackRowByRackSideId?Id=${encodeURIComponent(
       id
     )}`
 

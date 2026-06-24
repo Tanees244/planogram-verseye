@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     }
 
     const response = await fetch(
-      `${API_BASE_URL}/IRackStructureFeature/GetAllRacks`,
+      `${API_BASE_URL}/ProductApi/IRackStructureFeature/GetAllRacks`,
       {
         method: 'GET',
         headers: {

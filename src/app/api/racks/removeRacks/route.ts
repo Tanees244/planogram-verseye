@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
         }
         
         const response = await fetch(
-            `${API_BASE_URL}/IRackStructureFeature/RemoveRack`,
+            `${API_BASE_URL}/ProductApi/IRackStructureFeature/RemoveRack`,
             {
                 method: 'POST',
                 headers: {

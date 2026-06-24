@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
         }
 
         const response = await fetch(
-            `${API_BASE_URL}/ICategoryFeature/ListCategories`,
+            `${API_BASE_URL}/ProductApi/ICategoryFeature/ListCategories`,
             {
                 method: 'GET',
                 headers: {

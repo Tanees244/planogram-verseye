@@ -151,6 +151,30 @@ function persistLoginState(body: RawLoginResponseBody): void {
   }
 }
 
+/**
+ * Clear client-side auth state and the httpOnly session cookie.
+ * Safe to call multiple times. Resolves once the cookie-clearing request completes.
+ */
+export async function logout(options: { endpoint?: string } = {}): Promise<void> {
+  const endpoint = options.endpoint ?? '/api/logout';
+
+  if (typeof window !== 'undefined') {
+    for (const key of ['authToken', 'user', 'userActions'] as const) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }
+
+  try {
+    await authFetch(endpoint, { method: 'POST' });
+  } catch {
+    // network errors shouldn't block logout; cookie may already be gone/expired
+  }
+}
+
 export async function loginWithEmailPassword(
   credentials: LoginCredentials,
   options: LoginOptions = {},

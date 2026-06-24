@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
         }
 
         const response = await fetch(
-            `${API_BASE_URL}/IProductFeature/ListProducts`,
+            `${API_BASE_URL}/ProductApi/IProductFeature/ListProducts`,
             {
                 method: 'GET',
                 headers: {

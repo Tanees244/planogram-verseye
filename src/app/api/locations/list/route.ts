@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         // console.log(`[ListLocations] Fetching with token starting with: ${token.substring(0, 10)}...`);
 
         const response = await fetch(
-            `${API_BASE_URL}/ILocationFeature/ListLocations`,
+            `${API_BASE_URL}/ProductApi/ILocationFeature/ListLocations`,
             {
                 method: 'GET',
                 headers: {

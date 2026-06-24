@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const response = await fetch(
-      `${API_BASE_URL}/IRackStructureFeature/AddRackByLocation`,
+      `${API_BASE_URL}/ProductApi/IRackStructureFeature/AddRackByLocation`,
       {
         method: 'POST',
         headers: {

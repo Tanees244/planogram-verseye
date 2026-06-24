@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const response = await fetch(
-      `${API_BASE_URL}/IProductFeature/AddProduct`,
+      `${API_BASE_URL}/ProductApi/IProductFeature/AddProduct`,
       {
         method: 'POST',
         headers: {

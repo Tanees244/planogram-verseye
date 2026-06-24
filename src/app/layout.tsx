@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 }
 
 import { Toaster } from 'react-hot-toast'
+import SessionExpiryHandler from '@/components/SessionExpiryHandler'
 
 export default function RootLayout({
   children,
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="en" className={poppins.variable} suppressHydrationWarning>
       <body className="font-poppins" suppressHydrationWarning>
         <Toaster position="top-right" />
+        <SessionExpiryHandler />
         {children}
       </body>
     </html>

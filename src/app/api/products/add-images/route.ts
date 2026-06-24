@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
         // Call Backend API
         const response = await fetch(
-            `${API_BASE_URL}/IProductFeature/AddProductImages`,
+            `${API_BASE_URL}/ProductApi/IProductFeature/AddProductImages`,
             {
                 method: 'POST',
                 headers: {

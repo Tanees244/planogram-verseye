@@ -47,7 +47,7 @@ export default function AutoPlaceRacks() {
     let mounted = true
       ; (async () => {
         try {
-          const res = await fetch('/api/planogram/racks')
+          const res = await fetch('/api/racks/get-all')
           if (!mounted) return
           const json = await res.json().catch(() => ({}))
           if (!res.ok) {
