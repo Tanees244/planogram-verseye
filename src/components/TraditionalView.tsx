@@ -19,6 +19,7 @@ import {
 import RackListSidebar from './RackListSidebar'
 import ProductManagementModal from './ProductManagementModal'
 import AttachProductToBinModal from './AttachProductToBinModal'
+import { Spinner } from './Spinner'
 
 export function TraditionalView() {
   const {
@@ -58,6 +59,8 @@ export function TraditionalView() {
   const [showAttachProductModal, setShowAttachProductModal] = useState(false)
   const [binNameInput, setBinNameInput] = useState('')
   const [binNameError, setBinNameError] = useState<string | null>(null)
+  const [addingRow, setAddingRow] = useState(false)
+  const [addingBin, setAddingBin] = useState(false)
 
   const [rackForm, setRackForm] = useState({ width: '2.5', length: '2', rackCode: '', plankType: 'standard', sided: 'one' as 'one' | 'two' })
   // Locations for Add Rack (mirror Advanced behaviour)
@@ -533,8 +536,10 @@ export function TraditionalView() {
                       setShowAddRackModal(false)
                     }
                   }}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl"
+                  disabled={isAddingRack}
+                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
+                  {isAddingRack && <Spinner />}
                   {isAddingRack ? 'Adding...' : 'Add Rack'}
                 </button>
               </div>
@@ -568,16 +573,23 @@ export function TraditionalView() {
                 </button>
                 <button
                   onClick={async () => {
-                    const res = await addRowToServer(selectedRackId, parseFloat(rowForm.height) || 1.5)
-                    if (!res.success) {
-                      setAddRackError(res.message)
-                    } else {
-                      setShowAddRowModal(false)
+                    setAddingRow(true)
+                    try {
+                      const res = await addRowToServer(selectedRackId, parseFloat(rowForm.height) || 1.5)
+                      if (!res.success) {
+                        setAddRackError(res.message)
+                      } else {
+                        setShowAddRowModal(false)
+                      }
+                    } finally {
+                      setAddingRow(false)
                     }
                   }}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl"
+                  disabled={addingRow}
+                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Add Row
+                  {addingRow && <Spinner />}
+                  {addingRow ? 'Adding...' : 'Add Row'}
                 </button>
               </div>
             </div>
@@ -619,22 +631,29 @@ export function TraditionalView() {
                       setBinNameError('Bin name is required')
                       return
                     }
-                    const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
-                    if (!res.success) {
-                      setAddRackError(res.message)
-                    } else {
-                      console.log('[Traditional] CreateBin response ->', res)
-                      if ((res as any).binId) {
-                        setSelectedBinId((res as any).binId)
+                    setAddingBin(true)
+                    try {
+                      const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
+                      if (!res.success) {
+                        setAddRackError(res.message)
+                      } else {
+                        console.log('[Traditional] CreateBin response ->', res)
+                        if ((res as any).binId) {
+                          setSelectedBinId((res as any).binId)
+                        }
+                        setShowAddBinModal(false)
+                        setBinNameInput('')
+                        setBinNameError(null)
                       }
-                      setShowAddBinModal(false)
-                      setBinNameInput('')
-                      setBinNameError(null)
+                    } finally {
+                      setAddingBin(false)
                     }
                   }}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl"
+                  disabled={addingBin}
+                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Add Bin
+                  {addingBin && <Spinner />}
+                  {addingBin ? 'Adding...' : 'Add Bin'}
                 </button>
               </div>
             </div>

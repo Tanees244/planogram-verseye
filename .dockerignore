@@ -1,0 +1,38 @@
+# Dependencies (reinstalled inside the image)
+node_modules
+**/node_modules
+
+# Build output
+.next
+out
+dist
+build
+
+# Env: keep .env so the app can read it at build & runtime
+.env.local
+.env.*.local
+
+# VCS / tooling
+.git
+.gitignore
+.github
+.vscode
+.idea
+.cursor
+
+# Logs & caches
+*.log
+npm-debug.log*
+.nx
+.eslintcache
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Misc
+README.md
+*.md
+coverage
+.DS_Store

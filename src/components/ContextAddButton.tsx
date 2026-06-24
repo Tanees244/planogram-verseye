@@ -18,6 +18,7 @@ import { Button } from "@verseye/ui";
 import { FiTrash2 } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
+import { Spinner } from "./Spinner";
 export function ContextAddButton() {
   const {
     selectedId,
@@ -51,6 +52,15 @@ export function ContextAddButton() {
   const [showRackModal, setShowRackModal] = useState(false);
   const [showRowModal, setShowRowModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+
+  // Per-action loading states for addition buttons
+  const [addingRow, setAddingRow] = useState(false);
+  const [addingBin, setAddingBin] = useState(false);
+
+  // Add Bin modal state
+  const [showBinModal, setShowBinModal] = useState(false);
+  const [binNameInput, setBinNameInput] = useState("");
+  const [binNameError, setBinNameError] = useState<string | null>(null);
 
   // Location state for the Add Rack form
   const [locations, setLocations] = useState<Location[]>([]);
@@ -511,8 +521,12 @@ export function ContextAddButton() {
                     color: "white",
                     cursor: isAddingRack ? "not-allowed" : "pointer",
                     opacity: isAddingRack ? 0.7 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
                   }}
                 >
+                  {isAddingRack && <Spinner />}
                   {isAddingRack ? "Adding..." : "Add at center"}
                 </button>
               </div>
@@ -661,24 +675,35 @@ export function ContextAddButton() {
                 </button>
                 <button
                   onClick={async () => {
-                    const res = await addRowToServer(selectedId, parseFloat(rowForm.height) || 1.5);
-                    if (!res.success) {
-                      // use store error slot for visibility
-                      setAddRackError(res.message);
-                    } else {
-                      setShowRowModal(false);
+                    setAddingRow(true);
+                    try {
+                      const res = await addRowToServer(selectedId, parseFloat(rowForm.height) || 1.5);
+                      if (!res.success) {
+                        // use store error slot for visibility
+                        setAddRackError(res.message);
+                      } else {
+                        setShowRowModal(false);
+                      }
+                    } finally {
+                      setAddingRow(false);
                     }
                   }}
+                  disabled={addingRow}
                   style={{
                     padding: "8px 16px",
                     borderRadius: "4px",
                     border: "none",
-                    background: "#e67e22",
+                    background: addingRow ? "#b3743a" : "#e67e22",
                     color: "white",
-                    cursor: "pointer",
+                    cursor: addingRow ? "not-allowed" : "pointer",
+                    opacity: addingRow ? 0.7 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
                   }}
                 >
-                  Add Row
+                  {addingRow && <Spinner />}
+                  {addingRow ? "Adding..." : "Add Row"}
                 </button>
               </div>
             </div>
@@ -702,37 +727,180 @@ export function ContextAddButton() {
     const rowExtent2 = rack ? rack.depth * 0.9 : undefined;
     const rowHeightForBin = row?.height;
 
+    const handleAddBin = async () => {
+      if (!selectedId) {
+        setBinNameError("No row selected");
+        return;
+      }
+      if (!binNameInput || !binNameInput.trim()) {
+        setBinNameError("Bin name is required");
+        return;
+      }
+      setAddingBin(true);
+      try {
+        const res = await addBinToServer(
+          selectedId,
+          rowExtent1,
+          rowExtent2,
+          rowHeightForBin,
+          binNameInput.trim(),
+        );
+        if (!res.success) {
+          setBinNameError(res.message);
+        } else {
+          setShowBinModal(false);
+          setBinNameInput("");
+          setBinNameError(null);
+        }
+      } finally {
+        setAddingBin(false);
+      }
+    };
+
     return (
-      <div className={actionBarClass}>
-        <span className="text-gray-300 text-sm">Row selected</span>
-        <button
-          onClick={async () => {
-            if (!selectedId) {
-              setAddRackError('No row selected');
-              return;
-            }
-            const name = window.prompt('Enter bin name') || '';
-            if (!name || !name.trim()) {
-              setAddRackError('Bin name is required');
-              return;
-            }
-            const res = await addBinToServer(selectedId, rowExtent1, rowExtent2, rowHeightForBin, name.trim());
-            if (!res.success) setAddRackError(res.message);
-          }}
-          className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
-        >
-          <span className="text-lg">+</span>
-          Add Bin
-        </button>
-        <Button
-          variant={"default"}
-          size={"sm"}
-          className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-          onClick={() => deleteRow(selectedId)}
-        >
-          <FiTrash2 />
-        </Button>
-      </div>
+      <>
+        <div className={actionBarClass}>
+          <span className="text-gray-300 text-sm">Row selected</span>
+          <button
+            onClick={() => {
+              setBinNameInput("");
+              setBinNameError(null);
+              setShowBinModal(true);
+            }}
+            className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors"
+          >
+            <span className="text-lg">+</span>
+            Add Bin
+          </button>
+          <Button
+            variant={"default"}
+            size={"sm"}
+            className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+            onClick={() => deleteRow(selectedId)}
+          >
+            <FiTrash2 />
+          </Button>
+        </div>
+
+        {showBinModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.6)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+            onClick={() => {
+              if (!addingBin) setShowBinModal(false);
+            }}
+          >
+            <div
+              style={{
+                background: "#2c3e50",
+                color: "#ecf0f1",
+                padding: "24px",
+                borderRadius: "8px",
+                minWidth: "300px",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "0 0 8px", fontSize: "18px" }}>New Bin</h3>
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  fontSize: "12px",
+                  color: "#bdc3c7",
+                }}
+              >
+                Bin will be automatically sized based on row dimensions.
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                  fontSize: "13px",
+                }}
+              >
+                Bin Name *
+                <input
+                  type="text"
+                  value={binNameInput}
+                  autoFocus
+                  onChange={(e) => {
+                    setBinNameInput(e.target.value);
+                    setBinNameError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !addingBin) handleAddBin();
+                  }}
+                  placeholder="Enter bin name"
+                  style={{
+                    padding: "8px",
+                    borderRadius: "4px",
+                    border: binNameError
+                      ? "1px solid #e74c3c"
+                      : "1px solid #34495e",
+                  }}
+                  className="text-black"
+                />
+                {binNameError && (
+                  <span style={{ color: "#e74c3c", fontSize: "12px" }}>
+                    {binNameError}
+                  </span>
+                )}
+              </label>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginTop: "20px",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  onClick={() => setShowBinModal(false)}
+                  disabled={addingBin}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "4px",
+                    border: "1px solid #7f8c8d",
+                    background: "transparent",
+                    color: "#bdc3c7",
+                    cursor: addingBin ? "not-allowed" : "pointer",
+                    opacity: addingBin ? 0.6 : 1,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddBin}
+                  disabled={addingBin}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "4px",
+                    border: "none",
+                    background: addingBin ? "#7f5a8f" : "#9b59b6",
+                    color: "white",
+                    cursor: addingBin ? "not-allowed" : "pointer",
+                    opacity: addingBin ? 0.7 : 1,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  {addingBin && <Spinner />}
+                  {addingBin ? "Adding..." : "Add Bin"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

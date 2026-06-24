@@ -13,6 +13,7 @@ import {
     FiLock
 } from 'react-icons/fi'
 import { Category, Brand, Product } from '../types/product-management'
+import { Spinner } from './Spinner'
 
 interface ProductManagementModalProps {
     isOpen: boolean
@@ -30,6 +31,9 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
 
     // Loading States
     const [loading, setLoading] = useState(false)
+    const [addingCategory, setAddingCategory] = useState(false)
+    const [addingBrand, setAddingBrand] = useState(false)
+    const [addingProduct, setAddingProduct] = useState(false)
 
     // Modal States
     const [showAddCategory, setShowAddCategory] = useState(false)
@@ -136,6 +140,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
     // Actions
     const handleAddCategory = async (e: React.FormEvent) => {
         e.preventDefault()
+        setAddingCategory(true)
         try {
             const res = await fetch('/api/categories/add', {
                 method: 'POST',
@@ -152,11 +157,14 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
             }
         } catch (error) {
             alert('Error adding category')
+        } finally {
+            setAddingCategory(false)
         }
     }
 
     const handleAddBrand = async (e: React.FormEvent) => {
         e.preventDefault()
+        setAddingBrand(true)
         try {
             const res = await fetch('/api/brands/add', {
                 method: 'POST',
@@ -173,12 +181,14 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
             }
         } catch (error) {
             alert('Error adding brand')
+        } finally {
+            setAddingBrand(false)
         }
     }
 
     const handleAddProduct = async (e: React.FormEvent) => {
         e.preventDefault()
-        setLoading(true)
+        setAddingProduct(true)
         try {
             const res = await fetch('/api/products/add', {
                 method: 'POST',
@@ -219,7 +229,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
         } catch (error) {
             alert('Error adding product')
         } finally {
-            setLoading(false)
+            setAddingProduct(false)
         }
     }
 
@@ -484,8 +494,11 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                 </div>
                             </div>
                             <div className="mt-8 flex gap-3">
-                                <button type="button" onClick={() => setShowAddCategory(false)} className="flex-1 py-2 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all">Cancel</button>
-                                <button type="submit" className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all">Add Category</button>
+                                <button type="button" onClick={() => setShowAddCategory(false)} disabled={addingCategory} className="flex-1 py-2 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50">Cancel</button>
+                                <button type="submit" disabled={addingCategory} className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                    {addingCategory && <Spinner />}
+                                    {addingCategory ? 'Adding...' : 'Add Category'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -509,8 +522,11 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                 </div>
                             </div>
                             <div className="mt-8 flex gap-3">
-                                <button type="button" onClick={() => setShowAddBrand(false)} className="flex-1 py-2 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all">Cancel</button>
-                                <button type="submit" className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all">Add Brand</button>
+                                <button type="button" onClick={() => setShowAddBrand(false)} disabled={addingBrand} className="flex-1 py-2 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50">Cancel</button>
+                                <button type="submit" disabled={addingBrand} className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                    {addingBrand && <Spinner />}
+                                    {addingBrand ? 'Adding...' : 'Add Brand'}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -635,8 +651,11 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                 />
                             </div>
                             <div className="mt-8 flex gap-3">
-                                <button type="button" onClick={() => setShowAddProduct(false)} className="flex-1 py-3 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all">Cancel</button>
-                                <button type="submit" className="flex-1 py-3 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all">Create Product</button>
+                                <button type="button" onClick={() => setShowAddProduct(false)} disabled={addingProduct} className="flex-1 py-3 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50">Cancel</button>
+                                <button type="submit" disabled={addingProduct} className="flex-1 py-3 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                                    {addingProduct && <Spinner />}
+                                    {addingProduct ? 'Creating...' : 'Create Product'}
+                                </button>
                             </div>
                         </form>
                     </div>

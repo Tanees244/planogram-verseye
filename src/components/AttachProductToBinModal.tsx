@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { FiX, FiPlus, FiBox } from 'react-icons/fi'
 import { Product } from '../types/product-management'
+import { Spinner } from './Spinner'
 
 interface AttachProductToBinModalProps {
     isOpen: boolean
@@ -136,8 +137,9 @@ export default function AttachProductToBinModal({ isOpen, onClose, binId, onSucc
                         <button
                             type="submit"
                             disabled={submitting || !formData.productId}
-                            className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-50 disabled:shadow-none"
+                            className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
                         >
+                            {submitting && <Spinner />}
                             {submitting ? 'Attaching...' : 'Attach Product'}
                         </button>
                     </div>
