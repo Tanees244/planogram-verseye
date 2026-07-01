@@ -8,6 +8,7 @@ import { Edges } from "@react-three/drei";
 import { Bin as BinType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
+import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
 
 interface BinProps {
   bin: BinType;
@@ -41,25 +42,27 @@ export function Bin({
   const wallThick = 0.02;
   const lipHeight = 0.02;
 
+  const facings = expandProductsByQuantity(bin.products);
+
   // Scale products to fill bin height and depth - products should fill the bin vertically and depth-wise
-  const defaultProductHeight = bin.products[0]?.height ?? 0.35;
-  const defaultProductWidth = bin.products[0]?.width ?? 0.35;
-  const defaultProductDepth = bin.products[0]?.depth ?? 0.35;
+  const defaultProductHeight = facings[0]?.height ?? 0.35;
+  const defaultProductWidth = facings[0]?.width ?? 0.35;
+  const defaultProductDepth = facings[0]?.depth ?? 0.35;
 
   // Scale height to fill bin height, depth to fill bin depth, width stays proportional or fits bin width
   const productHeightScale = actualBinHeight / defaultProductHeight;
   const productDepthScale = actualBinDepth / defaultProductDepth;
-  // For width, scale proportionally but ensure all products fit in bin width
-  const totalProductsWidth = defaultProductWidth * bin.products.length;
+  // For width, scale proportionally but ensure all facings fit in bin width
+  const totalProductsWidth = defaultProductWidth * facings.length;
   const productWidthScale = Math.min(
     productHeightScale,
-    actualBinWidth / totalProductsWidth,
+    facings.length > 0 ? actualBinWidth / totalProductsWidth : productHeightScale,
   );
 
-  // Lay out products along bin width (X), horizontally
+  // Lay out facings along bin width (X), horizontally
   let xOffset = -actualBinWidth / 2 + wallThick;
   const productPositions: [number, number, number][] = [];
-  bin.products.forEach((product) => {
+  facings.forEach((product) => {
     const scaledWidth =
       (product.width ?? defaultProductWidth) * productWidthScale;
     const px = xOffset + scaledWidth / 2;
@@ -125,7 +128,7 @@ export function Bin({
         />
         <meshStandardMaterial color="#FFFFFF" metalness={0.4} roughness={0.5} />
       </mesh>
-      {bin.products.map((product, index) => {
+      {facings.map((product, index) => {
         const scaledProduct = {
           ...product,
           width: (product.width ?? defaultProductWidth) * productWidthScale,

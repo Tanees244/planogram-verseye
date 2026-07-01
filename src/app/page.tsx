@@ -7,8 +7,7 @@ import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
 import Link from 'next/link'
 import { usePlanogramStore, type Bin, type Product } from '@/store/planogramStore'
-import AutoPlaceRacks from '@/components/AutoPlaceRacks'
-import LoadRowsOnRackSelect from '@/components/LoadRowsOnRackSelect'
+import StoreLayout from '@/components/StoreLayout'
 
 const Scene3D = dynamic(() => import('@/components/Scene3D').then((m) => ({ default: m.Scene3D })), { ssr: false })
 
@@ -94,6 +93,30 @@ function ControlsTooltip() {
           {MOVE_HINT}
         </div>
       )}
+    </div>
+  )
+}
+
+function StoreBadge({ dark = false }: { dark?: boolean }) {
+  const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
+  const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
+  const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
+  if (!selectedStoreId) return null
+  return (
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100]">
+      <div
+        className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-lg text-sm ${dark ? 'bg-black/70 backdrop-blur-sm text-gray-100' : 'bg-white/95 backdrop-blur-sm text-gray-800'
+          }`}
+      >
+        <span className="font-semibold truncate max-w-[240px]">{selectedStoreName || 'Selected store'}</span>
+        <button
+          onClick={() => setSelectedStore(null)}
+          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${dark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-[#002952]/10 hover:bg-[#002952]/20 text-[#002952]'
+            }`}
+        >
+          Change
+        </button>
+      </div>
     </div>
   )
 }
@@ -204,6 +227,9 @@ export default function Home() {
             Advanced
           </button>
         </div>
+        {/* Store selector + full layout loader (racks → sides → rows → bins → products) */}
+        <StoreLayout />
+        <StoreBadge />
         <TraditionalView />
       </div>
     )
@@ -228,8 +254,8 @@ export default function Home() {
         </button>
       </div>
       <Scene3D />
-      <AutoPlaceRacks />
-      <LoadRowsOnRackSelect />
+      <StoreLayout />
+      <StoreBadge dark />
 
       {/* Bottom bar: context action (Add Rack / Row / Bin / Product) */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-3 z-[100]">

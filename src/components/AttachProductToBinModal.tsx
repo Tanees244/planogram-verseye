@@ -54,7 +54,7 @@ export default function AttachProductToBinModal({ isOpen, onClose, binId, onSucc
         try {
             const payload = {
                 binId,
-                productId: formData.productId,
+                skuId: formData.productId,
                 quantity: Number(formData.quantity)
             }
             if (logPayload) console.log('[Traditional] AttachProduct payload ->', payload)
@@ -112,6 +112,24 @@ export default function AttachProductToBinModal({ isOpen, onClose, binId, onSucc
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
+                        {(() => {
+                            const sel = products.find(p => p.id === formData.productId) as any
+                            if (!sel?.imageUrl) return null
+                            return (
+                                <div className="mt-3 flex items-center gap-3 p-2 bg-gray-50 border border-gray-100 rounded-xl">
+                                    <img
+                                        src={sel.imageUrl}
+                                        alt={sel.name}
+                                        className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white"
+                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                                    />
+                                    <div className="min-w-0">
+                                        <div className="text-sm font-semibold text-gray-800 truncate">{sel.name}</div>
+                                        {sel.skuCode && <div className="text-xs text-gray-500 truncate">{sel.skuCode}</div>}
+                                    </div>
+                                </div>
+                            )
+                        })()}
                     </div>
 
                     <div>

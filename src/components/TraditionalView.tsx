@@ -20,6 +20,7 @@ import RackListSidebar from './RackListSidebar'
 import ProductManagementModal from './ProductManagementModal'
 import AttachProductToBinModal from './AttachProductToBinModal'
 import { Spinner } from './Spinner'
+import { resolveEntityId, totalProductFacings } from '@/utils/storeLayoutLoader'
 
 export function TraditionalView() {
   const {
@@ -30,7 +31,6 @@ export function TraditionalView() {
     addBinToServer,
     addBin,
     addProduct,
-    addProductToServer,
     updateDimensions,
     deleteRack,
     deleteRackFromServer,
@@ -67,7 +67,9 @@ export function TraditionalView() {
   const [locations, setLocations] = useState<{ id: string; locationCode: string }[]>([])
   const [locationsLoading, setLocationsLoading] = useState(false)
   const [locationsError, setLocationsError] = useState<string | null>(null)
-  const [selectedLocationId, setSelectedLocationId] = useState('')
+  const [selectedLocationId, setSelectedLocationId] = useState(
+    () => usePlanogramStore.getState().selectedStoreId ?? ''
+  )
   const [locationValidationError, setLocationValidationError] = useState<string | null>(null)
   const [rowForm, setRowForm] = useState({ height: '1.5' })
   const [productForm, setProductForm] = useState({
@@ -146,7 +148,10 @@ export function TraditionalView() {
 
   const handleAttachProductSuccess = async (product: any, quantity: number) => {
     if (selectedBinId) {
-      await attachProductToBin(selectedBinId, product, quantity);
+      const result = await attachProductToBin(selectedBinId, product, quantity)
+      if (!result.success && (result as { message?: string }).message) {
+        alert((result as { message?: string }).message)
+      }
     }
   }
 
@@ -168,6 +173,13 @@ export function TraditionalView() {
       >
         Add Products
       </button>
+      <Link
+        href="/planograms"
+        className="absolute top-6 right-[395px] px-6 py-3 bg-white text-[#002952] border border-[#002952]/20 rounded-xl text-base font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 z-50 flex items-center gap-2"
+      >
+        <FiLayers className="text-lg" />
+        Planograms
+      </Link>
 
       {/* Product Management Modal */}
       <ProductManagementModal
@@ -291,13 +303,13 @@ export function TraditionalView() {
                                 <FiChevronRight className="text-lg text-gray-400" />
                               )}
                               <FiPackage className="text-lg text-[#002952]" />
-                              <span className="text-sm font-medium text-gray-800">Row {row.id.slice(0, 6)}</span>
+                              <span className="text-sm font-medium text-gray-800">Row {String(row.id).slice(0, 6)}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  setSelectedRowId(row.id)
+                                  setSelectedRowId(resolveEntityId(row.id) ?? String(row.id))
                                   setShowAddBinModal(true)
                                 }}
                                 className="px-3 py-1.5 bg-[#002952] text-white rounded-lg text-xs font-medium hover:bg-[#001a33] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
@@ -336,12 +348,18 @@ export function TraditionalView() {
                                         <FiChevronRight className="text-sm text-gray-400" />
                                       )}
                                       <FiBox className="text-sm text-[#002952]" />
-                                      <span className="text-xs font-medium text-gray-800">Bin {bin.id.slice(0, 6)}</span>
+                                      <span className="text-xs font-medium text-gray-800">
+                                        {bin.binName || `Bin ${String(bin.id).slice(0, 8)}`}
+                                      </span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation()
+                                          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bin.id)) {
+                                            alert('This bin has no server id yet. Refresh the store layout or re-create the bin.')
+                                            return
+                                          }
                                           setSelectedBinId(bin.id)
                                           setShowAttachProductModal(true)
                                         }}
@@ -366,20 +384,43 @@ export function TraditionalView() {
                                     expandedBins.has(bin.id) && (
                                       <div className="mt-2 pl-4 pr-2">
                                         <div className="text-xs text-gray-600 mb-2 px-2">
-                                          Products: {bin.products.length}
+                                          Products: {bin.products.length} SKU{bin.products.length === 1 ? '' : 's'}
+                                          {totalProductFacings(bin.products) > bin.products.length
+                                            ? ` · ${totalProductFacings(bin.products)} facings`
+                                            : ''}
                                         </div>
-                                        {bin.products.map((product) => (
+                                        {bin.products.map((product) => {
+                                          const qty = Math.max(1, Math.floor(Number(product.quantity) || 1))
+                                          const thumbsToShow = Math.min(qty, 8)
+                                          return (
                                           <div
                                             key={product.id}
                                             className="p-2.5 mb-2 bg-white border border-gray-200 rounded-lg flex items-center justify-between hover:shadow-sm transition-all"
                                           >
                                             <div className="flex items-center gap-3">
-                                              <div
-                                                className="w-4 h-4 rounded-md shadow-sm"
-                                                style={{ backgroundColor: product.color }}
-                                              />
+                                              {product.imageUrl ? (
+                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                  {Array.from({ length: thumbsToShow }).map((_, i) => (
+                                                    <img
+                                                      key={`${product.id}-thumb-${i}`}
+                                                      src={product.imageUrl}
+                                                      alt={product.name}
+                                                      className="w-9 h-9 rounded-md object-cover border border-gray-200 shadow-sm bg-white"
+                                                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                                                    />
+                                                  ))}
+                                                  {qty > thumbsToShow && (
+                                                    <span className="text-[10px] font-semibold text-gray-500 px-1">+{qty - thumbsToShow}</span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <div
+                                                  className="w-4 h-4 rounded-md shadow-sm"
+                                                  style={{ backgroundColor: product.color }}
+                                                />
+                                              )}
                                               <div className="flex flex-col">
-                                                <span className="text-xs font-medium text-gray-800">{product.name}</span>
+                                                <span className="text-xs font-medium text-gray-800">{product.name}{qty > 1 ? ` × ${qty}` : ''}</span>
                                                 {(product.brandName || product.categoryName) && (
                                                   <span className="text-[10px] text-gray-500">
                                                     {product.brandName}{product.brandName && product.categoryName ? ' | ' : ''}{product.categoryName}
@@ -397,7 +438,8 @@ export function TraditionalView() {
                                               <FiX className="text-xs text-red-600" />
                                             </button>
                                           </div>
-                                        ))}
+                                          )
+                                        })}
                                       </div>
                                     )
                                   }

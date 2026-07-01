@@ -52,6 +52,7 @@ export function Rack({ rack }: RackProps) {
   const groupY = hasContent ? rackCenterY : (rack.position.y ?? 0);
 
   const sideOffset = rack.sides.length === 2 ? rack.width / 4 : 0;
+  const isDoubleSided = Boolean(rack.isDoubleSided) || rack.sides.length >= 2;
 
   const selectRack = (e: any) => {
     e.stopPropagation();
@@ -203,8 +204,8 @@ export function Rack({ rack }: RackProps) {
         </group>
       )}
 
-      {/* Back wall for single-sided racks */}
-      {rack.sides.length === 1 && hasContent && (
+      {/* Back wall for single-sided racks only */}
+      {!isDoubleSided && rack.sides.length === 1 && hasContent && (
         <mesh
           position={[rack.width / 2, 0, 0]}
           onClick={selectRack}
@@ -225,15 +226,22 @@ export function Rack({ rack }: RackProps) {
 
       {/* Render sides */}
       {rack.sides.map((side, sideIndex) => {
-        const sideX =
-          rack.sides.length === 2
+        // Double-sided gondola: both sides share the center spine, face opposite
+        // directions (open along ±Z). Single-sided: one face only.
+        const sideX = isDoubleSided
+          ? 0
+          : rack.sides.length === 2
             ? sideIndex === 0
               ? -sideOffset
               : sideOffset
             : 0;
+        const sideRotationY = isDoubleSided && sideIndex === 1 ? Math.PI : 0;
         const numSides = rack.sides.length;
-        const rowWidth = (rack.width / numSides) * 0.85;
-        const rowDepth = rack.depth * 0.9;
+        const rowWidth = isDoubleSided
+          ? rack.width * 0.9
+          : (rack.width / numSides) * 0.85;
+        const rowDepth = isDoubleSided ? rack.depth * 0.5 : rack.depth * 0.9;
+        const shelfOffsetZ = isDoubleSided ? -rowDepth / 2 : 0;
 
         const baseTopY = -rackHeight / 2 + 0.2;
         let currentY = baseTopY;
@@ -245,7 +253,11 @@ export function Rack({ rack }: RackProps) {
         });
 
         return (
-          <group key={side.sideId} position={[sideX, 0, 0]}>
+          <group
+            key={side.sideId}
+            position={[sideX, 0, 0]}
+            rotation={[0, sideRotationY, 0]}
+          >
             {side.rows.map((row, rowIndex) => (
               <Row
                 key={row.id}
@@ -254,6 +266,8 @@ export function Rack({ rack }: RackProps) {
                 rackWidth={rowWidth}
                 rackDepth={rowDepth}
                 showBottomBorder={rowIndex < side.rows.length - 1}
+                openBothSides={isDoubleSided}
+                shelfOffsetZ={shelfOffsetZ}
               />
             ))}
           </group>

@@ -14,6 +14,10 @@ interface RowProps {
   rackWidth: number;
   rackDepth: number;
   showBottomBorder?: boolean;
+  /** When true, both faces of the row stay open (no back wall). */
+  openBothSides?: boolean;
+  /** Shift shelf geometry along Z (used for back-to-back double-sided racks). */
+  shelfOffsetZ?: number;
 }
 
 export function Row({
@@ -22,6 +26,8 @@ export function Row({
   rackWidth,
   rackDepth,
   showBottomBorder = false,
+  openBothSides = false,
+  shelfOffsetZ = 0,
 }: RowProps) {
   const meshRef = useRef<Mesh>(null);
   const { selectedId, setSelected } = usePlanogramStore();
@@ -37,6 +43,7 @@ export function Row({
   const binSpacing = row.bins.length > 0 ? rackDepth / row.bins.length : 0;
   const binDepth = binSpacing * 0.9;
   const borderThickness = 0.08;
+  const z = shelfOffsetZ;
 
   const [hovered, setHovered] = useState(false);
 
@@ -50,7 +57,7 @@ export function Row({
       {/* Hitbox for row selection – pushed to the back so bins in front get hit first */}
       <mesh
         userData={{ id: row.id }}
-        position={[0, 0, rackDepth / 2 - 0.05]}
+        position={[0, 0, z + rackDepth / 2 - 0.05]}
         onClick={selectRow}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -73,8 +80,8 @@ export function Row({
 
       {/* Row as a container: one-sided = back wall blocks access from one side; two-sided = open both sides */}
       {/* Back wall – only for one-sided rows; skip raycast so bins can be clicked */}
-      {row.sided !== "two" && (
-        <mesh position={[0, 0, rackDepth / 2]} raycast={() => null}>
+      {!openBothSides && row.sided !== "two" && (
+        <mesh position={[0, 0, z + rackDepth / 2]} raycast={() => null}>
           <boxGeometry args={[rackWidth, row.height, 0.06]} />
           <meshStandardMaterial
             color="#FFFFFF"
@@ -87,7 +94,7 @@ export function Row({
       {/* Floor of the slot – skip raycast so bins can be clicked */}
       <mesh
         ref={meshRef}
-        position={[0, -row.height / 2 + 0.03, 0]}
+        position={[0, -row.height / 2 + 0.03, z]}
         raycast={() => null}
       >
         <boxGeometry args={[rackWidth, 0.06, rackDepth]} />
@@ -107,7 +114,7 @@ export function Row({
       </mesh>
       {/* Front lip – skip raycast so clicks reach bins in front */}
       <mesh
-        position={[0, -row.height / 2 + 0.06, -rackDepth / 2]}
+        position={[0, -row.height / 2 + 0.06, z - rackDepth / 2]}
         raycast={() => null}
       >
         <boxGeometry args={[rackWidth, 0.08, 0.06]} />
@@ -116,7 +123,7 @@ export function Row({
 
       {showBottomBorder && (
         <mesh
-          position={[0, -row.height / 2 - borderThickness / 2, 0]}
+          position={[0, -row.height / 2 - borderThickness / 2, z]}
           raycast={() => null}
         >
           <boxGeometry args={[rackWidth, borderThickness, rackDepth]} />
@@ -153,7 +160,7 @@ export function Row({
           <Bin
             key={bin.id}
             bin={bin}
-            position={[xOffset, binY, 0]}
+            position={[xOffset, binY, z]}
             binHeight={binHeightUse}
             binDepth={binDepth}
             binWidth={binWidth}

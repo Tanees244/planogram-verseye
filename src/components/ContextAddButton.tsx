@@ -46,7 +46,6 @@ export function ContextAddButton() {
     deleteBin,
     deleteProduct,
     addProduct,
-    addProductToServer,
   } = usePlanogramStore();
 
   const [showRackModal, setShowRackModal] = useState(false);
@@ -66,7 +65,9 @@ export function ContextAddButton() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationsError, setLocationsError] = useState<string | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState("");
+  const [selectedLocationId, setSelectedLocationId] = useState(
+    () => usePlanogramStore.getState().selectedStoreId ?? ""
+  );
   const [locationValidationError, setLocationValidationError] = useState<string | null>(null);
 
   // Fetch locations from SSR route when the Add Rack modal opens
@@ -155,7 +156,10 @@ export function ContextAddButton() {
   const { attachProductToBin } = usePlanogramStore();
   const handleAttachProductSuccess = async (product: any, quantity: number) => {
     if (!selectedId) return;
-    await attachProductToBin(selectedId, product, quantity);
+    const result = await attachProductToBin(selectedId, product, quantity);
+    if (!result.success && (result as { message?: string }).message) {
+      alert((result as { message?: string }).message);
+    }
   };
 
   if (!selectedId || !selectedType) return null;

@@ -1,65 +1,29 @@
-import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from '@/app/api/utils/getToken';
+import { proxyLayout, extractList } from '@/app/api/utils/layoutProxy';
 
-const API_BASE_URL = process.env.API_BASE_URL;
-
+// Stores are modelled as "branches" in the new catalog API. The branch id is the
+// storeId used when creating racks. We map them into the { locations: [...] }
+// shape the existing rack form expects ({ id, locationCode }).
 export async function GET(req: NextRequest) {
-    try {
-        const token = await getToken(req);
+  const { searchParams } = new URL(req.url);
+  const page = searchParams.get('page') ?? '1';
+  const pageSize = searchParams.get('pageSize') ?? '100';
+  const search = searchParams.get('search') ?? '';
+  const regionId = searchParams.get('regionId') ?? '';
 
-        if (!token) {
-            return NextResponse.json(
-                { isRequestSuccess: false, message: 'Unauthorized', statusCode: 401, data: null },
-                { status: 401 }
-            );
-        }
+  const qs = new URLSearchParams({ page, pageSize });
+  if (search) qs.set('search', search);
+  if (regionId) qs.set('regionId', regionId);
 
-        // console.log(`[ListLocations] Fetching with token starting with: ${token.substring(0, 10)}...`);
-
-        const response = await fetch(
-            `${API_BASE_URL}/ProductApi/ILocationFeature/ListLocations`,
-            {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                cache: 'no-store',
-            }
-        );
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[ListLocations] Backend error (${response.status}):`, errorText);
-            return NextResponse.json(
-                {
-                    isRequestSuccess: false,
-                    message: errorText || `Backend returned ${response.status}`,
-                    statusCode: response.status,
-                    data: null
-                },
-                { status: response.status }
-            );
-        }
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error('[ListLocations] Expected JSON but got:', text);
-            return NextResponse.json(
-                { isRequestSuccess: false, message: 'Invalid response format from backend', statusCode: 502, data: null },
-                { status: 502 }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
-    } catch (error) {
-        console.error('[ListLocations] SSR error:', error);
-        return NextResponse.json(
-            { isRequestSuccess: false, message: 'Internal Server Error', statusCode: 500, data: null },
-            { status: 500 }
-        );
-    }
+  return proxyLayout(req, `/api/v1/locations/branches?${qs.toString()}`, {
+    method: 'GET',
+    transform: (data) => ({
+      locations: extractList(data).map((b: any) => ({
+        id: b.id ?? b.branchId ?? b.storeId,
+        locationCode:
+          b.name ?? b.branchName ?? b.code ?? b.locationCode ?? b.storeName ?? b.id,
+        ...b,
+      })),
+    }),
+  });
 }

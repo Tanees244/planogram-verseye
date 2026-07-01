@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { resolveEntityId } from "@/utils/storeLayoutLoader";
 // import { parseJSONToPlanogram } from '@/utils/jsonParser' // Removed: Logic consolidated in store
 
 export interface Product {
@@ -10,6 +11,8 @@ export interface Product {
   depth: number;
   brandName?: string;
   categoryName?: string;
+  imageUrl?: string;
+  quantity?: number;
 }
 
 export interface Bin {
@@ -18,6 +21,7 @@ export interface Bin {
   depth: number;
   height: number;
   products: Product[];
+  binName?: string;
 }
 
 export type RowSided = "one" | "two";
@@ -53,6 +57,7 @@ export interface Rack {
   rotation?: RackRotation;
   sides: RackSide[];
   quadrant?: Quadrant;
+  isDoubleSided?: boolean;
 }
 
 export interface Area {
@@ -105,6 +110,9 @@ export interface PlanogramState {
   isAddingRack: boolean;
   editingRackId: string | null;
   moveRackError: string | null;
+  selectedStoreId: string | null;
+  selectedStoreName: string | null;
+  setSelectedStore: (id: string | null, name?: string | null) => void;
   setViewMode: (mode: ViewMode) => void;
   setAddRackError: (value: string | null) => void;
   setEditingRackId: (id: string | null) => void;
@@ -159,15 +167,13 @@ export interface PlanogramState {
     binId: string,
     product?: Partial<Product>,
   ) => { success: boolean; reason?: string };
-  addProductToServer: (
-    binId: string,
-    product: Partial<Product>,
-  ) => Promise<{ success: boolean; message: string }>;
   attachProductToBin: (
     binId: string,
     product: Partial<Product> & { id: string },
     quantity: number
-  ) => Promise<{ success: boolean }>;
+  ) => Promise<{ success: boolean; message?: string }>;
+  /** Re-fetch store layout from the API (preserves rack positions). */
+  reloadStoreLayout: () => Promise<{ success: boolean; message?: string }>;
   canProductFitInBin: (
     binId: string,
     product: { width: number; depth: number; height: number },
@@ -193,6 +199,56 @@ export interface PlanogramState {
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function extractBinList(payload: any): any[] {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  return payload.items ?? payload.results ?? payload.bins ?? payload.data ?? [];
+}
+
+/** After create-bin, resolve the real server binId from the row listing. */
+async function resolveBinIdFromRow(
+  rowId: string,
+  headers: Record<string, string>,
+  binName?: string,
+): Promise<string | undefined> {
+  try {
+    const res = await fetch(`/api/bins/by-row/${encodeURIComponent(rowId)}`, { headers });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.isRequestSuccess === false) return undefined;
+    const bins = extractBinList(json?.data ?? json);
+    if (!bins.length) return undefined;
+
+    if (binName) {
+      const byName = bins.find(
+        (b: any) => (b.binName ?? b.name ?? '').trim() === binName.trim(),
+      );
+      if (byName) return byName.binId ?? byName.id;
+    }
+
+    const sorted = [...bins].sort(
+      (a: any, b: any) => Number(b.sequenceNumber ?? 0) - Number(a.sequenceNumber ?? 0),
+    );
+    const latest = sorted[0];
+    return latest?.binId ?? latest?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractCreatedBinId(data: any): string | undefined {
+  if (!data) return undefined;
+  if (typeof data === 'string' && UUID_RE.test(data)) return data;
+  if (typeof data === 'object') {
+    const id = data.binId ?? data.id;
+    if (typeof id === 'string' && UUID_RE.test(id)) return id;
+    const nested = data.bin ?? data.data;
+    if (nested) return extractCreatedBinId(nested);
+  }
+  return undefined;
+}
 
 // Default product size (small enough to fit in default bin); in meters
 const createProduct = (overrides?: Partial<Product>): Product => ({
@@ -260,6 +316,7 @@ const createRack = (
     position: rackPosition,
     rotation: { x: 0, y: 0, z: 0 },
     sides,
+    isDoubleSided: sided === "two",
     quadrant: getQuadrantFromPosition(rackPosition.x, rackPosition.z),
   };
 };
@@ -284,6 +341,30 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   isAddingRack: false,
   editingRackId: null,
   moveRackError: null,
+  selectedStoreId: null,
+  selectedStoreName: null,
+  setSelectedStore: (id, name) => {
+    if (typeof window !== "undefined") {
+      try {
+        if (id) {
+          window.localStorage.setItem("planogram.selectedStoreId", id);
+          window.localStorage.setItem("planogram.selectedStoreName", name ?? "");
+        } else {
+          window.localStorage.removeItem("planogram.selectedStoreId");
+          window.localStorage.removeItem("planogram.selectedStoreName");
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    set((s) => ({
+      selectedStoreId: id,
+      selectedStoreName: name ?? null,
+      selectedId: null,
+      selectedType: null,
+      area: { ...s.area, racks: [] },
+    }));
+  },
   setViewMode: (mode) => set({ viewMode: mode }),
   setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
   setIsPlacingRack: (value) => set({ isPlacingRack: value }),
@@ -382,9 +463,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set({ isAddingRack: true, addRackError: null });
 
     try {
-      // Build payload matching backend expectations
+      // Build payload matching backend expectations (new layout API uses storeId)
       const payload = {
-        globalLocationId: globalLocationId || finalDims?.globalLocationId || state.selectedId,
+        storeId: globalLocationId || finalDims?.globalLocationId || state.selectedId,
         rackCode: finalDims?.rackCode || `RACK-${Date.now()}`,
         height: depth,
         width: width,
@@ -413,6 +494,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         // Success: also add to local state. Backend now returns canonical ids
         // (e.g. { rackId, sideIds: [...] }). Map those into our created rack.
         const rack = createRack(pos, finalDims ?? undefined);
+        rack.isDoubleSided = (finalDims?.sided || "one") === "two";
         try {
           const returned = data.data ?? {};
           if (returned.rackId) {
@@ -515,7 +597,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         });
         const data = await res.json();
         if (data?.isRequestSuccess) {
-          const returnedId = data.data;
+          const returnedId = resolveEntityId(data.data);
           sideResults.push({ success: true, message: data.message || 'OK', returnedId, sideIndex: i });
         } else {
           sideResults.push({ success: false, message: data?.message || 'Failed', sideIndex: i });
@@ -549,13 +631,18 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     return { success: true, message: `Added ${appliedCount} row(s)` };
   },
   addBinToServer: async (rowId: string, rowExtent1?: number, rowExtent2?: number, rowHeight?: number, binName?: string) => {
+    const rackRowId = resolveEntityId(rowId);
+    if (!rackRowId) {
+      return { success: false, message: 'Invalid row id' };
+    }
+
     const state = get();
     // find the row
     let found = false;
     for (const rack of state.area.racks) {
       for (const side of rack.sides) {
         for (const row of side.rows) {
-          if (row.id === rowId) {
+          if (resolveEntityId(row.id) === rackRowId) {
             found = true;
             break;
           }
@@ -576,7 +663,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const payload: Record<string, any> = { rackRowId: rowId };
+      const payload: Record<string, any> = { rackRowId };
       if (binName != null) payload.binName = binName;
 
       const res = await fetch('/api/bins/add-by-row', {
@@ -586,19 +673,20 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       });
       const data = await res.json();
 
-      // determine returned bin id (be flexible with shapes)
-      let returnedId: string | undefined;
-      if (data?.isRequestSuccess && data.data) {
-        if (typeof data.data === 'string') returnedId = data.data;
-        else if (data.data?.binId) returnedId = data.data.binId;
-        else if (data.data?.id) returnedId = data.data.id;
-        else if (typeof data.data === 'object' && data.data.rackRowId) {
-          // no bin id provided — leave undefined
-        }
-      } else if (data?.rackRowId) {
-        // backend returned object directly
-        if (data?.binId) returnedId = data.binId;
-        else if (data?.id) returnedId = data.id;
+      if (!data?.isRequestSuccess) {
+        return { success: false, message: data?.message || 'Failed to add bin' };
+      }
+
+      let returnedId = extractCreatedBinId(data?.data ?? data);
+      if (!returnedId) {
+        returnedId = await resolveBinIdFromRow(rackRowId, headers, binName);
+      }
+
+      if (!returnedId) {
+        return {
+          success: false,
+          message: 'Bin was created but no server id was returned — refresh the store layout and try again',
+        };
       }
 
       // Create and insert local bin
@@ -608,7 +696,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           sides: rack.sides.map((side) => ({
             ...side,
             rows: side.rows.map((row) => {
-              if (row.id !== rowId) return row;
+              if (resolveEntityId(row.id) !== rackRowId) return row;
               const useRowDimensions = rowExtent1 != null && rowExtent2 != null;
               const binHeightUse = rowHeight ?? DEFAULT_BIN_HEIGHT;
               const n = row.bins.length + 1;
@@ -634,7 +722,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                 binDepth = DEFAULT_BIN_DEPTH;
               }
               const newBin = createBin({ width: binWidth, depth: binDepth, height: binHeightUse });
-              if (returnedId) newBin.id = returnedId;
+              newBin.id = returnedId;
+              if (binName) newBin.binName = binName;
               const updatedBins = row.bins.map((b) => ({ ...b, width: binWidth, depth: binDepth, height: binHeightUse }));
               return { ...row, bins: [...updatedBins, newBin] };
             }),
@@ -787,174 +876,34 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }));
     return { success: true };
   },
-  attachProductToBin: async (binId, productData, quantity) => {
-    // This is a simplified implementation to update local state after attachment
-    // In a full implementation, we'd fetch the product details from the API
-    const state = get();
-
-    // For now, let's just use a placeholder product update logic 
-    // or we can rely on a full re-fetch of the planogram if available.
-    // Given the user wants it to "immediately appear", we'll add a placeholder local product.
-
-    const newProduct: Product = {
-      id: productData.id,
-      name: productData.name || "Attached Product",
-      color: productData.color || "#002952",
-      width: productData.width || 0.15,
-      height: productData.height || 0.08,
-      depth: productData.depth || 0.2,
-      brandName: productData.brandName,
-      categoryName: productData.categoryName,
-    };
-
-    set((s) => ({
-      area: {
-        ...s.area,
-        racks: s.area.racks.map((rack) => ({
-          ...rack,
-          sides: rack.sides.map((side) => ({
-            ...side,
-            rows: side.rows.map((row) => ({
-              ...row,
-              bins: row.bins.map((bin) =>
-                bin.id === binId
-                  ? {
-                    ...bin,
-                    products: [...bin.products, ...Array(quantity).fill(null).map((_, i) => ({
-                      ...newProduct,
-                      id: `${productData.id}-${Date.now()}-${i}`
-                    }))]
-                  }
-                  : bin,
-              ),
-            })),
-          })),
-        })),
-      },
-    }));
-
-    return { success: true };
+  attachProductToBin: async () => {
+    return get().reloadStoreLayout();
   },
-  addProductToServer: async (binId, productPartial) => {
-    const state = get();
-    // find bin
-    let targetBin: { rackId: string; sideId: string; rowId: string; bin?: Bin } | null = null;
-    for (const rack of state.area.racks) {
-      for (const side of rack.sides) {
-        for (const row of side.rows) {
-          const b = row.bins.find((x) => x.id === binId);
-          if (b) {
-            targetBin = { rackId: rack.id, sideId: side.id, rowId: row.id, bin: b };
-            break;
-          }
-        }
-        if (targetBin) break;
-      }
-      if (targetBin) break;
-    }
-    if (!targetBin || !targetBin.bin) {
-      set({ addProductError: 'Bin not found' });
-      return { success: false, message: 'Bin not found' };
-    }
-
-    // validate required fields
-    const name = (productPartial.name || '').toString().trim();
-    const width = Number(productPartial.width || 0);
-    const depth = Number(productPartial.depth || 0);
-    const height = Number(productPartial.height || 0);
-    const color = productPartial.color || '#ffffff';
-    if (!name) {
-      set({ addProductError: 'Product name is required' });
-      return { success: false, message: 'Product name is required' };
-    }
-    if (!(width > 0 && depth > 0 && height > 0)) {
-      set({ addProductError: 'Product dimensions must be positive numbers' });
-      return { success: false, message: 'Product dimensions must be positive numbers' };
-    }
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    try {
-      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
-      const t = getPlanogramTokenFromCookie();
-      if (t) headers['Authorization'] = `Bearer ${t}`;
-    } catch (e) {
-      // ignore
+  reloadStoreLayout: async () => {
+    const { selectedStoreId, area } = get();
+    if (!selectedStoreId) {
+      return { success: false, message: 'No store selected' };
     }
 
     try {
-      const payload = { binId, product: { name, width, depth, height, color } };
-      const res = await fetch('/api/products/add', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-
-      if (!data || !data.isRequestSuccess) {
-        const msg = data?.message || 'Failed to add product';
-        set({ addProductError: msg });
-        return { success: false, message: msg };
+      const { fetchStoreLayoutRacks, mergeRackPositions, gridPlaceRacks } = await import(
+        '@/utils/storeLayoutLoader'
+      );
+      const result = await fetchStoreLayoutRacks(selectedStoreId);
+      if (!result.success) {
+        return { success: false, message: result.message };
       }
 
-      // determine returned product id
-      let returnedId: string | undefined;
-      if (data.data) {
-        if (typeof data.data === 'string') returnedId = data.data;
-        else if (data.data.id) returnedId = data.data.id;
-        else if (data.data.productId) returnedId = data.data.productId;
-      }
+      const fresh = result.racks;
+      const placed =
+        area.racks.length > 0
+          ? mergeRackPositions(area.racks, fresh)
+          : gridPlaceRacks(fresh, area.width, area.depth);
 
-      // Now insert locally, resizing bin if needed so product fits
-      set((s) => {
-        const racks = s.area.racks.map((rack) => ({
-          ...rack,
-          sides: rack.sides.map((side) => ({
-            ...side,
-            rows: side.rows.map((row) => {
-              if (row.id !== targetBin!.rowId) return row;
-              return {
-                ...row,
-                bins: row.bins.map((bin) => {
-                  if (bin.id !== binId) return bin;
-
-                  // compute used width
-                  const usedWidth = bin.products.reduce((sum, p) => sum + p.width, 0);
-                  let newWidth = bin.width;
-                  if (width > newWidth) newWidth = width;
-                  if (usedWidth + width > newWidth) newWidth = usedWidth + width;
-                  const newDepth = Math.max(bin.depth, depth);
-                  const newHeight = Math.max(bin.height, height);
-
-                  const newProduct: Product = {
-                    id: returnedId ?? generateId(),
-                    name,
-                    color,
-                    width,
-                    height,
-                    depth,
-                  };
-
-                  return {
-                    ...bin,
-                    width: newWidth,
-                    depth: newDepth,
-                    height: newHeight,
-                    products: [...bin.products, newProduct],
-                  };
-                }),
-              };
-            }),
-          })),
-        }));
-        return { ...s, area: { ...s.area, racks } };
-      });
-
-      set({ addProductError: null });
-      return { success: true, message: data.message || 'Product added' };
-    } catch (err) {
-      const msg = 'Network or server error';
-      set({ addProductError: msg });
-      return { success: false, message: msg };
+      set({ area: { ...area, racks: placed } });
+      return { success: true };
+    } catch {
+      return { success: false, message: 'Failed to reload store layout' };
     }
   },
   // fetchAllRacksFromServer: async () => {

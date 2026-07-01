@@ -1,58 +1,59 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from '@/app/api/utils/getToken';
+import { proxyLayout } from '@/app/api/utils/layoutProxy';
 
-interface AttachProductRequest {
-    binId: string;
-    productId: string;
-    quantity: number;
+interface AttachRequest {
+  binId: string;
+  skuId: string;
+  quantity: number | string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(req: NextRequest) {
-    try {
-        const body: AttachProductRequest = await req.json();
-        const token = await getToken(req);
+  let body: AttachRequest;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { isRequestSuccess: false, message: 'Invalid JSON body', statusCode: 400 },
+      { status: 400 }
+    );
+  }
 
-        if (!token) {
-            return NextResponse.json(
-                { isRequestSuccess: false, message: 'Unauthorized', statusCode: 401 },
-                { status: 401 }
-            );
-        }
+  const binId = typeof body.binId === 'string' ? body.binId.trim() : '';
+  const skuId = typeof body.skuId === 'string' ? body.skuId.trim() : '';
+  const quantity = Number(body.quantity);
 
-        if (!body?.binId || !body?.productId) {
-            return NextResponse.json(
-                { isRequestSuccess: false, message: 'binId and productId are required', statusCode: 400 },
-                { status: 400 }
-            );
-        }
+  if (!binId || !skuId) {
+    return NextResponse.json(
+      { isRequestSuccess: false, message: 'binId and skuId are required', statusCode: 400 },
+      { status: 400 }
+    );
+  }
 
-        // Using the user-provided endpoint directly as requested
-        const response = await fetch(`${process.env.API_BASE_URL}/ProductApi/IBinProductFeature/AttachProductToBin`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(body),
-        });
+  // The backend expects real uuids for both ids. A non-uuid here (e.g. a
+  // locally-generated bin id) is the most common cause of the backend 500.
+  if (!UUID_RE.test(binId) || !UUID_RE.test(skuId)) {
+    console.error('[attach-product] non-uuid id rejected', { binId, skuId });
+    return NextResponse.json(
+      {
+        isRequestSuccess: false,
+        message: !UUID_RE.test(binId)
+          ? 'binId is not a valid server id — re-create or reselect the bin and try again'
+          : 'skuId is not a valid server id',
+        statusCode: 400,
+      },
+      { status: 400 }
+    );
+  }
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`[AttachProductToBin] Backend error (${response.status}):`, errorText);
-            return NextResponse.json(
-                { isRequestSuccess: false, message: errorText || `Backend returned ${response.status}`, statusCode: response.status },
-                { status: response.status }
-            );
-        }
-
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
-    } catch (error) {
-        console.error('AttachProductToBin SSR Error:', error);
-        return NextResponse.json(
-            { isRequestSuccess: false, message: 'Internal Server Error', statusCode: 500 },
-            { status: 500 }
-        );
-    }
+  return proxyLayout(req, '/api/v1/layout/bin-inventory/attach', {
+    method: 'POST',
+    body: {
+      binId,
+      skuId,
+      quantity: Number.isFinite(quantity) && quantity > 0 ? Math.trunc(quantity) : 1,
+    },
+  });
 }
