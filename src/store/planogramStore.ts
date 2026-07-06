@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import { resolveEntityId } from "@/utils/storeLayoutLoader";
+import type { FixtureType } from "@/components/fixtures/types";
+import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
+import type { SceneTheme } from "@/constants/sceneTheme";
+import {
+  DEFAULT_AREA_DEPTH,
+  DEFAULT_AREA_WIDTH,
+} from "@/constants/warehouse";
 // import { parseJSONToPlanogram } from '@/utils/jsonParser' // Removed: Logic consolidated in store
 
 export interface Product {
@@ -53,6 +60,7 @@ export interface Rack {
   width: number;
   depth: number;
   height?: string;
+  fixtureType?: FixtureType;
   position: { x: number; y: number; z: number };
   rotation?: RackRotation;
   sides: RackSide[];
@@ -76,6 +84,7 @@ export interface PendingRackParams {
   sided?: RackSided;
   rackCode?: string;
   globalLocationId?: string;
+  fixtureType?: FixtureType;
 }
 
 // Utility function to determine quadrant from position
@@ -91,10 +100,15 @@ export type ViewMode = "traditional" | "advanced";
 export interface PlanogramState {
   area: Area;
   viewMode: ViewMode;
+  sceneTheme: SceneTheme;
+  setSceneTheme: (theme: SceneTheme) => void;
+  roofVisible: boolean;
+  setRoofVisible: (visible: boolean) => void;
   selectedId: string | null;
   selectedType: "area" | "rack" | "row" | "bin" | "product" | null;
   isPlacingRack: boolean;
   pendingRackParams: PendingRackParams | null;
+  placingFixtureType: FixtureType | null;
   renderTime: number | null;
   importSummary: {
     totalRacks: number;
@@ -112,6 +126,8 @@ export interface PlanogramState {
   moveRackError: string | null;
   selectedStoreId: string | null;
   selectedStoreName: string | null;
+  isLoadingStoreLayout: boolean;
+  setIsLoadingStoreLayout: (value: boolean) => void;
   setSelectedStore: (id: string | null, name?: string | null) => void;
   setViewMode: (mode: ViewMode) => void;
   setAddRackError: (value: string | null) => void;
@@ -123,6 +139,8 @@ export interface PlanogramState {
   ) => void;
   setIsPlacingRack: (value: boolean) => void;
   setPendingRackParams: (params: PendingRackParams | null) => void;
+  startFixturePlacement: (fixtureType: FixtureType) => void;
+  cancelFixturePlacement: () => void;
   addRack: (
     position?: { x: number; y: number; z: number },
     dimensions?: {
@@ -130,6 +148,7 @@ export interface PlanogramState {
       depth: number;
       plankType: string;
       sided?: RackSided;
+      fixtureType?: FixtureType;
     },
   ) => void;
   addRackToServer: (
@@ -140,6 +159,7 @@ export interface PlanogramState {
       plankType: string;
       sided?: RackSided;
       rackCode?: string;
+      fixtureType?: FixtureType;
     },
     globalLocationId?: string,
   ) => Promise<{ success: boolean; message: string }>;
@@ -294,9 +314,13 @@ const createRack = (
     plankType: string;
     sided?: RackSided;
     rackCode?: string;
+    fixtureType?: FixtureType;
   },
 ): Rack => {
-  const sided = dimensions?.sided ?? "one";
+  const fixtureType = dimensions?.fixtureType ?? "GONDOLA";
+  const sided =
+    dimensions?.sided ??
+    (fixtureType === "GONDOLA" ? "two" : "one");
   const rackCode = dimensions?.rackCode ?? `RACK-${generateId().toUpperCase()}`;
   const sides: RackSide[] =
     sided === "two"
@@ -313,6 +337,7 @@ const createRack = (
     width: dimensions?.width ?? 2.5,
     depth: dimensions?.depth ?? 20,
     height: dimensions?.plankType ?? "standard",
+    fixtureType,
     position: rackPosition,
     rotation: { x: 0, y: 0, z: 0 },
     sides,
@@ -323,15 +348,20 @@ const createRack = (
 
 export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   area: {
-    width: 50,
-    depth: 50,
+    width: DEFAULT_AREA_WIDTH,
+    depth: DEFAULT_AREA_DEPTH,
     racks: [],
   },
   viewMode: "advanced",
+  sceneTheme: "day",
+  setSceneTheme: (theme) => set({ sceneTheme: theme }),
+  roofVisible: true,
+  setRoofVisible: (visible) => set({ roofVisible: visible }),
   selectedId: null,
   selectedType: null,
   isPlacingRack: false,
   pendingRackParams: null,
+  placingFixtureType: null,
   renderTime: null,
   importSummary: null,
   isImporting: false,
@@ -343,6 +373,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   moveRackError: null,
   selectedStoreId: null,
   selectedStoreName: null,
+  isLoadingStoreLayout: false,
+  setIsLoadingStoreLayout: (value) => set({ isLoadingStoreLayout: value }),
   setSelectedStore: (id, name) => {
     if (typeof window !== "undefined") {
       try {
@@ -360,6 +392,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set((s) => ({
       selectedStoreId: id,
       selectedStoreName: name ?? null,
+      isLoadingStoreLayout: Boolean(id),
       selectedId: null,
       selectedType: null,
       area: { ...s.area, racks: [] },
@@ -369,6 +402,28 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
   setIsPlacingRack: (value) => set({ isPlacingRack: value }),
   setPendingRackParams: (params) => set({ pendingRackParams: params }),
+  startFixturePlacement: (fixtureType) => {
+    const state = get();
+    if (!state.selectedStoreId) {
+      set({ addRackError: "Select a store before placing fixtures." });
+      return;
+    }
+    set({
+      pendingRackParams: buildPendingRackFromFixture(fixtureType, state),
+      isPlacingRack: true,
+      placingFixtureType: fixtureType,
+      selectedId: "area",
+      selectedType: "area",
+      addRackError: null,
+      editingRackId: null,
+    });
+  },
+  cancelFixturePlacement: () =>
+    set({
+      isPlacingRack: false,
+      pendingRackParams: null,
+      placingFixtureType: null,
+    }),
   setAddRackError: (value) => set({ addRackError: value }),
   setEditingRackId: (id) =>
     set({ editingRackId: id, ...(id ? { moveRackError: null } : {}) }),
@@ -495,6 +550,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         // (e.g. { rackId, sideIds: [...] }). Map those into our created rack.
         const rack = createRack(pos, finalDims ?? undefined);
         rack.isDoubleSided = (finalDims?.sided || "one") === "two";
+        if (finalDims?.fixtureType) rack.fixtureType = finalDims.fixtureType;
         try {
           const returned = data.data ?? {};
           if (returned.rackId) {
@@ -517,6 +573,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             racks: [...s.area.racks, rack],
           },
           pendingRackParams: null,
+          isPlacingRack: false,
+          placingFixtureType: null,
           isAddingRack: false,
           addRackError: null,
         }));
@@ -932,7 +990,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   //             products: (b.products || []).map((p: any) => ({
   //               id: p.id || p.productId || generateId(),
   //               name: p.name || p.label || 'Product',
-  //               color: p.color || '#3498db',
+  //               color: p.color || '#2C5282',
   //               width: Number(p.width) || 0.15,
   //               height: Number(p.height) || 0.08,
   //               depth: Number(p.depth) || 0.2,
@@ -1234,7 +1292,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set({
       isImporting: true,
       importProgress: 0,
-      area: { width: 50, depth: 50, racks: [] }, // Clear existing area
+      area: { width: DEFAULT_AREA_WIDTH, depth: DEFAULT_AREA_DEPTH, racks: [] }, // Clear existing area
     });
 
     const sleep = (ms: number) =>
@@ -1254,7 +1312,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         "#F8B739",
         "#52BE80",
         "#E74C3C",
-        "#3498DB",
+        "#2C5282",
         "#9B59B6",
         "#1ABC9C",
         "#F39C12",
@@ -1262,7 +1320,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         "#E67E22",
         "#C0392B",
         "#8E44AD",
-        "#2980B9",
+        "#1A365D",
       ];
       const hash = productId
         .split("")

@@ -74,7 +74,7 @@ export default function ImportPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-3 flex items-center gap-3">
-            <FiFileText className="text-blue-500" />
+            <FiFileText className="text-brand" />
             Import Planogram from JSON
           </h1>
           <p className="text-gray-600 text-lg">
@@ -85,7 +85,7 @@ export default function ImportPage() {
         {/* File Upload Section */}
         <div className="mb-6 bg-white rounded-2xl p-6 shadow-lg">
           <label className="block text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-            <FiUpload className="text-blue-500" />
+            <FiUpload className="text-brand" />
             Upload JSON File:
           </label>
           <div className="relative">
@@ -93,7 +93,7 @@ export default function ImportPage() {
               type="file"
               accept=".json"
               onChange={handleFileUpload}
-              className="w-full px-4 py-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-blue-400 transition-colors cursor-pointer text-base"
+              className="w-full px-4 py-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-brand transition-colors cursor-pointer text-base"
             />
           </div>
         </div>
@@ -108,24 +108,24 @@ export default function ImportPage() {
             onChange={(e) => setJsonInput(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="Paste your JSON planogram data here... (Press Ctrl+Enter to import)"
-            className="w-full min-h-[300px] max-h-[500px] p-4 font-mono text-sm border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+            className="w-full min-h-[300px] max-h-[500px] p-4 font-mono text-sm border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-brand focus:border-transparent resize-y"
           />
         </div>
 
         {/* Loading Progress */}
         {isLoading && (
-          <div className="mb-6 bg-blue-50 border-2 border-blue-200 rounded-2xl p-6 shadow-lg">
+          <div className="mb-6 bg-brand/10 border-2 border-brand/20 rounded-2xl p-6 shadow-lg">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="animate-spin text-2xl">⏳</div>
-                <div className="text-xl font-bold text-blue-700">
+                <div className="text-xl font-bold text-brand">
                   Building Warehouse Model...
                 </div>
               </div>
             </div>
-            <div className="w-full h-8 bg-blue-100 rounded-full overflow-hidden shadow-inner">
+            <div className="w-full h-8 bg-brand/15 rounded-full overflow-hidden shadow-inner">
               <div
-                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300 flex items-center justify-end pr-3"
+                className="h-full bg-gradient-to-r from-brand to-brand-dark transition-all duration-300 flex items-center justify-end pr-3"
                 style={{ width: `${progress}%` }}
               >
                 <span className="text-white font-bold text-sm">
@@ -165,7 +165,7 @@ export default function ImportPage() {
               className={`flex-1 px-8 py-4 rounded-xl text-lg font-semibold transition-all shadow-lg ${
                 !jsonInput.trim() || isLoading
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 hover:shadow-xl hover:scale-[1.02]"
+                  : "bg-gradient-to-r from-brand to-brand-dark text-white hover:from-brand-dark hover:to-[#152942] hover:shadow-xl hover:scale-[1.02]"
               }`}
             >
               {isLoading ? "Importing..." : "Import & Render"}

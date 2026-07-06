@@ -104,13 +104,13 @@ export function Bin({
           roughness={0.55}
           transparent
           opacity={isSelected ? 0.6 : 0.5}
-          emissive={hovered ? "#3498db" : "#000000"}
+          emissive={hovered ? "#2C5282" : "#000000"}
           emissiveIntensity={hovered ? 0.4 : 0}
         />
         <Edges
           scale={1}
           threshold={15}
-          color={isSelected ? "#2980b9" : hovered ? "#3498db" : "#2c3e50"}
+          color={isSelected ? "#2C5282" : hovered ? "#2C5282" : "#2c3e50"}
           lineWidth={isSelected ? 3 : 2}
         />
       </mesh>

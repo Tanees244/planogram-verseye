@@ -89,7 +89,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
           </Link>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 truncate">
-              <FiLayers className="text-[#002952] flex-shrink-0" />
+              <FiLayers className="text-[#2C5282] flex-shrink-0" />
               {detail?.name ?? 'Planogram'}
             </h1>
             {detail?.description && (
@@ -100,7 +100,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-            <div className="w-10 h-10 border-4 border-[#002952]/20 border-t-[#002952] rounded-full animate-spin mb-3" />
+            <div className="w-10 h-10 border-4 border-[#2C5282]/20 border-t-[#2C5282] rounded-full animate-spin mb-3" />
             <p className="font-medium">Loading planogram...</p>
           </div>
         ) : error ? (
@@ -108,7 +108,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
             <p className="font-medium">{error}</p>
             <button
               onClick={fetchDetail}
-              className="mt-3 px-4 py-2 bg-[#002952] text-white rounded-lg text-sm font-semibold hover:bg-[#001a33]"
+              className="mt-3 px-4 py-2 bg-[#2C5282] text-white rounded-lg text-sm font-semibold hover:bg-[#1A365D]"
             >
               Retry
             </button>
@@ -170,7 +170,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                     return (
                       <div key={row.id ?? idx} className="border border-gray-100 rounded-xl overflow-hidden">
                         <div className="bg-gray-50 px-4 py-3 flex items-center gap-2">
-                          <FiPackage className="text-[#002952]" />
+                          <FiPackage className="text-[#2C5282]" />
                           <span className="font-semibold text-gray-800 text-sm">
                             Row {row.rowNumber ?? idx + 1}
                             {row.rowLabel ? ` · ${row.rowLabel}` : ''}
@@ -234,7 +234,7 @@ function Meta({ label, value, highlight }: { label: string; value?: string; high
       <div className="text-xs text-gray-400 font-medium uppercase tracking-wide">{label}</div>
       <div
         className={`mt-1 font-semibold truncate ${
-          highlight ? 'text-[#002952] capitalize' : 'text-gray-800'
+          highlight ? 'text-[#2C5282] capitalize' : 'text-gray-800'
         }`}
       >
         {value || '—'}

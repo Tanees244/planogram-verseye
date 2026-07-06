@@ -11,6 +11,11 @@ module.exports = {
         poppins: ["var(--font-poppins)", "sans-serif"],
       },
       colors: {
+        brand: {
+          DEFAULT: '#2C5282',
+          dark: '#1A365D',
+          light: '#EBF4FF',
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

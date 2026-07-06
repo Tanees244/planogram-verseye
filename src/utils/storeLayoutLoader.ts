@@ -1,4 +1,5 @@
 import type { Rack } from '@/store/planogramStore'
+import type { FixtureType } from '@/components/fixtures/types'
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
@@ -145,6 +146,7 @@ export function normalizeRack(raw: any): Rack {
     width,
     depth,
     height: raw.height != null ? String(raw.height) : undefined,
+    fixtureType: (raw.fixtureType ?? raw.fixture_type ?? (isDoubleSided ? 'GONDOLA' : 'GONDOLA')) as FixtureType,
     position: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
     isDoubleSided,

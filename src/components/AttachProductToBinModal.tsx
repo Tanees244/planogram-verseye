@@ -1,168 +1,143 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { FiX, FiPlus, FiBox } from 'react-icons/fi'
+import { Modal } from '@/components/ui/Modal'
+import { Btn, FormField, Input, Select } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
 
 interface AttachProductToBinModalProps {
-    isOpen: boolean
-    onClose: () => void
-    binId: string
-    onSuccess: (product: Product, quantity: number) => void
-    logPayload?: boolean
+  isOpen: boolean
+  onClose: () => void
+  binId: string
+  onSuccess: (product: Product, quantity: number) => void
+  logPayload?: boolean
 }
 
-export default function AttachProductToBinModal({ isOpen, onClose, binId, onSuccess, logPayload }: AttachProductToBinModalProps) {
-    const [products, setProducts] = useState<Product[]>([])
-    const [loading, setLoading] = useState(false)
-    const [submitting, setSubmitting] = useState(false)
+export default function AttachProductToBinModal({
+  isOpen,
+  onClose,
+  binId,
+  onSuccess,
+  logPayload,
+}: AttachProductToBinModalProps) {
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [formData, setFormData] = useState({ productId: '', quantity: 1 })
 
-    const [formData, setFormData] = useState({
-        productId: '',
-        quantity: 1
-    })
-
-    useEffect(() => {
-        if (isOpen) {
-            fetchProducts()
+  useEffect(() => {
+    if (!isOpen) return
+    setLoading(true)
+    fetch('/api/products/list')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.isRequestSuccess) {
+          const list = data.data?.products ?? data.data ?? []
+          setProducts(Array.isArray(list) ? list : [])
         }
-    }, [isOpen])
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [isOpen])
 
-    const fetchProducts = async () => {
-        setLoading(true)
-        try {
-            const res = await fetch('/api/products/list')
-            const data = await res.json()
-            if (data.isRequestSuccess) {
-                const list = data.data?.products ?? data.data ?? []
-                setProducts(Array.isArray(list) ? list : [])
-            }
-        } catch (error) {
-            console.error('Error fetching products:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
+  const sel = products.find((p) => p.id === formData.productId) as Product & {
+    imageUrl?: string
+    skuCode?: string
+  }
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-        const selectedProduct = products.find(p => p.id === formData.productId)
-        if (!selectedProduct || formData.quantity < 1) return
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    const selectedProduct = products.find((p) => p.id === formData.productId)
+    if (!selectedProduct || formData.quantity < 1) return
 
-        setSubmitting(true)
-        try {
-            const payload = {
-                binId,
-                skuId: formData.productId,
-                quantity: Number(formData.quantity)
-            }
-            if (logPayload) console.log('[Traditional] AttachProduct payload ->', payload)
-            const res = await fetch('/api/bins/attach-product', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            const data = await res.json()
-            if (data.isRequestSuccess) {
-                onSuccess(selectedProduct, formData.quantity)
-                resetForm()
-                onClose()
-            } else {
-                alert(data.message || 'Failed to attach product')
-            }
-        } catch (error) {
-            alert('Error connecting to server')
-        } finally {
-            setSubmitting(false)
-        }
-    }
-
-    const resetForm = () => {
+    setSubmitting(true)
+    try {
+      const payload = { binId, skuId: formData.productId, quantity: Number(formData.quantity) }
+      if (logPayload) console.log('[Traditional] AttachProduct payload ->', payload)
+      const res = await fetch('/api/bins/attach-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (data.isRequestSuccess) {
+        onSuccess(selectedProduct, formData.quantity)
         setFormData({ productId: '', quantity: 1 })
+        onClose()
+      } else {
+        alert(data.message || 'Failed to attach product')
+      }
+    } catch {
+      alert('Error connecting to server')
+    } finally {
+      setSubmitting(false)
     }
+  }
 
-    if (!isOpen) return null
+  return (
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Attach Product"
+      subtitle="Select a catalog SKU and quantity to place in this bin."
+      maxWidth="md"
+      footer={
+        <>
+          <Btn variant="secondary" onClick={onClose}>
+            Cancel
+          </Btn>
+          <Btn variant="primary" disabled={submitting || !formData.productId} onClick={() => handleSubmit()}>
+            {submitting && <Spinner />}
+            {submitting ? 'Attaching…' : 'Attach Product'}
+          </Btn>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Product" required>
+          <Select
+            required
+            disabled={loading}
+            value={formData.productId}
+            onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
+          >
+            <option value="">{loading ? 'Loading products…' : 'Select a product'}</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
 
-    return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <FiBox className="text-[#002952]" />
-                        Attach Product to Bin
-                    </h3>
-                    <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
-                        <FiX size={20} className="text-gray-400" />
-                    </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Product</label>
-                        <select
-                            required
-                            disabled={loading}
-                            value={formData.productId}
-                            onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-                            className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002952]/20 focus:border-[#002952] transition-all"
-                        >
-                            <option value="">{loading ? 'Loading products...' : 'Select a product'}</option>
-                            {products.map((p) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                        {(() => {
-                            const sel = products.find(p => p.id === formData.productId) as any
-                            if (!sel?.imageUrl) return null
-                            return (
-                                <div className="mt-3 flex items-center gap-3 p-2 bg-gray-50 border border-gray-100 rounded-xl">
-                                    <img
-                                        src={sel.imageUrl}
-                                        alt={sel.name}
-                                        className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white"
-                                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                                    />
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-semibold text-gray-800 truncate">{sel.name}</div>
-                                        {sel.skuCode && <div className="text-xs text-gray-500 truncate">{sel.skuCode}</div>}
-                                    </div>
-                                </div>
-                            )
-                        })()}
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Quantity</label>
-                        <input
-                            type="number"
-                            min="1"
-                            required
-                            value={formData.quantity}
-                            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                            className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002952]/20 focus:border-[#002952]"
-                        />
-                    </div>
-
-                    <div className="pt-4 flex gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 py-2 font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition-all"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={submitting || !formData.productId}
-                            className="flex-1 py-2 font-semibold bg-[#002952] text-white rounded-xl hover:bg-[#001a33] shadow-lg shadow-[#002952]/20 transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
-                        >
-                            {submitting && <Spinner />}
-                            {submitting ? 'Attaching...' : 'Attach Product'}
-                        </button>
-                    </div>
-                </form>
+        {sel?.imageUrl && (
+          <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-lg">
+            <img
+              src={sel.imageUrl}
+              alt={sel.name}
+              className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white"
+              onError={(e) => {
+                ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+              }}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-900 truncate">{sel.name}</div>
+              {sel.skuCode && <div className="text-xs text-gray-500 truncate">{sel.skuCode}</div>}
             </div>
-        </div>
-    )
+          </div>
+        )}
+
+        <FormField label="Quantity (facings)" required>
+          <Input
+            type="number"
+            min={1}
+            required
+            value={formData.quantity}
+            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value, 10) || 1 })}
+          />
+        </FormField>
+      </form>
+    </Modal>
+  )
 }

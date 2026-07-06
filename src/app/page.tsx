@@ -3,6 +3,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { ViewModeToggle } from '@/components/ui/ViewModeToggle'
+import { FixturePalette } from '@/components/FixturePalette'
+import { DayNightToggle } from '@/components/ui/DayNightToggle'
+import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
 import Link from 'next/link'
@@ -79,7 +83,7 @@ function ControlsTooltip() {
   }, [open])
 
   return (
-    <div className="absolute top-4 right-4 z-[100]" ref={ref}>
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -89,7 +93,7 @@ function ControlsTooltip() {
         Controls
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-2 px-4 py-3 min-w-[320px] bg-black/85 backdrop-blur-sm text-gray-200 rounded-xl text-sm border border-white/20 shadow-xl">
+        <div className="absolute top-full right-0 mt-2 px-4 py-3 min-w-[320px] bg-black/85 backdrop-blur-sm text-gray-200 rounded-xl text-sm border border-white/20 shadow-xl z-10">
           {MOVE_HINT}
         </div>
       )}
@@ -97,26 +101,41 @@ function ControlsTooltip() {
   )
 }
 
-function StoreBadge({ dark = false }: { dark?: boolean }) {
+function StoreBadge({ dark = false, align = 'center' }: { dark?: boolean; align?: 'center' | 'right' }) {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
+  const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
   if (!selectedStoreId) return null
-  return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[100]">
-      <div
-        className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-lg text-sm ${dark ? 'bg-black/70 backdrop-blur-sm text-gray-100' : 'bg-white/95 backdrop-blur-sm text-gray-800'
-          }`}
-      >
-        <span className="font-semibold truncate max-w-[240px]">{selectedStoreName || 'Selected store'}</span>
+
+  const badge = (
+    <div
+      className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-md text-sm ${dark ? 'bg-black/70 backdrop-blur-sm text-gray-100' : 'bg-white border border-gray-200 text-gray-800'
+        }`}
+    >
+      {isLoadingStoreLayout && (
+        <span className="w-4 h-4 border-2 border-brand/20 border-t-brand rounded-full animate-spin shrink-0" />
+      )}
+      <span className="font-semibold truncate max-w-[280px]">
+        {isLoadingStoreLayout ? 'Loading layout…' : (selectedStoreName || 'Selected store')}
+      </span>
+      {!isLoadingStoreLayout && (
         <button
           onClick={() => setSelectedStore(null)}
-          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${dark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-[#002952]/10 hover:bg-[#002952]/20 text-[#002952]'
+          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${dark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-brand/10 hover:bg-brand/20 text-brand'
             }`}
         >
           Change
         </button>
-      </div>
+      )}
+    </div>
+  )
+
+  if (align === 'right') return badge
+
+  return (
+    <div className="absolute top-[4.75rem] left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+      <div className="pointer-events-auto">{badge}</div>
     </div>
   )
 }
@@ -152,7 +171,7 @@ export default function Home() {
   const [showAddProductModal, setShowAddProductModal] = useState(false)
   const [productForm, setProductForm] = useState({
     name: '',
-    color: '#3498db',
+    color: '#2C5282',
     width: '0.15',
     depth: '0.2',
     height: '0.08',
@@ -213,19 +232,8 @@ export default function Home() {
     return (
       <div className="w-screen h-screen relative">
         {/* View Mode Toggle */}
-        <div className="absolute top-4 left-4 z-[100] flex gap-2 bg-white/95 backdrop-blur-sm px-2 py-2 rounded-xl shadow-lg">
-          <button
-            onClick={() => setViewMode('traditional')}
-            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-[#002952] text-white shadow-md"
-          >
-            Traditional
-          </button>
-          <button
-            onClick={() => setViewMode('advanced')}
-            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all text-[#000] hover:bg-gray-200"
-          >
-            Advanced
-          </button>
+        <div className="absolute top-4 left-4 z-[100]">
+          <ViewModeToggle mode="traditional" onChange={setViewMode} />
         </div>
         {/* Store selector + full layout loader (racks → sides → rows → bins → products) */}
         <StoreLayout />
@@ -238,32 +246,29 @@ export default function Home() {
   // Render Advanced View (3D)
   return (
     <div className="w-screen h-screen relative">
-      {/* View Mode Toggle */}
-      <div className="absolute top-4 left-4 z-[100] flex gap-2 bg-black/70 backdrop-blur-sm px-2 py-2 rounded-xl shadow-lg">
-        <button
-          onClick={() => setViewMode('traditional')}
-          className="px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-transparent text-gray-200 border border-white/30 hover:bg-white/10"
-        >
-          Traditional
-        </button>
-        <button
-          onClick={() => setViewMode('advanced')}
-          className="px-4 py-2 rounded-lg text-sm font-semibold transition-all bg-[#002952] text-white"
-        >
-          Advanced
-        </button>
+      {/* View mode + fixture library (left) */}
+      <div className="absolute top-4 left-4 z-[100] flex flex-col gap-2 items-start">
+        <ViewModeToggle mode="advanced" onChange={setViewMode} dark />
+        <FixturePalette />
       </div>
       <Scene3D />
       <StoreLayout />
-      <StoreBadge dark />
+
+      {/* Top-right: day/night, roof, controls, store name */}
+      <div className="absolute top-4 right-4 z-[100] flex flex-col items-end gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <DayNightToggle dark />
+          <RoofToggle dark />
+          <ControlsTooltip />
+        </div>
+        <RoofHint />
+        <StoreBadge dark align="right" />
+      </div>
 
       {/* Bottom bar: context action (Add Rack / Row / Bin / Product) */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-3 z-[100]">
         <ContextAddButton />
       </div>
-
-      {/* Top-right: controls tooltip – click to show move hints */}
-      <ControlsTooltip />
     </div>
   )
 }

@@ -84,7 +84,7 @@ export default function PlanogramsPage() {
             </Link>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <FiLayers className="text-[#002952]" />
+                <FiLayers className="text-[#2C5282]" />
                 Planograms
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">Browse all planograms and open one to view its structure.</p>
@@ -100,14 +100,14 @@ export default function PlanogramsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search planograms..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002952]/20 focus:border-[#002952] transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2C5282]/20 focus:border-[#2C5282] transition-all"
           />
         </div>
 
         {/* Content */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-400">
-            <div className="w-10 h-10 border-4 border-[#002952]/20 border-t-[#002952] rounded-full animate-spin mb-3" />
+            <div className="w-10 h-10 border-4 border-[#2C5282]/20 border-t-[#2C5282] rounded-full animate-spin mb-3" />
             <p className="font-medium">Loading planograms...</p>
           </div>
         ) : error ? (
@@ -115,7 +115,7 @@ export default function PlanogramsPage() {
             <p className="font-medium">{error}</p>
             <button
               onClick={fetchPlanograms}
-              className="mt-3 px-4 py-2 bg-[#002952] text-white rounded-lg text-sm font-semibold hover:bg-[#001a33] inline-flex items-center gap-2"
+              className="mt-3 px-4 py-2 bg-[#2C5282] text-white rounded-lg text-sm font-semibold hover:bg-[#1A365D] inline-flex items-center gap-2"
             >
               Retry
             </button>
@@ -131,7 +131,7 @@ export default function PlanogramsPage() {
               <Link
                 key={p.id}
                 href={`/planograms/${p.id}`}
-                className="group bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-[#002952]/30 transition-all"
+                className="group bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-[#2C5282]/30 transition-all"
               >
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">
@@ -141,11 +141,11 @@ export default function PlanogramsPage() {
                       {p.categoryName ? ` · ${p.categoryName}` : ''}
                     </p>
                   </div>
-                  <FiChevronRight className="text-gray-300 group-hover:text-[#002952] transition-colors flex-shrink-0" />
+                  <FiChevronRight className="text-gray-300 group-hover:text-[#2C5282] transition-colors flex-shrink-0" />
                 </div>
                 <div className="flex items-center gap-2 mt-4 flex-wrap">
                   {p.status && (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#002952]/10 text-[#002952] capitalize">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#2C5282]/10 text-[#2C5282] capitalize">
                       {p.status}
                     </span>
                   )}

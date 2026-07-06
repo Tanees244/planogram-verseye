@@ -102,7 +102,7 @@ export function SelectionPopup() {
           borderBottom: '1px solid rgba(255,255,255,0.2)',
           paddingBottom: '5px',
           marginBottom: '5px',
-          color: data.color ?? '#3498db'
+          color: data.color ?? '#2C5282'
         }}>
           PRODUCT: {data.name || data.id?.substring(0, 8)}
         </div>

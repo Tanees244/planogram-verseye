@@ -12,8 +12,8 @@ const Scene3DCanvas = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-[#1e1e1e]">
-        <div className="text-center text-white/80">Loading 3D view…</div>
+      <div className="flex h-full w-full items-center justify-center bg-[#87CEEB]">
+        <div className="text-center text-gray-800/80">Loading 3D view…</div>
       </div>
     ),
   }

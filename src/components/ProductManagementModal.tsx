@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { Modal } from '@/components/ui/Modal'
 import {
-    FiX,
     FiSearch,
     FiChevronLeft,
     FiChevronRight
@@ -91,29 +91,20 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
 
     const renderSortIcon = (key: string) => {
         if (!sortConfig || sortConfig.key !== key) return <span className="ml-1 opacity-20">⇅</span>
-        return <span className="ml-1 text-[#002952] font-bold">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+        return <span className="ml-1 text-[#2C5282] font-bold">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
     }
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
-
-                {/* Header */}
-                <div className="px-8 py-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-900">Product Catalog</h2>
-                        <p className="text-sm text-gray-500 mt-1">Browse categories and products from the catalog.</p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                        <FiX size={24} className="text-gray-400" />
-                    </button>
-                </div>
-
+        <Modal
+            open={isOpen}
+            onClose={onClose}
+            title="Product Catalog"
+            subtitle="Browse categories and products from the catalog."
+            maxWidth="6xl"
+            className="h-[90vh]"
+        >
                 {/* Tabs & Search */}
-                <div className="px-8 py-4 bg-gray-50/50 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-100">
                     <div className="flex bg-gray-100 p-1 rounded-xl">
                         {(['categories', 'products'] as const).map((tab) => (
                             <button
@@ -124,7 +115,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                     setSortConfig(null)
                                 }}
                                 className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab
-                                    ? 'bg-white text-[#002952] shadow-sm'
+                                    ? 'bg-white text-[#2C5282] shadow-sm'
                                     : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
@@ -141,7 +132,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                 placeholder={`Search ${activeTab}...`}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#002952]/20 focus:border-[#002952] transition-all"
+                                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2C5282]/20 focus:border-[#2C5282] transition-all"
                             />
                         </div>
                     </div>
@@ -151,7 +142,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                 <div className="flex-1 overflow-auto px-8 py-6">
                     {loading ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                            <div className="w-12 h-12 border-4 border-[#002952]/20 border-t-[#002952] rounded-full animate-spin mb-4" />
+                            <div className="w-12 h-12 border-4 border-[#2C5282]/20 border-t-[#2C5282] rounded-full animate-spin mb-4" />
                             <p className="font-medium animate-pulse">Loading data...</p>
                         </div>
                     ) : (
@@ -219,7 +210,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-xs font-bold text-[#002952]">Cat: {product.categoryName || getCategoryName(product.categoryId)}</span>
+                                                    <span className="text-xs font-bold text-[#2C5282]">Cat: {product.categoryName || getCategoryName(product.categoryId)}</span>
                                                     <span className="text-xs font-bold text-purple-600">Brand: {product.brandName || '—'}</span>
                                                 </div>
                                             </td>
@@ -248,16 +239,14 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                     )}
                 </div>
 
-                {/* Footer info */}
-                <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                <div className="py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400 mt-4">
                     <div>Showing {(activeTab === 'categories' ? categories : products).length} entries</div>
                     <div className="flex items-center gap-1">
-                        <button className="p-1 hover:text-gray-600 disabled:opacity-30" disabled><FiChevronLeft /></button>
+                        <button type="button" className="p-1 hover:text-gray-600 disabled:opacity-30" disabled><FiChevronLeft /></button>
                         <span className="px-2 font-bold text-gray-900">1</span>
-                        <button className="p-1 hover:text-gray-600 disabled:opacity-30" disabled><FiChevronRight /></button>
+                        <button type="button" className="p-1 hover:text-gray-600 disabled:opacity-30" disabled><FiChevronRight /></button>
                     </div>
                 </div>
-            </div>
-        </div>
+        </Modal>
     )
 }

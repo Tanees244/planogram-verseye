@@ -16,11 +16,15 @@ import {
   FiUpload,
   FiTrash2
 } from 'react-icons/fi'
-import RackListSidebar from './RackListSidebar'
 import ProductManagementModal from './ProductManagementModal'
 import AttachProductToBinModal from './AttachProductToBinModal'
 import { Spinner } from './Spinner'
 import { resolveEntityId, totalProductFacings } from '@/utils/storeLayoutLoader'
+import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
+import { AddRowModal } from '@/components/forms/AddRowModal'
+import { AddBinModal } from '@/components/forms/AddBinModal'
+import { Btn } from '@/components/ui/form'
+import { validateRackForm } from '@/utils/rackFormUtils'
 
 export function TraditionalView() {
   const {
@@ -62,7 +66,15 @@ export function TraditionalView() {
   const [addingRow, setAddingRow] = useState(false)
   const [addingBin, setAddingBin] = useState(false)
 
-  const [rackForm, setRackForm] = useState({ width: '2.5', length: '2', rackCode: '', plankType: 'standard', sided: 'one' as 'one' | 'two' })
+  const [rackForm, setRackForm] = useState<RackFormState>({
+    width: '2.5',
+    depth: '1.2',
+    rackCode: '',
+    plankType: 'standard',
+    sided: 'one',
+    fixtureType: 'GONDOLA',
+  })
+  const [rackFormErrors, setRackFormErrors] = useState<Record<string, string | null>>({})
   // Locations for Add Rack (mirror Advanced behaviour)
   const [locations, setLocations] = useState<{ id: string; locationCode: string }[]>([])
   const [locationsLoading, setLocationsLoading] = useState(false)
@@ -74,7 +86,7 @@ export function TraditionalView() {
   const [rowForm, setRowForm] = useState({ height: '1.5' })
   const [productForm, setProductForm] = useState({
     name: '',
-    color: '#3498db',
+    color: '#2C5282',
     width: '0.15',
     depth: '0.2',
     height: '0.08',
@@ -156,46 +168,27 @@ export function TraditionalView() {
   }
 
   return (
-    <div className="w-screen h-screen relative overflow-y-scroll">
-      <div className="w-72 p-5 bg-white border-gray-200">
-        <RackListSidebar />
+    <div className="w-screen min-h-screen bg-gray-50/80">
+      {/* Top toolbar */}
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-6 py-4 flex flex-wrap items-center justify-end gap-3 shadow-sm">
+        <Link href="/planograms" className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-brand border border-brand/20 rounded-lg hover:bg-brand/5 transition-colors">
+          <FiLayers /> Planograms
+        </Link>
+        <Btn variant="secondary" onClick={() => setShowProductMgmtModal(true)}>
+          <FiShoppingCart className="inline mr-1" /> Product Catalog
+        </Btn>
+        <Link href="/import" className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand text-white rounded-lg hover:bg-brand-dark shadow-sm transition-colors">
+          <FiUpload /> Import JSON
+        </Link>
       </div>
-      <Link
-        href="/import"
-        className="absolute top-6 right-6 px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 z-50 flex items-center gap-2"
-      >
-        <FiUpload className="text-lg" />
-        Import JSON
-      </Link>
-      <button
-        onClick={() => setShowProductMgmtModal(true)}
-        className="absolute top-6 right-[215px] px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 z-50 flex items-center gap-2"
-      >
-        Add Products
-      </button>
-      <Link
-        href="/planograms"
-        className="absolute top-6 right-[395px] px-6 py-3 bg-white text-[#002952] border border-[#002952]/20 rounded-xl text-base font-semibold shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 z-50 flex items-center gap-2"
-      >
-        <FiLayers className="text-lg" />
-        Planograms
-      </Link>
 
-      {/* Product Management Modal */}
-      <ProductManagementModal
-        isOpen={showProductMgmtModal}
-        onClose={() => setShowProductMgmtModal(false)}
-      />
-
-
-      {/* Main Content */}
-      <div className="flex-1 bg-white overflow-y-auto p-8">
+      <div className="max-w-5xl mx-auto p-6 md:p-8">
         {/* Header */}
         {/* <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-800 mb-2 mt-16">Planogram Hierarchy</h1>
           <div className="flex items-center gap-4 text-sm text-gray-600">
             <div className="flex items-center gap-2">
-              <FiMapPin className="text-[#002952]" />
+              <FiMapPin className="text-[#2C5282]" />
               <span><strong>Area:</strong> {area.width}m × {area.depth}m</span>
             </div>
             <div className="flex items-center gap-2">
@@ -208,28 +201,28 @@ export function TraditionalView() {
         {/* Area Section */}
         <div
           onClick={() => setSelectedArea(!selectedArea)}
-          className={`mb-6 p-5 rounded-xl cursor-pointer transition-all duration-200 ${selectedArea
-            ? 'bg-blue-50 border-2 border-[#002952] shadow-md'
-            : 'bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm'
+          className={`mb-6 p-5 rounded-xl cursor-pointer transition-all duration-200 border ${selectedArea
+            ? 'bg-brand/5 border-brand shadow-sm'
+            : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
             }`}
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-3">
-              <FiMapPin className={`text-2xl ${selectedArea ? 'text-[#002952]' : 'text-gray-400'}`} />
-              <span className="text-lg font-semibold text-[#002952]">Area</span>
+              <FiMapPin className={`text-xl ${selectedArea ? 'text-brand' : 'text-gray-400'}`} />
+              <span className="text-base font-semibold text-gray-900">Store Area</span>
             </div>
             {selectedArea && (
               <button
-                onClick={() => setShowAddRackModal(true)}
-                className="px-4 py-2 bg-[#002952] text-white rounded-lg text-sm font-medium hover:bg-[#002952] transition-colors flex items-center gap-2 shadow-md hover:shadow-lg"
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowAddRackModal(true) }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-brand text-white rounded-lg hover:bg-brand-dark transition-colors"
               >
-                <FiPlus className="text-base" />
-                Add Rack
+                <FiPlus /> Add Rack
               </button>
             )}
           </div>
-          <div className="text-sm text-gray-600 ml-11">
-            Width: {area.width}m | Depth: {area.depth}m
+          <div className="text-sm text-gray-500 ml-9">
+            {area.width} m × {area.depth} m · {area.racks.length} rack{area.racks.length === 1 ? '' : 's'}
           </div>
         </div>
 
@@ -244,11 +237,11 @@ export function TraditionalView() {
               >
                 <div className="flex items-center gap-3">
                   {expandedRacks.has(rack.id) ? (
-                    <FiChevronDown className="text-xl text-[#002952]" />
+                    <FiChevronDown className="text-xl text-[#2C5282]" />
                   ) : (
                     <FiChevronRight className="text-xl text-gray-400" />
                   )}
-                  <FiLayers className="text-xl text-[#002952]" />
+                  <FiLayers className="text-xl text-[#2C5282]" />
                   <span className="text-base font-semibold text-gray-800">Rack {rack.rackCode}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -258,7 +251,7 @@ export function TraditionalView() {
                       setSelectedRackId(rack.id)
                       setShowAddRowModal(true)
                     }}
-                    className="px-4 py-2 bg-[#002952] text-white rounded-lg text-sm font-medium hover:bg-[#001a33] transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
+                    className="px-4 py-2 bg-[#2C5282] text-white rounded-lg text-sm font-medium hover:bg-[#1A365D] transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
                   >
                     <FiPlus className="text-sm" />
                     Row
@@ -286,23 +279,23 @@ export function TraditionalView() {
                   {rack.sides.map((side) => (
                     <div key={side.sideCode} className="mb-4 pl-6">
                       <div className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                        <FiBox className="text-[#002952]" />
+                        <FiBox className="text-[#2C5282]" />
                         Side {side.sideCode}
                       </div>
                       {side.rows.map((row) => (
                         <div key={row.id} className="mb-3 pl-4">
                           <div
-                            className={`p-4 bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center justify-between transition-all hover:shadow-sm ${expandedRows.has(row.id) ? 'border-blue-300 bg-blue-50' : ''
+                            className={`p-4 bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center justify-between transition-all hover:shadow-sm ${expandedRows.has(row.id) ? 'border-brand/30 bg-brand/10' : ''
                               }`}
                             onClick={() => toggleRow(row.id)}
                           >
                             <div className="flex items-center gap-3">
                               {expandedRows.has(row.id) ? (
-                                <FiChevronDown className="text-lg text-[#002952]" />
+                                <FiChevronDown className="text-lg text-[#2C5282]" />
                               ) : (
                                 <FiChevronRight className="text-lg text-gray-400" />
                               )}
-                              <FiPackage className="text-lg text-[#002952]" />
+                              <FiPackage className="text-lg text-[#2C5282]" />
                               <span className="text-sm font-medium text-gray-800">Row {String(row.id).slice(0, 6)}</span>
                             </div>
                             <div className="flex items-center gap-2">
@@ -312,7 +305,7 @@ export function TraditionalView() {
                                   setSelectedRowId(resolveEntityId(row.id) ?? String(row.id))
                                   setShowAddBinModal(true)
                                 }}
-                                className="px-3 py-1.5 bg-[#002952] text-white rounded-lg text-xs font-medium hover:bg-[#001a33] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                                className="px-3 py-1.5 bg-[#2C5282] text-white rounded-lg text-xs font-medium hover:bg-[#1A365D] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
                               >
                                 <FiPlus className="text-xs" />
                                 Bin
@@ -337,17 +330,17 @@ export function TraditionalView() {
                               {row.bins.map((bin) => (
                                 <div key={bin.id} className="mb-2 pl-2">
                                   <div
-                                    className={`p-3 bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center justify-between transition-all hover:shadow-sm ${expandedBins.has(bin.id) ? 'border-[#002952] bg-[#002952]' : ''
+                                    className={`p-3 bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center justify-between transition-all hover:shadow-sm ${expandedBins.has(bin.id) ? 'border-brand/30 bg-brand/10' : ''
                                       }`}
                                     onClick={() => toggleBin(bin.id)}
                                   >
                                     <div className="flex items-center gap-2">
                                       {expandedBins.has(bin.id) ? (
-                                        <FiChevronDown className="text-sm text-[#002952]" />
+                                        <FiChevronDown className="text-sm text-[#2C5282]" />
                                       ) : (
                                         <FiChevronRight className="text-sm text-gray-400" />
                                       )}
-                                      <FiBox className="text-sm text-[#002952]" />
+                                      <FiBox className="text-sm text-[#2C5282]" />
                                       <span className="text-xs font-medium text-gray-800">
                                         {bin.binName || `Bin ${String(bin.id).slice(0, 8)}`}
                                       </span>
@@ -363,7 +356,7 @@ export function TraditionalView() {
                                           setSelectedBinId(bin.id)
                                           setShowAttachProductModal(true)
                                         }}
-                                        className="px-3 py-1.5 bg-[#002952] text-white rounded-lg text-xs font-medium hover:bg-[#001a33] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
+                                        className="px-3 py-1.5 bg-[#2C5282] text-white rounded-lg text-xs font-medium hover:bg-[#1A365D] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
                                       >
                                         <FiPlus className="text-xs" />
                                         Product
@@ -458,265 +451,99 @@ export function TraditionalView() {
         </div>
       </div>
 
-      {/* Modals */}
-      {/* Add Rack Modal */}
-      {
-        showAddRackModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddRackModal(false)}>
-            <div className="bg-white rounded-2xl p-6 min-w-[500px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-2xl font-bold text-gray-800 mb-6">Add Rack</h3>
-              <p className="text-sm text-gray-600 mb-4">Warehouse floor: {area.width} m × {area.depth} m</p>
-              {addRackError && (
-                <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-                  {addRackError}
-                </div>
-              )}
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Location</label>
-                  <select
-                    value={selectedLocationId}
-                    onChange={(e) => {
-                      setSelectedLocationId(e.target.value)
-                      setLocationValidationError(null)
-                    }}
-                    disabled={locationsLoading}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white"
-                  >
-                    <option value="">{locationsLoading ? 'Loading locations…' : 'Select a location'}</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>{loc.locationCode}</option>
-                    ))}
-                  </select>
-                  {locationValidationError && (
-                    <div className="text-sm text-red-600 mt-2">{locationValidationError}</div>
-                  )}
-                  {locationsError && (
-                    <div className="text-sm text-amber-600 mt-2">{locationsError}</div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Rack Code (Required)</label>
-                  <input
-                    type="text"
-                    value={rackForm.rackCode}
-                    onChange={(e) => setRackForm({ ...rackForm, rackCode: e.target.value })}
-                    placeholder="Enter business code (e.g. RACK-01)"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Width (m)</label>
-                  <input
-                    type="text"
-                    value={rackForm.width}
-                    onChange={(e) => setRackForm({ ...rackForm, width: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Length (m)</label>
-                  <input
-                    type="text"
-                    value={rackForm.length}
-                    onChange={(e) => setRackForm({ ...rackForm, length: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base"
-                  />
-                </div>
-                {/* <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Plank Type</label>
-                  <select
-                    value={rackForm.plankType}
-                    onChange={(e) => setRackForm({ ...rackForm, plankType: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white"
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="heavy">Heavy duty</option>
-                    <option value="light">Light</option>
-                  </select>
-                </div> */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Sides</label>
-                  <select
-                    value={rackForm.sided}
-                    onChange={(e) => setRackForm({ ...rackForm, sided: e.target.value as 'one' | 'two' })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base bg-white"
-                  >
-                    <option value="one">One sided</option>
-                    <option value="two">Two sided</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-3 mt-8 justify-end">
-                <button
-                  onClick={() => setShowAddRackModal(false)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    // validate location selection
-                    if (!selectedLocationId || !selectedLocationId.trim()) {
-                      setLocationValidationError('Location is required')
-                      return
-                    }
-                    if (!rackForm.rackCode.trim()) {
-                      setAddRackError('Rack code is required')
-                      return
-                    }
-                    const w = parseFloat(rackForm.width) || 2.5
-                    const d = parseFloat(rackForm.length) || 2
-                    const res = await addRackToServer(undefined, {
-                      width: w,
-                      depth: d,
-                      rackCode: rackForm.rackCode,
-                      plankType: rackForm.plankType,
-                      sided: rackForm.sided,
-                    }, selectedLocationId)
-                    if (res.success) {
-                      setShowAddRackModal(false)
-                    }
-                  }}
-                  disabled={isAddingRack}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isAddingRack && <Spinner />}
-                  {isAddingRack ? 'Adding...' : 'Add Rack'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
+      <ProductManagementModal isOpen={showProductMgmtModal} onClose={() => setShowProductMgmtModal(false)} />
 
-      {/* Add Row Modal */}
-      {
-        showAddRowModal && selectedRackId && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddRowModal(false)}>
-            <div className="bg-white rounded-2xl p-8 min-w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">Add Row</h3>
-              <p className="text-sm text-gray-600 mb-4">Row will match the rack: one-sided rack → one-sided row; two-sided rack → row added on both sides.</p>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Height (m)</label>
-                <input
-                  type="text"
-                  value={rowForm.height}
-                  onChange={(e) => setRowForm({ ...rowForm, height: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
-                />
-              </div>
-              <div className="flex gap-3 mt-8 justify-end">
-                <button
-                  onClick={() => setShowAddRowModal(false)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    setAddingRow(true)
-                    try {
-                      const res = await addRowToServer(selectedRackId, parseFloat(rowForm.height) || 1.5)
-                      if (!res.success) {
-                        setAddRackError(res.message)
-                      } else {
-                        setShowAddRowModal(false)
-                      }
-                    } finally {
-                      setAddingRow(false)
-                    }
-                  }}
-                  disabled={addingRow}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {addingRow && <Spinner />}
-                  {addingRow ? 'Adding...' : 'Add Row'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
+      <AddRackModal
+        open={showAddRackModal}
+        onClose={() => setShowAddRackModal(false)}
+        areaWidth={area.width}
+        areaDepth={area.depth}
+        form={rackForm}
+        onChange={setRackForm}
+        locations={locations}
+        locationsLoading={locationsLoading}
+        locationsError={locationsError}
+        selectedLocationId={selectedLocationId}
+        onLocationChange={(v) => { setSelectedLocationId(v); setLocationValidationError(null) }}
+        errors={{ ...rackFormErrors, location: rackFormErrors.location ?? locationValidationError }}
+        globalError={addRackError}
+        isSubmitting={isAddingRack}
+        onSubmit={async () => {
+          const errs = validateRackForm(selectedLocationId, rackForm)
+          setRackFormErrors(errs)
+          if (Object.keys(errs).length > 0) {
+            setLocationValidationError(errs.location ?? null)
+            return
+          }
+          const w = parseFloat(rackForm.width) || 2.5
+          const d = parseFloat(rackForm.depth) || 1.2
+          const res = await addRackToServer(undefined, {
+            width: w,
+            depth: d,
+            rackCode: rackForm.rackCode,
+            plankType: rackForm.plankType,
+            sided: rackForm.fixtureType === 'GONDOLA' ? rackForm.sided : 'one',
+            fixtureType: rackForm.fixtureType,
+          }, selectedLocationId)
+          if (res.success) setShowAddRackModal(false)
+        }}
+      />
 
-      {/* Add Bin Modal */}
-      {
-        showAddBinModal && selectedRowId && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddBinModal(false)}>
-            <div className="bg-white rounded-2xl p-8 min-w-[400px] shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-2xl font-bold text-gray-800 mb-6">Add Bin</h3>
-              <div className="text-base text-gray-600 mb-6">
-                Bin will be automatically sized based on row dimensions
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bin Name</label>
-                <input
-                  value={binNameInput}
-                  onChange={(e) => { setBinNameInput(e.target.value); setBinNameError(null); }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  placeholder="Enter bin name"
-                />
-                {binNameError && <div className="text-red-500 text-sm mt-1">{binNameError}</div>}
-              </div>
+      <AddRowModal
+        open={showAddRowModal}
+        onClose={() => setShowAddRowModal(false)}
+        height={rowForm.height}
+        onHeightChange={(v) => setRowForm({ ...rowForm, height: v })}
+        isSubmitting={addingRow}
+        onSubmit={async () => {
+          if (!selectedRackId) return
+          setAddingRow(true)
+          try {
+            const res = await addRowToServer(selectedRackId, parseFloat(rowForm.height) || 1.5)
+            if (!res.success) setAddRackError(res.message)
+            else setShowAddRowModal(false)
+          } finally {
+            setAddingRow(false)
+          }
+        }}
+      />
 
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowAddBinModal(false)}
-                  className="px-6 py-3 border border-gray-300 rounded-xl text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!selectedRowId) return
-                    if (!binNameInput || !binNameInput.trim()) {
-                      setBinNameError('Bin name is required')
-                      return
-                    }
-                    setAddingBin(true)
-                    try {
-                      const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
-                      if (!res.success) {
-                        setAddRackError(res.message)
-                      } else {
-                        console.log('[Traditional] CreateBin response ->', res)
-                        if ((res as any).binId) {
-                          setSelectedBinId((res as any).binId)
-                        }
-                        setShowAddBinModal(false)
-                        setBinNameInput('')
-                        setBinNameError(null)
-                      }
-                    } finally {
-                      setAddingBin(false)
-                    }
-                  }}
-                  disabled={addingBin}
-                  className="px-6 py-3 bg-[#002952] text-white rounded-xl text-base font-medium hover:bg-[#001a33] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {addingBin && <Spinner />}
-                  {addingBin ? 'Adding...' : 'Add Bin'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      }
+      <AddBinModal
+        open={showAddBinModal}
+        onClose={() => setShowAddBinModal(false)}
+        binName={binNameInput}
+        onBinNameChange={(v) => { setBinNameInput(v); setBinNameError(null) }}
+        error={binNameError}
+        isSubmitting={addingBin}
+        onSubmit={async () => {
+          if (!selectedRowId) return
+          if (!binNameInput.trim()) { setBinNameError('Bin name is required'); return }
+          setAddingBin(true)
+          try {
+            const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
+            if (!res.success) setBinNameError(res.message)
+            else {
+              if ((res as any).binId) setSelectedBinId((res as any).binId)
+              setShowAddBinModal(false)
+              setBinNameInput('')
+              setBinNameError(null)
+            }
+          } finally {
+            setAddingBin(false)
+          }
+        }}
+      />
 
+      {selectedBinId && (
+        <AttachProductToBinModal
+          isOpen={showAttachProductModal}
+          onClose={() => setShowAttachProductModal(false)}
+          binId={selectedBinId}
+          onSuccess={handleAttachProductSuccess}
+          logPayload
+        />
+      )}
 
-
-      {/* Attach Product to Bin Modal */}
-      {
-        selectedBinId && (
-          <AttachProductToBinModal
-            isOpen={showAttachProductModal}
-            onClose={() => setShowAttachProductModal(false)}
-            binId={selectedBinId}
-            onSuccess={handleAttachProductSuccess}
-            logPayload={true}
-          />
-        )
-      }
-    </div >
+    </div>
   )
 }

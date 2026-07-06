@@ -5,7 +5,10 @@ import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Mesh, DoubleSide } from 'three'
 import { Html } from '@react-three/drei'
-import { usePlanogramStore, getQuadrantFromPosition, type Rack as RackType } from '@/store/planogramStore'
+import { usePlanogramStore, type Rack as RackType } from '@/store/planogramStore'
+import { SCENE_THEMES } from '@/constants/sceneTheme'
+import { StoreEnvironment } from '@/components/scene/StoreEnvironment'
+import { PlacementPreview, placementHintLabel } from '@/components/scene/PlacementPreview'
 import { Rack } from './Rack'
 
 export function Area() {
@@ -22,7 +25,15 @@ export function Area() {
     editingRackId,
     setEditingRackId,
     updateRackPosition,
+    sceneTheme,
+    placingFixtureType,
+    pendingRackParams,
+    cancelFixturePlacement,
   } = usePlanogramStore()
+
+  const [previewPos, setPreviewPos] = useState<{ x: number; z: number } | null>(null)
+
+  const themeCfg = SCENE_THEMES[sceneTheme]
 
   const getStore = () => usePlanogramStore.getState()
 
@@ -34,8 +45,6 @@ export function Area() {
     }
   })
 
-  const [hoverPosition, setHoverPosition] = useState<{ x: number; z: number } | null>(null)
-
   const handleClick = async (e: any) => {
     e.stopPropagation()
     // Debug: always log clicks to verify handler is running
@@ -46,7 +55,6 @@ export function Area() {
       const point = e.point
       updateRackPosition(editingRackId, { x: point.x, y: 0, z: point.z })
       setEditingRackId(null)
-      setHoverPosition(null)
       return
     }
 
@@ -55,19 +63,19 @@ export function Area() {
       const state = getStore()
       const dims = state.pendingRackParams
       if (dims) {
-        // Correctly pass the saved globalLocationId from pendingRackParams
-        addRackToServer({ x: point.x, y: 0, z: point.z }, dims, dims.globalLocationId)
+        await addRackToServer({ x: point.x, y: 0, z: point.z }, dims, dims.globalLocationId)
       }
-      setIsPlacingRack(false)
-      setHoverPosition(null)
-    } else {
-      setSelected('area', 'area')
+      cancelFixturePlacement()
+      setPreviewPos(null)
+      return
     }
+
+    setSelected('area', 'area')
   }
 
-  const handlePointerMove = (e: any) => {
+  const handlePointerMove = (e: { point: { x: number; z: number } }) => {
     if (isPlacingRack || editingRackId) {
-      setHoverPosition({ x: e.point.x, z: e.point.z })
+      setPreviewPos({ x: e.point.x, z: e.point.z })
     }
   }
 
@@ -78,9 +86,6 @@ export function Area() {
   // Area logic in store forces symmetrical width/depth around 0.
   const halfWid = area.width / 2
   const halfDep = area.depth / 2
-  const wallHeight = 5
-  const wallThick = 0.5
-  const wallY = wallHeight / 2
 
   // Compass quadrants: Divide area into 4 parts
   // NW (North-West): -X to 0, 0 to +Z
@@ -92,10 +97,18 @@ export function Area() {
 
   return (
     <group userData={{ id: 'area' }}>
-      {/* FLOOR AREA */}
+      <StoreEnvironment
+        halfW={halfWid}
+        halfD={halfDep}
+        width={area.width}
+        depth={area.depth}
+      />
+
+      {/* Sales floor (inside store shell) */}
       <mesh
         ref={meshRef}
         rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.02, 0]}
         onClick={handleClick}
         onPointerMove={handlePointerMove}
         receiveShadow
@@ -104,12 +117,15 @@ export function Area() {
         }}
         onPointerLeave={() => {
           document.body.style.cursor = 'default'
-          setHoverPosition(null)
+          if (isPlacingRack) setPreviewPos(null)
         }}
       >
         <planeGeometry args={[area.width, area.depth]} />
         <meshStandardMaterial
-          color="#FFFFFF"
+          color={themeCfg.floorColor}
+          roughness={themeCfg.floorRoughness}
+          emissive={sceneTheme === 'night' ? '#8899aa' : '#000000'}
+          emissiveIntensity={sceneTheme === 'night' ? 0.15 : 0}
           side={DoubleSide}
         />
       </mesh>
@@ -118,87 +134,40 @@ export function Area() {
       {/* North-South division line (vertical, along X=0) */}
       <mesh position={[0, divisionLineY, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[divisionLineHeight, area.depth]} />
-        <meshStandardMaterial color="#3498db" opacity={0.6} transparent />
+        <meshStandardMaterial color="#2C5282" opacity={0.6} transparent />
       </mesh>
 
       {/* East-West division line (horizontal, along Z=0) */}
       <mesh position={[0, divisionLineY, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 2]}>
         <planeGeometry args={[divisionLineHeight, area.width]} />
-        <meshStandardMaterial color="#3498db" opacity={0.6} transparent />
+        <meshStandardMaterial color="#2C5282" opacity={0.6} transparent />
       </mesh>
-
-      {/* COMPASS LABELS – North/South swapped for advanced view (N at -Z, S at +Z) */}
-      <Html position={[0, 0.5, halfDep - 1]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <span style={{ fontSize: '12px', fontWeight: 400, color: '#5d6d7e', textShadow: '0 0 1px #fff' }}>S</span>
-      </Html>
-      <Html position={[0, 0.5, -halfDep + 1]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <span style={{ fontSize: '12px', fontWeight: 400, color: '#5d6d7e', textShadow: '0 0 1px #fff' }}>N</span>
-      </Html>
-      <Html position={[halfWid - 1, 0.5, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <span style={{ fontSize: '12px', fontWeight: 400, color: '#5d6d7e', textShadow: '0 0 1px #fff' }}>E</span>
-      </Html>
-      <Html position={[-halfWid + 1, 0.5, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <span style={{ fontSize: '12px', fontWeight: 400, color: '#5d6d7e', textShadow: '0 0 1px #fff' }}>W</span>
-      </Html>
-
 
       {/* RACKS */}
       {area.racks.map((rack: RackType) => (
         <Rack key={rack.id} rack={rack} />
       ))}
 
-      {/* BOUNDARY WALLS */}
-      {/* Left Wall (-X) */}
-      <mesh position={[-halfWid, wallY, 0]}>
-        <boxGeometry args={[wallThick, wallHeight, area.depth]} />
-        <meshStandardMaterial color="#FFFFFF" />
-      </mesh>
+      <PlacementPreview position={previewPos} />
 
-      {/* Right Wall (+X) */}
-      <mesh position={[halfWid, wallY, 0]}>
-        <boxGeometry args={[wallThick, wallHeight, area.depth]} />
-        <meshStandardMaterial color="#FFFFFF" />
-      </mesh>
-
-      {/* Back Wall (-Z) */}
-      <mesh position={[0, wallY, -halfDep]}>
-        <boxGeometry args={[area.width, wallHeight, wallThick]} />
-        <meshStandardMaterial color="#FFFFFF" />
-      </mesh>
-
-      {/* Placement mode: click floor to place rack (triggered from bottom bar “Place on floor”) */}
+      {/* Placement mode */}
       {isPlacingRack && (
         <>
-          <Html position={[0, 1.5, 0]} center>
+          <Html position={[0, 2, 0]} center>
             <div style={{
-              background: 'rgba(52, 152, 219, 0.9)',
+              background: 'rgba(44, 82, 130, 0.9)',
               color: 'white',
               padding: '12px 20px',
               borderRadius: '8px',
               fontSize: '14px',
               fontWeight: 600,
-              boxShadow: '0 4px 12px rgba(52, 152, 219, 0.4)',
+              boxShadow: '0 4px 12px rgba(44, 82, 130, 0.4)',
+              maxWidth: 360,
+              textAlign: 'center',
             }}>
-              Click anywhere on the floor to place rack
+              {placementHintLabel(placingFixtureType, pendingRackParams)}
             </div>
           </Html>
-          {/* Quadrant indicator */}
-          {hoverPosition && (
-            <Html position={[hoverPosition.x, 0.3, hoverPosition.z]} center>
-              <div style={{
-                background: 'rgba(46, 204, 113, 0.9)',
-                color: 'white',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                boxShadow: '0 2px 8px rgba(46, 204, 113, 0.4)',
-                whiteSpace: 'nowrap',
-              }}>
-                {getQuadrantFromPosition(hoverPosition.x, hoverPosition.z)}
-              </div>
-            </Html>
-          )}
         </>
       )}
 
@@ -218,22 +187,6 @@ export function Area() {
               Click on the floor to move rack (no overlap with other racks)
             </div>
           </Html>
-          {hoverPosition && (
-            <Html position={[hoverPosition.x, 0.3, hoverPosition.z]} center>
-              <div style={{
-                background: 'rgba(245, 158, 11, 0.9)',
-                color: 'white',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                fontWeight: 600,
-                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.4)',
-                whiteSpace: 'nowrap',
-              }}>
-                {getQuadrantFromPosition(hoverPosition.x, hoverPosition.z)}
-              </div>
-            </Html>
-          )}
         </>
       )}
     </group>

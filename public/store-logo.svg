@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100" fill="none">
+  <rect width="240" height="100" fill="#ffffff"/>
+  <!-- Fan / leaf icon (blue left, green right) -->
+  <g transform="translate(120,28)">
+    <path d="M0,-18 L-6,-8 L-14,-10 L-8,0 L-14,10 L-6,8 L0,18" fill="#2C5282"/>
+    <path d="M0,-18 L6,-8 L14,-10 L8,0 L14,10 L6,8 L0,18" fill="#27ae60"/>
+    <path d="M0,-14 L-4,-6 L-10,-7 L-5,0 L-10,7 L-4,6 L0,14" fill="#2C5282" opacity="0.85"/>
+    <path d="M0,-14 L4,-6 L10,-7 L5,0 L10,7 L4,6 L0,14" fill="#27ae60" opacity="0.85"/>
+  </g>
+  <!-- Arabic-style brand line -->
+  <text x="120" y="62" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" font-weight="700" fill="#2C5282">Almarai</text>
+  <!-- English -->
+  <text x="120" y="84" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#2C5282">Almarai</text>
+</svg>

@@ -12,6 +12,10 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: '3D Planogram Editor',
   description: 'A 3D planogram editor built with Next.js and React Three Fiber',
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png' }],
+    apple: [{ url: '/favicon.png', type: 'image/png' }],
+  },
 }
 
 import { Toaster } from 'react-hot-toast'

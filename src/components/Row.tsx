@@ -4,7 +4,7 @@
 import { useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Mesh } from "three";
-import { Edges, Html } from "@react-three/drei";
+import { Edges } from "@react-three/drei";
 import { Row as RowType, usePlanogramStore } from "@/store/planogramStore";
 import { Bin } from "./Bin";
 
@@ -102,13 +102,13 @@ export function Row({
           color="#FFFFFF"
           metalness={0.35}
           roughness={0.55}
-          emissive={hovered ? "#3498db" : "#000000"}
+          emissive={hovered ? "#2C5282" : "#000000"}
           emissiveIntensity={hovered ? 0.3 : 0}
         />
         <Edges
           scale={1}
           threshold={15}
-          color={isSelected ? "#2ecc71" : hovered ? "#3498db" : "#7f8c8d"}
+          color={isSelected ? "#2ecc71" : hovered ? "#2C5282" : "#7f8c8d"}
           lineWidth={isSelected ? 2.5 : 2}
         />
       </mesh>
