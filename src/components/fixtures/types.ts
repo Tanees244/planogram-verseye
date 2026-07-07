@@ -12,6 +12,7 @@ export type FixtureType =
   | 'PEGBOARD'
   | 'CHECKOUT'
   | 'PROMOTIONAL'
+  | 'CUSTOM'
 
 export interface FixtureDefinition {
   type: FixtureType
@@ -113,6 +114,15 @@ export const FIXTURE_LIBRARY: Record<FixtureType, FixtureDefinition> = {
     defaultWidth: 1.5,
     defaultDepth: 1,
     minHeight: 1.6,
+    defaultSided: 'one',
+  },
+  CUSTOM: {
+    type: 'CUSTOM',
+    label: 'Custom Rack',
+    description: 'Build your own — header, footer, walls, inner/outer dimensions.',
+    defaultWidth: 1.5,
+    defaultDepth: 0.8,
+    minHeight: 1.5,
     defaultSided: 'one',
   },
 }

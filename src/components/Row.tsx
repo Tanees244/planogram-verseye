@@ -18,6 +18,8 @@ interface RowProps {
   openBothSides?: boolean;
   /** Shift shelf geometry along Z (used for back-to-back double-sided racks). */
   shelfOffsetZ?: number;
+  /** Hide row back wall when rack shell already has a back panel. */
+  hideBackWall?: boolean;
 }
 
 export function Row({
@@ -28,6 +30,7 @@ export function Row({
   showBottomBorder = false,
   openBothSides = false,
   shelfOffsetZ = 0,
+  hideBackWall = false,
 }: RowProps) {
   const meshRef = useRef<Mesh>(null);
   const { selectedId, setSelected } = usePlanogramStore();
@@ -80,7 +83,7 @@ export function Row({
 
       {/* Row as a container: one-sided = back wall blocks access from one side; two-sided = open both sides */}
       {/* Back wall – only for one-sided rows; skip raycast so bins can be clicked */}
-      {!openBothSides && row.sided !== "two" && (
+      {!openBothSides && !hideBackWall && row.sided !== "two" && (
         <mesh position={[0, 0, z + rackDepth / 2]} raycast={() => null}>
           <boxGeometry args={[rackWidth, row.height, 0.06]} />
           <meshStandardMaterial

@@ -19,6 +19,7 @@ import {
 import ProductManagementModal from './ProductManagementModal'
 import AttachProductToBinModal from './AttachProductToBinModal'
 import { Spinner } from './Spinner'
+import { RowDimensionsField } from '@/components/RowHeightsEditor'
 import { resolveEntityId, totalProductFacings } from '@/utils/storeLayoutLoader'
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
@@ -282,6 +283,13 @@ export function TraditionalView() {
                         <FiBox className="text-[#2C5282]" />
                         Side {side.sideCode}
                       </div>
+                      <div className="text-[11px] text-gray-500 mb-2 pl-1">
+                        Usable side dims: W {(rack.customConfig ? (rack.customConfig.outerWidth - rack.customConfig.wallThickness * 2) : rack.width * 0.85).toFixed(2)}m
+                        {" · "}
+                        D {(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) : rack.depth * 0.9).toFixed(2)}m
+                        {" · "}
+                        H {(rack.customConfig ? (rack.customConfig.outerHeight - (rack.customConfig.header.enabled ? rack.customConfig.header.height : 0) - (rack.customConfig.footer.enabled ? rack.customConfig.footer.height : 0)) : side.rows.reduce((s, r) => s + r.height, 0)).toFixed(2)}m
+                      </div>
                       {side.rows.map((row) => (
                         <div key={row.id} className="mb-3 pl-4">
                           <div
@@ -324,8 +332,13 @@ export function TraditionalView() {
 
                           {expandedRows.has(row.id) && (
                             <div className="mt-3 pl-6 pr-2">
-                              <div className="text-xs text-gray-600 mb-3 px-2">
-                                Height: {row.height}m | Bins: {row.bins.length}
+                              <div className="text-xs text-gray-600 mb-3 px-2 flex items-center gap-3 flex-wrap">
+                                <span className="font-medium text-gray-700">Height:</span>
+                                <RowDimensionsField row={row} dark={false} showLabel={false} />
+                                <span className="text-gray-500">
+                                  | Depth: {(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) * 0.95 : rack.depth * 0.9).toFixed(2)}m
+                                  {" | "}Bins: {row.bins.length}
+                                </span>
                               </div>
                               {row.bins.map((bin) => (
                                 <div key={bin.id} className="mb-2 pl-2">
@@ -377,6 +390,8 @@ export function TraditionalView() {
                                     expandedBins.has(bin.id) && (
                                       <div className="mt-2 pl-4 pr-2">
                                         <div className="text-xs text-gray-600 mb-2 px-2">
+                                          Bin dims: {bin.width.toFixed(2)} × {bin.depth.toFixed(2)} × {bin.height.toFixed(2)} m
+                                          {" · "}
                                           Products: {bin.products.length} SKU{bin.products.length === 1 ? '' : 's'}
                                           {totalProductFacings(bin.products) > bin.products.length
                                             ? ` · ${totalProductFacings(bin.products)} facings`
@@ -414,6 +429,9 @@ export function TraditionalView() {
                                               )}
                                               <div className="flex flex-col">
                                                 <span className="text-xs font-medium text-gray-800">{product.name}{qty > 1 ? ` × ${qty}` : ''}</span>
+                                                <span className="text-[10px] text-gray-500">
+                                                  {Number(product.width).toFixed(2)} × {Number(product.depth).toFixed(2)} × {Number(product.height).toFixed(2)} m
+                                                </span>
                                                 {(product.brandName || product.categoryName) && (
                                                   <span className="text-[10px] text-gray-500">
                                                     {product.brandName}{product.brandName && product.categoryName ? ' | ' : ''}{product.categoryName}

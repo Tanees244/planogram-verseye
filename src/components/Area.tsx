@@ -9,6 +9,8 @@ import { usePlanogramStore, type Rack as RackType } from '@/store/planogramStore
 import { SCENE_THEMES } from '@/constants/sceneTheme'
 import { StoreEnvironment } from '@/components/scene/StoreEnvironment'
 import { PlacementPreview, placementHintLabel } from '@/components/scene/PlacementPreview'
+import { CustomRackLivePreview } from '@/components/scene/CustomRackLivePreview'
+import { snapRackToWall } from '@/utils/rackPlacement'
 import { Rack } from './Rack'
 
 export function Area() {
@@ -31,7 +33,7 @@ export function Area() {
     cancelFixturePlacement,
   } = usePlanogramStore()
 
-  const [previewPos, setPreviewPos] = useState<{ x: number; z: number } | null>(null)
+  const [previewPos, setPreviewPos] = useState<{ x: number; z: number; rotationY: number } | null>(null)
 
   const themeCfg = SCENE_THEMES[sceneTheme]
 
@@ -75,7 +77,18 @@ export function Area() {
 
   const handlePointerMove = (e: { point: { x: number; z: number } }) => {
     if (isPlacingRack || editingRackId) {
-      setPreviewPos({ x: e.point.x, z: e.point.z })
+      if (isPlacingRack && pendingRackParams) {
+        const snapped = snapRackToWall(
+          { x: e.point.x, z: e.point.z },
+          pendingRackParams.width,
+          pendingRackParams.depth,
+          area.width,
+          area.depth,
+        )
+        setPreviewPos({ x: snapped.x, z: snapped.z, rotationY: snapped.rotationY })
+      } else {
+        setPreviewPos({ x: e.point.x, z: e.point.z, rotationY: 0 })
+      }
     }
   }
 
@@ -149,6 +162,7 @@ export function Area() {
       ))}
 
       <PlacementPreview position={previewPos} />
+      <CustomRackLivePreview />
 
       {/* Placement mode */}
       {isPlacingRack && (

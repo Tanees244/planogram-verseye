@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
-import { Btn, FormField, Input, Select } from '@/components/ui/form'
+import { Btn, FormField, Input } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
 
@@ -17,59 +17,51 @@ interface AttachProductToBinModalProps {
 export default function AttachProductToBinModal({
   isOpen,
   onClose,
-  binId,
+  binId: _binId,
   onSuccess,
-  logPayload,
+  logPayload: _logPayload,
 }: AttachProductToBinModalProps) {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [formData, setFormData] = useState({ productId: '', quantity: 1 })
-
-  useEffect(() => {
-    if (!isOpen) return
-    setLoading(true)
-    fetch('/api/products/list')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.isRequestSuccess) {
-          const list = data.data?.products ?? data.data ?? []
-          setProducts(Array.isArray(list) ? list : [])
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [isOpen])
-
-  const sel = products.find((p) => p.id === formData.productId) as Product & {
-    imageUrl?: string
-    skuCode?: string
-  }
+  const [formData, setFormData] = useState({
+    name: '',
+    width: '0.15',
+    depth: '0.20',
+    height: '0.08',
+    quantity: 1,
+    color: '#2C5282',
+  })
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    const selectedProduct = products.find((p) => p.id === formData.productId)
-    if (!selectedProduct || formData.quantity < 1) return
+    if (!formData.name.trim() || formData.quantity < 1) return
 
     setSubmitting(true)
     try {
-      const payload = { binId, skuId: formData.productId, quantity: Number(formData.quantity) }
-      if (logPayload) console.log('[Traditional] AttachProduct payload ->', payload)
-      const res = await fetch('/api/bins/attach-product', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json()
-      if (data.isRequestSuccess) {
-        onSuccess(selectedProduct, formData.quantity)
-        setFormData({ productId: '', quantity: 1 })
-        onClose()
-      } else {
-        alert(data.message || 'Failed to attach product')
+      const localProduct: Product = {
+        id: `local-${Date.now()}`,
+        name: formData.name.trim(),
+        categoryId: 'local',
+        brandId: 'local',
+        price: 0,
+        height: Number(formData.height) || 0.08,
+        width: Number(formData.width) || 0.15,
+        depth: Number(formData.depth) || 0.2,
+        length: Number(formData.depth) || 0.2,
+        color: formData.color,
+        description: 'Local product (not synced)',
+        status: 'Active',
+        createdDate: new Date().toISOString(),
       }
-    } catch {
-      alert('Error connecting to server')
+      onSuccess(localProduct, formData.quantity)
+      setFormData({
+        name: '',
+        width: '0.15',
+        depth: '0.20',
+        height: '0.08',
+        quantity: 1,
+        color: '#2C5282',
+      })
+      onClose()
     } finally {
       setSubmitting(false)
     }
@@ -80,14 +72,14 @@ export default function AttachProductToBinModal({
       open={isOpen}
       onClose={onClose}
       title="Attach Product"
-      subtitle="Select a catalog SKU and quantity to place in this bin."
+      subtitle="Local mode: add product without API sync."
       maxWidth="md"
       footer={
         <>
           <Btn variant="secondary" onClick={onClose}>
             Cancel
           </Btn>
-          <Btn variant="primary" disabled={submitting || !formData.productId} onClick={() => handleSubmit()}>
+          <Btn variant="primary" disabled={submitting || !formData.name.trim()} onClick={() => handleSubmit()}>
             {submitting && <Spinner />}
             {submitting ? 'Attaching…' : 'Attach Product'}
           </Btn>
@@ -95,38 +87,62 @@ export default function AttachProductToBinModal({
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FormField label="Product" required>
-          <Select
+        <FormField label="Product Name" required>
+          <Input
             required
-            disabled={loading}
-            value={formData.productId}
-            onChange={(e) => setFormData({ ...formData, productId: e.target.value })}
-          >
-            <option value="">{loading ? 'Loading products…' : 'Select a product'}</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="Enter product/widget name"
+          />
         </FormField>
 
-        {sel?.imageUrl && (
-          <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-lg">
-            <img
-              src={sel.imageUrl}
-              alt={sel.name}
-              className="w-14 h-14 rounded-lg object-cover border border-gray-200 bg-white"
-              onError={(e) => {
-                ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-              }}
+        <div className="grid grid-cols-3 gap-3">
+          <FormField label="Width (m)" required>
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0.01}
+              step={0.01}
+              required
+              value={formData.width}
+              onChange={(e) => setFormData({ ...formData, width: e.target.value })}
             />
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-gray-900 truncate">{sel.name}</div>
-              {sel.skuCode && <div className="text-xs text-gray-500 truncate">{sel.skuCode}</div>}
-            </div>
+          </FormField>
+          <FormField label="Depth (m)" required>
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0.01}
+              step={0.01}
+              required
+              value={formData.depth}
+              onChange={(e) => setFormData({ ...formData, depth: e.target.value })}
+            />
+          </FormField>
+          <FormField label="Height (m)" required>
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0.01}
+              step={0.01}
+              required
+              value={formData.height}
+              onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+            />
+          </FormField>
+        </div>
+
+        <FormField label="Color">
+          <div className="flex items-center gap-2">
+            <Input
+              type="color"
+              value={formData.color}
+              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+              className="w-14 h-10 p-1"
+            />
+            <span className="text-xs text-gray-500">{formData.color}</span>
           </div>
-        )}
+        </FormField>
 
         <FormField label="Quantity (facings)" required>
           <Input

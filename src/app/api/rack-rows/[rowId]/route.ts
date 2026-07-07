@@ -1,0 +1,21 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { proxyLayout } from '@/app/api/utils/layoutProxy';
+
+export async function PUT(req: NextRequest, context: { params: Promise<{ rowId: string }> }) {
+  const { rowId } = await context.params;
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { isRequestSuccess: false, message: 'Invalid JSON body', statusCode: 400 },
+      { status: 400 },
+    );
+  }
+
+  return proxyLayout(req, `/api/v1/layout/rack-rows/${encodeURIComponent(rowId)}`, {
+    method: 'PUT',
+    body,
+  });
+}

@@ -103,7 +103,7 @@ export function normalizeRack(raw: any): Rack {
   const rackId = resolveEntityId(raw.rackId) ?? resolveEntityId(raw.id) ?? generateId()
   const rackCode = raw.rackCode ?? raw.rack_code ?? `RACK-${rackId}`
   const width = Number(raw.width ?? 2.5)
-  const depth = Number(raw.depth ?? 2)
+  const depth = Number(raw.depth ?? raw.rackDepth ?? raw.height ?? 2)
   const isDoubleSided = Boolean(raw.isDoubleSided ?? raw.is_double_sided)
   const sidesRaw = asArray(raw.sides)
 
@@ -174,24 +174,28 @@ export function gridPlaceRacks(racks: Rack[], areaWidth: number, areaDepth: numb
   })
 }
 
-/** Keep rack positions/rotations from the current scene when refreshing layout data. */
+/** Keep rack positions/rotations and 3D-only fields when refreshing layout data. */
 export function mergeRackPositions(existing: Rack[], fresh: Rack[]): Rack[] {
-  const layout = new Map(
+  const byKey = new Map(
     existing.map((r) => [
       r.rackId || r.id,
-      { position: r.position, rotation: r.rotation, quadrant: r.quadrant },
+      r,
     ]),
   )
 
   return fresh.map((rack) => {
     const key = rack.rackId || rack.id
-    const prev = layout.get(key)
+    const prev = byKey.get(key)
     if (!prev) return rack
     return {
       ...rack,
       position: prev.position,
       rotation: prev.rotation ?? rack.rotation,
       quadrant: prev.quadrant,
+      fixtureType: prev.fixtureType ?? rack.fixtureType,
+      customConfig: prev.customConfig ?? rack.customConfig,
+      width: prev.width || rack.width,
+      depth: prev.depth || rack.depth,
     }
   })
 }

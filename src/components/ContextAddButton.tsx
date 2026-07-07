@@ -23,9 +23,14 @@ import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModa
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
 import { ActionBar, ActionBtn } from '@/components/ui/ActionBar'
+import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeightsEditor'
+import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
+import { resolveFixtureType } from '@/components/fixtures/types'
 import { validateRackForm } from '@/utils/rackFormUtils'
 import type { FixtureType } from '@/components/fixtures/types'
-export function ContextAddButton() {
+import { cn } from '@/lib/cn'
+export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
+  const isSidebar = layout === 'sidebar';
   const {
     selectedId,
     selectedType,
@@ -52,6 +57,9 @@ export function ContextAddButton() {
     deleteBin,
     deleteProduct,
     addProduct,
+    openCustomRackBuilder,
+    customRackBuilderOpen,
+    setSelected,
   } = usePlanogramStore();
 
   const [showRackModal, setShowRackModal] = useState(false);
@@ -65,6 +73,9 @@ export function ContextAddButton() {
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
   const [binNameInput, setBinNameInput] = useState("");
+  const [binWidthInput, setBinWidthInput] = useState("");
+  const [binDepthInput, setBinDepthInput] = useState("");
+  const [binHeightInput, setBinHeightInput] = useState("");
   const [binNameError, setBinNameError] = useState<string | null>(null);
 
   // Location state for the Add Rack form
@@ -134,6 +145,7 @@ export function ContextAddButton() {
   const [rowForm, setRowForm] = useState({ height: "1.5" });
 
   const { attachProductToBin } = usePlanogramStore();
+
   const handleAttachProductSuccess = async (product: any, quantity: number) => {
     if (!selectedId) return;
     const result = await attachProductToBin(selectedId, product, quantity);
@@ -143,6 +155,12 @@ export function ContextAddButton() {
   };
 
   if (!selectedId || !selectedType) return null;
+
+  // In 3D view, fixtures are added via the left palette; hide generic area bar.
+  if (selectedType === "area") return null;
+
+  // Hide context bar while custom rack builder is open.
+  if (customRackBuilderOpen) return null;
 
   const submitRack = async (position?: { x: number; y: number; z: number }) => {
     const errs = validateRackForm(selectedLocationId, rackForm)
@@ -190,73 +208,29 @@ export function ContextAddButton() {
     setShowRackModal(false)
   }
 
-  // Area selected - Add Rack
-  if (selectedType === "area") {
-    return (
-      <>
-        <div className="flex flex-col gap-2 items-start">
-          <ActionBar label="Area selected">
-            <ActionBtn
-              onClick={() => {
-                setAddRackError(null);
-                setShowRackModal(true);
-              }}
-            >
-              <span className="text-lg leading-none">+</span> Add Rack
-            </ActionBtn>
-          </ActionBar>
-          {addRackError && (
-            <div className="px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm max-w-md">
-              {addRackError}
-            </div>
-          )}
-        </div>
-
-        <AddRackModal
-          open={showRackModal}
-          onClose={() => setShowRackModal(false)}
-          areaWidth={area.width}
-          areaDepth={area.depth}
-          form={rackForm}
-          onChange={(form) => {
-            setRackForm(form);
-            const errs = validateRackForm(selectedLocationId, form);
-            setRackErrors(errs);
-            setIsRackFormValid(Object.keys(errs).length === 0);
-          }}
-          locations={locations}
-          locationsLoading={locationsLoading}
-          locationsError={locationsError}
-          selectedLocationId={selectedLocationId}
-          onLocationChange={(v) => {
-            setSelectedLocationId(v);
-            setLocationValidationError(null);
-            const errs = validateRackForm(v, rackForm);
-            setRackErrors(errs);
-            setIsRackFormValid(Object.keys(errs).length === 0);
-          }}
-          errors={{ ...rackErrors, location: rackErrors.location ?? locationValidationError }}
-          globalError={addRackError}
-          isSubmitting={isAddingRack}
-          onSubmit={() => submitRack(undefined)}
-          onPlaceOnFloor={placeRackOnFloor}
-          submitLabel="Add at center"
-        />
-      </>
-    );
-  }
-
   // Rack selected → Show Add Row and Edit Rack buttons (bottom action bar)
   if (selectedType === "rack") {
+    const rack = area.racks.find((r: Rack) => r.id === selectedId);
+    const isCustom = rack && resolveFixtureType(rack) === "CUSTOM";
     return (
       <>
-        <div className="flex flex-col gap-2 items-start">
-          <ActionBar label="Rack selected">
-            <ActionBtn onClick={() => setShowRowModal(true)}>
+        <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
+          <ActionBar label="Rack selected" layout={layout}>
+            {isCustom && (
+              <ActionBtn
+                variant="secondary"
+                fullWidth={isSidebar}
+                onClick={() => openCustomRackBuilder("CUSTOM", selectedId)}
+              >
+                Customize
+              </ActionBtn>
+            )}
+            <ActionBtn fullWidth={isSidebar} onClick={() => setShowRowModal(true)}>
               <span className="text-lg leading-none">+</span> Add Row
             </ActionBtn>
             <ActionBtn
               variant="secondary"
+              fullWidth={isSidebar}
               onClick={() => {
                 setMoveRackError(null);
                 setEditingRackId(selectedId);
@@ -264,35 +238,65 @@ export function ContextAddButton() {
             >
               Move Rack
             </ActionBtn>
-            <Button
-              variant={"default"}
-              size={"sm"}
-              className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-              onClick={async () => {
-                const res = await deleteRackFromServer(selectedId)
-                if (!res.success) {
-                  alert(res.message)
-                }
-              }}
-            >
-              <FiTrash2 />
-            </Button>
+            {isSidebar ? (
+              <ActionBtn
+                variant="danger"
+                fullWidth
+                onClick={async () => {
+                  const res = await deleteRackFromServer(selectedId)
+                  if (!res.success) {
+                    alert(res.message)
+                  }
+                }}
+              >
+                <FiTrash2 /> Delete rack
+              </ActionBtn>
+            ) : (
+              <Button
+                variant={"default"}
+                size={"sm"}
+                className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                onClick={async () => {
+                  const res = await deleteRackFromServer(selectedId)
+                  if (!res.success) {
+                    alert(res.message)
+                  }
+                }}
+              >
+                <FiTrash2 />
+              </Button>
+            )}
             {editingRackId && (
-              <ActionBtn variant="secondary" onClick={() => setEditingRackId(null)}>
+              <ActionBtn variant="secondary" fullWidth={isSidebar} onClick={() => setEditingRackId(null)}>
                 Cancel move
               </ActionBtn>
             )}
           </ActionBar>
           {editingRackId && (
-            <span className="text-sm text-gray-600 bg-white/90 px-3 py-1.5 rounded-lg border border-gray-200">
+            <span
+              className={cn(
+                'text-sm px-3 py-1.5 rounded-lg border text-[11px] leading-snug',
+                isSidebar
+                  ? 'bg-brand/15 border-brand/30 text-gray-200 w-full'
+                  : 'text-gray-600 bg-white/90 border-gray-200',
+              )}
+            >
               Click on the floor to move the rack
             </span>
           )}
           {moveRackError && (
-            <div className="px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm max-w-md">
+            <div
+              className={cn(
+                'px-3 py-2 rounded-lg border text-sm',
+                isSidebar
+                  ? 'bg-red-500/15 border-red-500/25 text-red-200 w-full text-[11px]'
+                  : 'bg-red-50 border-red-200 text-red-700 max-w-md',
+              )}
+            >
               {moveRackError}
             </div>
           )}
+          {rack && <RackRowHeightsPanel rack={rack} onSelectRow={(id) => setSelected(id, 'row')} />}
         </div>
 
         <AddRowModal
@@ -330,6 +334,12 @@ export function ContextAddButton() {
     const rowExtent1 = rack ? rack.width * 0.85 : undefined;
     const rowExtent2 = rack ? rack.depth * 0.9 : undefined;
     const rowHeightForBin = row?.height;
+    const rowMaxWidth =
+      rack?.customConfig
+        ? computeCustomRackDimensions(rack.customConfig).innerWidth
+        : rack
+          ? rack.width * 0.85
+          : undefined;
 
     const handleAddBin = async () => {
       if (!selectedId) {
@@ -342,18 +352,27 @@ export function ContextAddButton() {
       }
       setAddingBin(true);
       try {
+        const parsedDims = {
+          width: parseFloat(binWidthInput) || undefined,
+          depth: parseFloat(binDepthInput) || undefined,
+          height: parseFloat(binHeightInput) || undefined,
+        };
         const res = await addBinToServer(
           selectedId,
           rowExtent1,
           rowExtent2,
           rowHeightForBin,
           binNameInput.trim(),
+          parsedDims,
         );
         if (!res.success) {
           setBinNameError(res.message);
         } else {
           setShowBinModal(false);
           setBinNameInput("");
+          setBinWidthInput("");
+          setBinDepthInput("");
+          setBinHeightInput("");
           setBinNameError(null);
         }
       } finally {
@@ -363,31 +382,72 @@ export function ContextAddButton() {
 
     return (
       <>
-        <ActionBar label="Row selected">
+        <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
+          {row && (
+            <div
+              className={cn(
+                'w-full rounded-xl border p-2.5',
+                isSidebar ? 'bg-black/70 border-white/10' : 'bg-white border-gray-200',
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[10px] font-semibold uppercase tracking-wide mb-1.5',
+                  isSidebar ? 'text-gray-400' : 'text-gray-500',
+                )}
+              >
+                Row size (W × H)
+              </p>
+              <RowDimensionsField
+                row={row}
+                dark={isSidebar}
+                showLabel={false}
+                maxWidth={rowMaxWidth}
+              />
+            </div>
+          )}
+          <ActionBar label="Row selected" layout={layout}>
           <ActionBtn
+            fullWidth={isSidebar}
             onClick={() => {
               setBinNameInput("");
+              setBinWidthInput("");
+              setBinDepthInput("");
+              setBinHeightInput("");
               setBinNameError(null);
               setShowBinModal(true);
             }}
           >
             <span className="text-lg leading-none">+</span> Add Bin
           </ActionBtn>
-          <Button
-            variant={"default"}
-            size={"sm"}
-            className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-            onClick={() => deleteRow(selectedId)}
-          >
-            <FiTrash2 />
-          </Button>
+          {isSidebar ? (
+            <ActionBtn variant="danger" fullWidth onClick={() => deleteRow(selectedId)}>
+              <FiTrash2 /> Delete row
+            </ActionBtn>
+          ) : (
+            <Button
+              variant={"default"}
+              size={"sm"}
+              className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+              onClick={() => deleteRow(selectedId)}
+            >
+              <FiTrash2 />
+            </Button>
+          )}
         </ActionBar>
+        </div>
 
         <AddBinModal
           open={showBinModal}
           onClose={() => !addingBin && setShowBinModal(false)}
           binName={binNameInput}
+          binWidth={binWidthInput}
+          binDepth={binDepthInput}
+          binHeight={binHeightInput}
           onBinNameChange={(v) => { setBinNameInput(v); setBinNameError(null); }}
+          onBinWidthChange={setBinWidthInput}
+          onBinDepthChange={setBinDepthInput}
+          onBinHeightChange={setBinHeightInput}
           error={binNameError}
           isSubmitting={addingBin}
           onSubmit={handleAddBin}
@@ -400,18 +460,24 @@ export function ContextAddButton() {
   if (selectedType === "bin") {
     return (
       <>
-        <ActionBar label="Bin selected">
-          <ActionBtn onClick={() => setShowProductModal(true)}>
+        <ActionBar label="Bin selected" layout={layout}>
+          <ActionBtn fullWidth={isSidebar} onClick={() => setShowProductModal(true)}>
             <span className="text-lg leading-none">+</span> Attach Product
           </ActionBtn>
-          <Button
-            variant={"default"}
-            size={"sm"}
-            className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-            onClick={() => deleteBin(selectedId)}
-          >
-            <FiTrash2 />
-          </Button>
+          {isSidebar ? (
+            <ActionBtn variant="danger" fullWidth onClick={() => deleteBin(selectedId)}>
+              <FiTrash2 /> Delete bin
+            </ActionBtn>
+          ) : (
+            <Button
+              variant={"default"}
+              size={"sm"}
+              className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+              onClick={() => deleteBin(selectedId)}
+            >
+              <FiTrash2 />
+            </Button>
+          )}
         </ActionBar>
 
         <AttachProductToBinModal

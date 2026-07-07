@@ -18,6 +18,7 @@ import { FreezerFixture } from './procedural/FreezerFixture'
 import { PegboardFixture } from './procedural/PegboardFixture'
 import { CheckoutFixture } from './procedural/CheckoutFixture'
 import { PromotionalFixture } from './procedural/PromotionalFixture'
+import { CustomRackFixture } from './procedural/CustomRackFixture'
 
 interface FixtureRendererProps {
   rack: Rack
@@ -37,6 +38,7 @@ const FIXTURE_COMPONENTS: Record<
   PEGBOARD: PegboardFixture,
   CHECKOUT: CheckoutFixture,
   PROMOTIONAL: PromotionalFixture,
+  CUSTOM: CustomRackFixture,
 }
 
 export function FixtureRenderer({ rack }: FixtureRendererProps) {

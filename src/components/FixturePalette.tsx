@@ -16,6 +16,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiX,
+  FiSliders,
 } from 'react-icons/fi'
 import { usePlanogramStore } from '@/store/planogramStore'
 import {
@@ -36,6 +37,7 @@ const FIXTURE_ICONS: Record<FixtureType, React.ComponentType<{ size?: number; cl
   PEGBOARD: FiShoppingBag,
   CHECKOUT: FiCreditCard,
   PROMOTIONAL: FiStar,
+  CUSTOM: FiSliders,
 }
 
 const DRAG_MIME = 'application/fixture-type'
@@ -49,6 +51,7 @@ export function FixturePalette() {
   const placingFixtureType = usePlanogramStore((s) => s.placingFixtureType)
   const pendingRackParams = usePlanogramStore((s) => s.pendingRackParams)
   const startFixturePlacement = usePlanogramStore((s) => s.startFixturePlacement)
+  const openCustomRackBuilder = usePlanogramStore((s) => s.openCustomRackBuilder)
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const addRackError = usePlanogramStore((s) => s.addRackError)
 
@@ -117,7 +120,7 @@ export function FixturePalette() {
   }
 
   return (
-    <div className={cn(shell, 'relative w-[272px] max-h-[calc(100vh-6.5rem)] flex flex-col overflow-hidden text-gray-100')}>
+    <div className={cn(shell, 'relative w-full flex-1 min-h-0 flex flex-col overflow-hidden text-gray-100')}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/10 shrink-0 bg-black/30">
         <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand text-white shrink-0">
@@ -173,7 +176,32 @@ export function FixturePalette() {
       )}
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
-        {FIXTURE_TYPES.map((type) => {
+        <button
+          type="button"
+          onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}
+          disabled={!selectedStoreId}
+          className={cn(
+            'w-full flex items-center gap-2.5 p-2.5 rounded-lg border transition-all text-left',
+            'border-brand/40 bg-brand/20 hover:bg-brand/30',
+            !selectedStoreId && 'opacity-45 cursor-not-allowed',
+          )}
+        >
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand text-white shrink-0">
+            <FiSliders size={15} />
+          </span>
+          <div className="min-w-0">
+            <span className="text-xs font-semibold text-white block">Build Custom Rack</span>
+            <span className="text-[10px] text-gray-400">Header · footer · walls · live preview</span>
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2 px-1 py-0.5">
+          <div className="flex-1 h-px bg-white/10" />
+          <span className="text-[9px] text-gray-500 uppercase tracking-wider">Presets</span>
+          <div className="flex-1 h-px bg-white/10" />
+        </div>
+
+        {FIXTURE_TYPES.filter((t) => t !== 'CUSTOM').map((type) => {
           const def = FIXTURE_LIBRARY[type]
           const Icon = FIXTURE_ICONS[type]
           const active = placingFixtureType === type

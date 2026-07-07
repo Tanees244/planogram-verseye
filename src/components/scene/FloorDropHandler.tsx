@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { DRAG_MIME } from '@/components/FixturePalette'
 import { buildPendingRackFromFixture } from '@/utils/fixturePlacement'
+import { snapRackToWall } from '@/utils/rackPlacement'
 import type { FixtureType } from '@/components/fixtures/types'
 import { FIXTURE_LIBRARY } from '@/components/fixtures/types'
 
@@ -14,7 +15,8 @@ export function FloorDropHandler() {
   const { camera, gl } = useThree()
   const addRackToServer = usePlanogramStore((s) => s.addRackToServer)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
-  const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
+  const areaWidth = usePlanogramStore((s) => s.area.width)
+  const areaDepth = usePlanogramStore((s) => s.area.depth)
 
   useEffect(() => {
     const el = gl.domElement
@@ -43,14 +45,19 @@ export function FloorDropHandler() {
       if (!raycaster.ray.intersectPlane(floorPlane, hit)) return
 
       const params = buildPendingRackFromFixture(fixtureType, usePlanogramStore.getState())
-      const result = await addRackToServer(
-        { x: hit.x, y: 0, z: hit.z },
+      const snapped = snapRackToWall(
+        { x: hit.x, z: hit.z },
+        params.width,
+        params.depth,
+        areaWidth,
+        areaDepth,
+      )
+      await addRackToServer(
+        { x: snapped.x, y: 0, z: snapped.z },
         params,
         selectedStoreId,
+        { rotationY: snapped.rotationY },
       )
-      if (result.success) {
-        cancelFixturePlacement()
-      }
     }
 
     el.addEventListener('dragover', onDragOver)
@@ -59,7 +66,7 @@ export function FloorDropHandler() {
       el.removeEventListener('dragover', onDragOver)
       el.removeEventListener('drop', onDrop)
     }
-  }, [camera, gl, addRackToServer, selectedStoreId, cancelFixturePlacement])
+  }, [camera, gl, addRackToServer, selectedStoreId, areaWidth, areaDepth])
 
   return null
 }

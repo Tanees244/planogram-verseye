@@ -7,6 +7,7 @@ import { ViewModeToggle } from '@/components/ui/ViewModeToggle'
 import { FixturePalette } from '@/components/FixturePalette'
 import { DayNightToggle } from '@/components/ui/DayNightToggle'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
+import { CustomRackBuilder } from '@/components/CustomRackBuilder'
 import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
 import Link from 'next/link'
@@ -246,13 +247,17 @@ export default function Home() {
   // Render Advanced View (3D)
   return (
     <div className="w-screen h-screen relative">
-      {/* View mode + fixture library (left) */}
-      <div className="absolute top-4 left-4 z-[100] flex flex-col gap-2 items-start">
+      {/* View mode + fixture library + context actions (left column) */}
+      <div className="absolute top-4 left-4 bottom-4 z-[100] flex flex-col gap-2 items-stretch w-[272px]">
         <ViewModeToggle mode="advanced" onChange={setViewMode} dark />
         <FixturePalette />
+        <div className="shrink-0">
+          <ContextAddButton layout="sidebar" />
+        </div>
       </div>
       <Scene3D />
       <StoreLayout />
+      <CustomRackBuilder />
 
       {/* Top-right: day/night, roof, controls, store name */}
       <div className="absolute top-4 right-4 z-[100] flex flex-col items-end gap-2">
@@ -263,11 +268,6 @@ export default function Home() {
         </div>
         <RoofHint />
         <StoreBadge dark align="right" />
-      </div>
-
-      {/* Bottom bar: context action (Add Rack / Row / Bin / Product) */}
-      <div className="absolute bottom-4 left-4 right-4 flex flex-col gap-3 z-[100]">
-        <ContextAddButton />
       </div>
     </div>
   )

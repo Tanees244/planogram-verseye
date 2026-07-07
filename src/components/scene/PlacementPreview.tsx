@@ -3,10 +3,11 @@
 import { usePlanogramStore } from '@/store/planogramStore'
 import { FIXTURE_LIBRARY } from '@/components/fixtures/types'
 import { computeFixtureMetrics } from '@/components/fixtures/fixtureMetrics'
+import { CustomRackMesh } from '@/components/fixtures/CustomRackMesh'
 import type { Rack } from '@/store/planogramStore'
 
 interface PlacementPreviewProps {
-  position: { x: number; z: number } | null
+  position: { x: number; z: number; rotationY: number } | null
 }
 
 /** Ghost outline showing where the fixture will land. */
@@ -24,15 +25,26 @@ export function PlacementPreview({ position }: PlacementPreviewProps) {
     width: pending.width,
     depth: pending.depth,
     fixtureType: placingType,
+    customConfig: pending.customConfig,
     position: { x: position.x, y: 0, z: position.z },
     sides: [],
     isDoubleSided: pending.sided === 'two',
   }
 
-  const { rackHeight, groupY } = computeFixtureMetrics(ghostRack)
+  const { groupY } = computeFixtureMetrics(ghostRack)
+
+  if (placingType === 'CUSTOM' && pending.customConfig) {
+    return (
+      <group position={[position.x, groupY, position.z]} rotation={[0, position.rotationY, 0]}>
+        <CustomRackMesh config={pending.customConfig} isPreview />
+      </group>
+    )
+  }
+
+  const { rackHeight } = computeFixtureMetrics(ghostRack)
 
   return (
-    <group position={[position.x, groupY, position.z]}>
+    <group position={[position.x, groupY, position.z]} rotation={[0, position.rotationY, 0]}>
       <mesh>
         <boxGeometry args={[pending.width, rackHeight, pending.depth]} />
         <meshStandardMaterial
@@ -53,5 +65,5 @@ export function PlacementPreview({ position }: PlacementPreviewProps) {
 export function placementHintLabel(placingType: string | null, pending: { width: number; depth: number } | null) {
   if (!placingType || !pending) return 'Click anywhere on the floor to place fixture'
   const label = FIXTURE_LIBRARY[placingType as keyof typeof FIXTURE_LIBRARY]?.label ?? 'Fixture'
-  return `Place ${label} (${pending.width}m × ${pending.depth}m) — click floor or drop from palette`
+  return `Place ${label} (${pending.width.toFixed(1)}m × ${pending.depth.toFixed(1)}m) — click near a wall to snap flush`
 }

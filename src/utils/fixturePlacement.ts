@@ -1,5 +1,6 @@
 import type { PendingRackParams, Rack } from '@/store/planogramStore'
 import { FIXTURE_LIBRARY, resolveFixtureType, type FixtureType } from '@/components/fixtures/types'
+import { WAREHOUSE_SCALE } from '@/constants/warehouse'
 
 interface PlacementState {
   area: { racks: Rack[] }
@@ -16,8 +17,8 @@ export function buildPendingRackFromFixture(
   const codePrefix = def.label.replace(/\s+/g, '-').replace(/\//g, '').toUpperCase()
 
   return {
-    width: def.defaultWidth,
-    depth: def.defaultDepth,
+    width: def.defaultWidth * WAREHOUSE_SCALE,
+    depth: def.defaultDepth * WAREHOUSE_SCALE,
     plankType: 'standard',
     sided: def.defaultSided,
     fixtureType,
