@@ -8,6 +8,8 @@ import type { Rack } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { computeFixtureMetrics } from './fixtureMetrics'
 import { resolveFixtureType, type FixtureType } from './types'
+import { DEFAULT_RACK_WIDTH } from '@/constants/dimensions'
+import { safeDim, safePosition } from '@/utils/safeDimensions'
 import { GondolaFixture } from './procedural/GondolaFixture'
 import { WallBayFixture } from './procedural/WallBayFixture'
 import { EndCapFixture } from './procedural/EndCapFixture'
@@ -74,10 +76,13 @@ export function FixtureRenderer({ rack }: FixtureRendererProps) {
 
   const Shell = FIXTURE_COMPONENTS[fixtureType] ?? GondolaFixture
 
+  const rackW = safeDim(rack.width, DEFAULT_RACK_WIDTH)
+  const rackD = safeDim(rack.depth, 2)
+
   return (
     <group
       userData={{ id: rack.id, fixtureType }}
-      position={[rack.position.x, groupY, rack.position.z]}
+      position={[safePosition(rack.position.x, 0), groupY, safePosition(rack.position.z, 0)]}
       rotation={[rot.x, rot.y, rot.z]}
     >
       <Shell
@@ -93,7 +98,7 @@ export function FixtureRenderer({ rack }: FixtureRendererProps) {
 
       {isSelected && (
         <mesh ref={meshRef} raycast={() => null}>
-          <boxGeometry args={[rack.width + 0.3, rackHeight + 0.3, rack.depth + 0.3]} />
+          <boxGeometry args={[rackW + 0.3, rackHeight + 0.3, rackD + 0.3]} />
           <meshStandardMaterial color="#2C5282" transparent opacity={0.1} wireframe />
         </mesh>
       )}

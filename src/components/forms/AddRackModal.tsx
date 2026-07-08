@@ -140,7 +140,7 @@ export function AddRackModal({
             <Input
               inputMode="decimal"
               value={form.width}
-              placeholder="2.5"
+              placeholder="2.7"
               error={!!errors.width}
               onChange={(e) => set({ width: e.target.value })}
             />
@@ -150,7 +150,7 @@ export function AddRackModal({
             <Input
               inputMode="decimal"
               value={form.depth}
-              placeholder="1.2"
+              placeholder="1.1"
               error={!!errors.height}
               onChange={(e) => set({ depth: e.target.value })}
             />

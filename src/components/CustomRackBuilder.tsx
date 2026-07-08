@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   FiX,
   FiLayers,
@@ -136,7 +136,9 @@ export function CustomRackBuilder() {
   const close = usePlanogramStore((s) => s.closeCustomRackBuilder)
   const place = usePlanogramStore((s) => s.placeCustomRackFromBuilder)
   const updateRack = usePlanogramStore((s) => s.updateRackCustomConfig)
+  const saveRackLayout = usePlanogramStore((s) => s.saveRackLayoutToServer)
   const openBuilder = usePlanogramStore((s) => s.openCustomRackBuilder)
+  const [saving, setSaving] = useState(false)
 
   const dims = useMemo(() => computeCustomRackDimensions(draft), [draft])
 
@@ -150,10 +152,30 @@ export function CustomRackBuilder() {
   const patchWalls = (p: Partial<CustomRackConfig['walls']>) =>
     setDraft((d) => ({ ...d, walls: { ...d.walls, ...p } }))
 
-  const handleSaveEdit = () => {
-    if (editingId) {
-      updateRack(editingId, draft)
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    const { exceptions } = updateRack(editingId, draft)
+    if (exceptions && exceptions.length > 0) {
+      const summary = exceptions
+        .slice(0, 5)
+        .map((e) => e.message)
+        .join('\n')
+      window.alert(
+        `Layout cascade adjusted nested sizes:\n\n${summary}${
+          exceptions.length > 5 ? `\n…and ${exceptions.length - 5} more` : ''
+        }`,
+      )
+    }
+    setSaving(true)
+    try {
+      const res = await saveRackLayout(editingId)
+      if (!res.success) {
+        window.alert(res.message ?? 'Failed to save rack layout')
+        return
+      }
       close()
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -237,6 +259,9 @@ export function CustomRackBuilder() {
           <p className="text-xs text-white font-mono">
             {dims.innerWidth.toFixed(2)} × {dims.innerDepth.toFixed(2)} × {dims.innerHeight.toFixed(2)} m
           </p>
+          <p className="text-[10px] text-emerald-300/90 mt-1 leading-snug">
+            inner = outer − 2×wall · rows/bins rescale · facings clamp
+          </p>
           <p className="text-[10px] text-gray-400 mt-1">
             Body {dims.bodyH.toFixed(2)}m
           </p>
@@ -279,9 +304,10 @@ export function CustomRackBuilder() {
             <button
               type="button"
               onClick={handleSaveEdit}
-              className="w-full py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors"
+              disabled={saving}
+              className="w-full py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors disabled:opacity-60"
             >
-              Save changes
+              {saving ? 'Saving…' : 'Save changes'}
             </button>
             <button
               type="button"

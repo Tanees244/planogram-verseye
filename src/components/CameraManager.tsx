@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Box3 } from 'three'
+import { isValidBox3 } from '@/utils/threeBounds'
 import { usePlanogramStore } from '@/store/planogramStore'
 import type { CameraControls } from '@react-three/drei'
 
@@ -38,6 +39,7 @@ export function CameraManager({ controlsRef }: { controlsRef: React.RefObject<Ca
 
     if (targetObj) {
       const box = new Box3().setFromObject(targetObj)
+      if (!isValidBox3(box)) return
 
       // Use fitToBox for smooth zoom to the object
       // Padding ensures we don't zoom in TOO close (sticking camera inside object)

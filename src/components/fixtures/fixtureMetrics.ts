@@ -1,6 +1,7 @@
 import type { Rack } from '@/store/planogramStore'
 import { FIXTURE_LIBRARY, resolveFixtureType } from './types'
 import { computeCustomRackDimensions } from './customRackTypes'
+import { safeDim } from '@/utils/safeDimensions'
 
 export interface FixtureMetrics {
   rackHeight: number
@@ -16,15 +17,16 @@ export function computeFixtureMetrics(rack: Rack): FixtureMetrics {
 
   let rackHeight: number
   if (fixtureType === 'CUSTOM' && rack.customConfig) {
-    rackHeight = computeCustomRackDimensions(rack.customConfig).totalHeight
+    rackHeight = safeDim(computeCustomRackDimensions(rack.customConfig).totalHeight, minHeight, minHeight)
   } else {
     const maxRows = Math.max(...rack.sides.map((s) => s.rows.length), 0)
     const totalRowHeight =
       rack.sides.length > 0
         ? Math.max(
             ...rack.sides.map((side) =>
-              side.rows.reduce((sum, r) => sum + r.height, 0),
+              side.rows.reduce((sum, r) => sum + safeDim(r.height, 1.5), 0),
             ),
+            0,
           )
         : 0
     const contentHeight = maxRows > 0 ? totalRowHeight + 0.5 : minHeight

@@ -30,6 +30,8 @@ export interface Product {
     description: string;
     status: 'Active' | 'Archived';
     createdDate: string;
+    imageUrl?: string;
+    code?: string;
 }
 
 export interface AddCategoryRequest {

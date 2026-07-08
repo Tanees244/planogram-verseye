@@ -97,12 +97,22 @@ export async function proxyLayout(
             if (payload) {
                 console.error(`[proxyLayout ${method} ${path}] Request payload was:`, payload);
             }
+            const errors = data && typeof data === 'object' && Array.isArray(data.errors) ? data.errors : undefined;
+            const detail =
+                errors?.map((e: any) => e?.message || e?.field).filter(Boolean).join('; ') || null;
             const message =
+                detail ||
                 (data && typeof data === 'object' && (data.message || data.title)) ||
                 (typeof data === 'string' && data) ||
                 `Backend returned ${res.status}`;
             return NextResponse.json(
-                { isRequestSuccess: false, message, statusCode: res.status, data: null },
+                {
+                    isRequestSuccess: false,
+                    message,
+                    statusCode: res.status,
+                    data: null,
+                    ...(errors ? { errors } : {}),
+                },
                 { status: res.status }
             );
         }

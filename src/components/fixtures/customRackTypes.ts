@@ -139,24 +139,24 @@ export function computeCustomRackDimensions(cfg: CustomRackConfig): CustomRackDi
 export function createEndCapPreset(): CustomRackConfig {
   return retailScaled({
     preset: 'END_CAP',
-    outerWidth: 1.4,
-    outerDepth: 0.85,
-    outerHeight: 2.2,
+    outerWidth: 0.9,
+    outerDepth: 0.5,
+    outerHeight: 1.8,
     wallThickness: 0.06,
     header: {
       enabled: true,
       height: 0.45,
-      width: 1.44,
-      depth: 0.32,
-      protrusion: 0.08,
+      width: 0.94,
+      depth: 0.28,
+      protrusion: 0.06,
       color: '#27ae60',
       emissive: '#1e8449',
     },
     footer: {
       enabled: true,
       height: 0.2,
-      width: 1.4,
-      depth: 0.9,
+      width: 0.9,
+      depth: 0.55,
       protrusion: 0.05,
       color: '#27ae60',
       emissive: '#1e8449',
@@ -204,10 +204,11 @@ export function createRefrigeratedPreset(): CustomRackConfig {
 export function createBlankCustomRack(): CustomRackConfig {
   return retailScaled({
     preset: 'CUSTOM',
-    outerWidth: 1.2,
-    outerDepth: 0.5,
-    outerHeight: 2.1,
-    wallThickness: 0.04,
+    // Standard pallet / grocery bay start (metres)
+    outerWidth: 2.7,
+    outerDepth: 1.1,
+    outerHeight: 2.0,
+    wallThickness: 0.06,
     header: {
       enabled: false,
       height: 0.35,

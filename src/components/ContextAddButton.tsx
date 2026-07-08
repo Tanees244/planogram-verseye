@@ -15,7 +15,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2 } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { Spinner } from "./Spinner";
@@ -24,10 +24,15 @@ import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
 import { ActionBar, ActionBtn } from '@/components/ui/ActionBar'
 import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeightsEditor'
+import { ShelfTalkerPanel } from '@/components/ShelfTalkerPanel'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
-import { validateRackForm } from '@/utils/rackFormUtils'
-import type { FixtureType } from '@/components/fixtures/types'
+import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
+import {
+  DEFAULT_RACK_DEPTH,
+  DEFAULT_RACK_WIDTH,
+  GROCERY_SHELF_SPACING,
+} from '@/constants/dimensions'
 import { cn } from '@/lib/cn'
 export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
   const isSidebar = layout === 'sidebar';
@@ -56,10 +61,16 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     deleteRow,
     deleteBin,
     deleteProduct,
+    deleteProductFromServer,
     addProduct,
     openCustomRackBuilder,
     customRackBuilderOpen,
     setSelected,
+    saveRackLayoutToServer,
+    isSavingLayout,
+    saveLayoutError,
+    rotateRack,
+    setRackRotationY,
   } = usePlanogramStore();
 
   const [showRackModal, setShowRackModal] = useState(false);
@@ -69,6 +80,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   // Per-action loading states for addition buttons
   const [addingRow, setAddingRow] = useState(false);
   const [addingBin, setAddingBin] = useState(false);
+  const [savingLayout, setSavingLayout] = useState(false);
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -131,18 +143,11 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     }
   }, [selectedType, selectedId]);
 
-  const [rackForm, setRackForm] = useState<RackFormState>({
-    width: "2.5",
-    depth: "1.2",
-    rackCode: "",
-    plankType: "standard",
-    sided: "one" as "one" | "two",
-    fixtureType: "GONDOLA" as FixtureType,
-  });
+  const [rackForm, setRackForm] = useState<RackFormState>(defaultRackForm);
   const [rackErrors, setRackErrors] = useState<Record<string, string | null>>({});
   const [isRackFormValid, setIsRackFormValid] = useState(false);
 
-  const [rowForm, setRowForm] = useState({ height: "1.5" });
+  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING) });
 
   const { attachProductToBin } = usePlanogramStore();
 
@@ -196,8 +201,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       return
     }
     setPendingRackParams({
-      width: parseFloat(rackForm.width) || 2.5,
-      depth: parseFloat(rackForm.depth) || 2,
+      width: parseFloat(rackForm.width) || DEFAULT_RACK_WIDTH,
+      depth: parseFloat(rackForm.depth) || DEFAULT_RACK_DEPTH,
       rackCode: rackForm.rackCode,
       globalLocationId: selectedLocationId,
       plankType: rackForm.plankType,
@@ -237,6 +242,92 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               }}
             >
               Move Rack
+            </ActionBtn>
+            <div
+              className={cn(
+                'rounded-xl border p-2 space-y-2',
+                isSidebar
+                  ? 'w-full bg-black/40 border-white/10'
+                  : 'bg-white border-gray-200',
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[10px] font-semibold uppercase tracking-wide',
+                  isSidebar ? 'text-gray-400' : 'text-gray-500',
+                )}
+              >
+                Rotate{' '}
+                <span className={isSidebar ? 'text-gray-300' : 'text-gray-700'}>
+                  {Math.round((((rack?.rotation?.y ?? 0) * 180) / Math.PI + 360) % 360)}°
+                </span>
+              </p>
+              <div className={cn('flex gap-1.5', isSidebar ? 'flex-col' : 'flex-row')}>
+                <ActionBtn
+                  variant="secondary"
+                  fullWidth={isSidebar}
+                  onClick={() => selectedId && rotateRack(selectedId, -90)}
+                  title="Rotate left 90°"
+                >
+                  <FiRotateCcw /> 90° Left
+                </ActionBtn>
+                <ActionBtn
+                  variant="secondary"
+                  fullWidth={isSidebar}
+                  onClick={() => selectedId && rotateRack(selectedId, 90)}
+                  title="Rotate right 90°"
+                >
+                  <FiRotateCw /> 90° Right
+                </ActionBtn>
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {[0, 90, 180, 270].map((deg) => {
+                  const currentDeg = Math.round((((rack?.rotation?.y ?? 0) * 180) / Math.PI + 360) % 360);
+                  const active = currentDeg === deg;
+                  return (
+                    <button
+                      key={deg}
+                      type="button"
+                      onClick={() => selectedId && setRackRotationY(selectedId, (deg * Math.PI) / 180)}
+                      className={cn(
+                        'py-1.5 rounded-md text-[10px] font-semibold border transition-colors',
+                        active
+                          ? isSidebar
+                            ? 'bg-brand text-white border-brand'
+                            : 'bg-brand text-white border-brand'
+                          : isSidebar
+                            ? 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100',
+                      )}
+                    >
+                      {deg}°
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              disabled={savingLayout || isSavingLayout}
+              onClick={async () => {
+                if (!selectedId) return;
+                setSavingLayout(true);
+                try {
+                  const res = await saveRackLayoutToServer(selectedId);
+                  if (!res.success) setAddRackError(res.message ?? 'Failed to save layout');
+                  else setAddRackError(null);
+                } finally {
+                  setSavingLayout(false);
+                }
+              }}
+            >
+              {(savingLayout || isSavingLayout) ? (
+                <Spinner />
+              ) : (
+                <FiSave />
+              )}{' '}
+              Save layout
             </ActionBtn>
             {isSidebar ? (
               <ActionBtn
@@ -296,6 +387,18 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               {moveRackError}
             </div>
           )}
+          {saveLayoutError && (
+            <div
+              className={cn(
+                'px-3 py-2 rounded-lg border text-sm',
+                isSidebar
+                  ? 'bg-amber-500/15 border-amber-500/25 text-amber-100 w-full text-[11px]'
+                  : 'bg-amber-50 border-amber-200 text-amber-800 max-w-md',
+              )}
+            >
+              {saveLayoutError}
+            </div>
+          )}
           {rack && <RackRowHeightsPanel rack={rack} onSelectRow={(id) => setSelected(id, 'row')} />}
         </div>
 
@@ -309,7 +412,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             if (!selectedId) return;
             setAddingRow(true);
             try {
-              const res = await addRowToServer(selectedId, parseFloat(rowForm.height) || 1.5);
+              const res = await addRowToServer(selectedId, parseFloat(rowForm.height) || GROCERY_SHELF_SPACING);
               if (!res.success) setAddRackError(res.message);
               else setShowRowModal(false);
             } finally {
@@ -406,6 +509,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               />
             </div>
           )}
+          {row && <ShelfTalkerPanel row={row} dark={isSidebar} />}
           <ActionBar label="Row selected" layout={layout}>
           <ActionBtn
             fullWidth={isSidebar}
@@ -487,6 +591,37 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           onSuccess={handleAttachProductSuccess}
         />
       </>
+    );
+  }
+
+  if (selectedType === "product") {
+    return (
+      <ActionBar label="Product selected" layout={layout}>
+        {isSidebar ? (
+          <ActionBtn
+            variant="danger"
+            fullWidth
+            onClick={async () => {
+              const res = await deleteProductFromServer(selectedId);
+              if (!res.success) alert(res.message);
+            }}
+          >
+            <FiTrash2 /> Detach product
+          </ActionBtn>
+        ) : (
+          <Button
+            variant={"default"}
+            size={"sm"}
+            className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+            onClick={async () => {
+              const res = await deleteProductFromServer(selectedId);
+              if (!res.success) alert(res.message);
+            }}
+          >
+            <FiTrash2 />
+          </Button>
+        )}
+      </ActionBar>
     );
   }
 

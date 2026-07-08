@@ -4,7 +4,9 @@
 import { Html } from '@react-three/drei'
 import { usePlanogramStore, type Rack, type Product, type Bin, type Row } from '@/store/planogramStore'
 import { useThree } from '@react-three/fiber'
-import { Vector3, Box3 } from 'three'
+import { Vector3 } from 'three'
+import { boundsCenterAboveObject } from '@/utils/threeBounds'
+import { safePosition } from '@/utils/safeDimensions'
 import { useEffect, useState } from 'react'
 
 export function SelectionPopup() {
@@ -28,17 +30,21 @@ export function SelectionPopup() {
     })
 
     if (foundObj) {
-      const box = new Box3().setFromObject(foundObj)
-      const center = new Vector3()
-      box.getCenter(center)
-      // Position slightly above the object
-      center.y = box.max.y + 0.5
-      setPosition(center)
+      const center = boundsCenterAboveObject(foundObj)
+      if (center) setPosition(center)
     } else {
       // Fallback calculation for known types if scene graph isn't ready
       if (selectedType === 'rack') {
         const rack = area.racks.find((r: Rack) => r.id === selectedId)
-        if (rack) setPosition(new Vector3(rack.position.x, 3, rack.position.z))
+        if (rack) {
+          setPosition(
+            new Vector3(
+              safePosition(rack.position.x, 0),
+              3,
+              safePosition(rack.position.z, 0),
+            ),
+          )
+        }
       }
     }
 

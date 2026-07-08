@@ -25,7 +25,15 @@ import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModa
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
 import { Btn } from '@/components/ui/form'
-import { validateRackForm } from '@/utils/rackFormUtils'
+import {
+  DEFAULT_PRODUCT_DEPTH,
+  DEFAULT_PRODUCT_HEIGHT,
+  DEFAULT_PRODUCT_WIDTH,
+  DEFAULT_RACK_DEPTH,
+  DEFAULT_RACK_WIDTH,
+  GROCERY_SHELF_SPACING,
+} from '@/constants/dimensions'
+import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
 
 export function TraditionalView() {
   const {
@@ -42,6 +50,7 @@ export function TraditionalView() {
     deleteRow,
     deleteBin,
     deleteProduct,
+    deleteProductFromServer,
     setPendingRackParams,
     addRackError,
     setAddRackError,
@@ -67,14 +76,7 @@ export function TraditionalView() {
   const [addingRow, setAddingRow] = useState(false)
   const [addingBin, setAddingBin] = useState(false)
 
-  const [rackForm, setRackForm] = useState<RackFormState>({
-    width: '2.5',
-    depth: '1.2',
-    rackCode: '',
-    plankType: 'standard',
-    sided: 'one',
-    fixtureType: 'GONDOLA',
-  })
+  const [rackForm, setRackForm] = useState<RackFormState>(defaultRackForm)
   const [rackFormErrors, setRackFormErrors] = useState<Record<string, string | null>>({})
   // Locations for Add Rack (mirror Advanced behaviour)
   const [locations, setLocations] = useState<{ id: string; locationCode: string }[]>([])
@@ -84,13 +86,13 @@ export function TraditionalView() {
     () => usePlanogramStore.getState().selectedStoreId ?? ''
   )
   const [locationValidationError, setLocationValidationError] = useState<string | null>(null)
-  const [rowForm, setRowForm] = useState({ height: '1.5' })
+  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING) })
   const [productForm, setProductForm] = useState({
     name: '',
     color: '#2C5282',
-    width: '0.15',
-    depth: '0.2',
-    height: '0.08',
+    width: String(DEFAULT_PRODUCT_WIDTH),
+    depth: String(DEFAULT_PRODUCT_DEPTH),
+    height: String(DEFAULT_PRODUCT_HEIGHT),
     quantity: '1',
   })
 
@@ -440,9 +442,10 @@ export function TraditionalView() {
                                               </div>
                                             </div>
                                             <button
-                                              onClick={(e) => {
+                                              onClick={async (e) => {
                                                 e.stopPropagation()
-                                                deleteProduct(product.id)
+                                                const res = await deleteProductFromServer(product.id)
+                                                if (!res.success && res.message) alert(res.message)
                                               }}
                                               className="p-1.5 bg-[#e1e7ef] text-white rounded-md text-xs hover:bg-white transition-all shadow-sm hover:shadow-md"
                                             >
@@ -493,8 +496,8 @@ export function TraditionalView() {
             setLocationValidationError(errs.location ?? null)
             return
           }
-          const w = parseFloat(rackForm.width) || 2.5
-          const d = parseFloat(rackForm.depth) || 1.2
+          const w = parseFloat(rackForm.width) || DEFAULT_RACK_WIDTH
+          const d = parseFloat(rackForm.depth) || DEFAULT_RACK_DEPTH
           const res = await addRackToServer(undefined, {
             width: w,
             depth: d,

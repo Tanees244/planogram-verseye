@@ -9,6 +9,7 @@ import { Bin as BinType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
 import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
+import { safeDim } from "@/utils/safeDimensions";
 
 interface BinProps {
   bin: BinType;
@@ -26,37 +27,38 @@ export function Bin({
   binWidth,
 }: BinProps) {
   const meshRef = useRef<Mesh>(null);
-  const { selectedId, setSelected } = usePlanogramStore();
+  const [hovered, setHovered] = useState(false);
+  const { selectedId, setSelected, isPlacingProduct, placeProductOnBin } =
+    usePlanogramStore();
 
   const isSelected = selectedId === bin.id;
+  const placing = isPlacingProduct;
 
   useFrame(() => {
     if (meshRef.current) {
-      meshRef.current.scale.setScalar(isSelected ? 1.05 : 1);
+      meshRef.current.scale.setScalar(isSelected || (placing && hovered) ? 1.05 : 1);
     }
   });
 
-  const actualBinWidth = binWidth ?? bin.width;
-  const actualBinDepth = binDepth ?? bin.depth;
-  const actualBinHeight = binHeight ?? bin.height;
+  const actualBinWidth = safeDim(binWidth ?? bin.width, 0.35);
+  const actualBinDepth = safeDim(binDepth ?? bin.depth, 0.35);
+  const actualBinHeight = safeDim(binHeight ?? bin.height, 0.35);
   const wallThick = 0.02;
   const lipHeight = 0.02;
 
   const facings = expandProductsByQuantity(bin.products);
 
   // Scale products to fill bin height and depth - products should fill the bin vertically and depth-wise
-  const defaultProductHeight = facings[0]?.height ?? 0.35;
-  const defaultProductWidth = facings[0]?.width ?? 0.35;
-  const defaultProductDepth = facings[0]?.depth ?? 0.35;
+  const defaultProductHeight = safeDim(facings[0]?.height, 0.35);
+  const defaultProductWidth = safeDim(facings[0]?.width, 0.35);
+  const defaultProductDepth = safeDim(facings[0]?.depth, 0.35);
 
-  // Scale height to fill bin height, depth to fill bin depth, width stays proportional or fits bin width
   const productHeightScale = actualBinHeight / defaultProductHeight;
   const productDepthScale = actualBinDepth / defaultProductDepth;
-  // For width, scale proportionally but ensure all facings fit in bin width
   const totalProductsWidth = defaultProductWidth * facings.length;
   const productWidthScale = Math.min(
     productHeightScale,
-    facings.length > 0 ? actualBinWidth / totalProductsWidth : productHeightScale,
+    facings.length > 0 ? actualBinWidth / Math.max(totalProductsWidth, 0.01) : productHeightScale,
   );
 
   // Lay out facings along bin width (X), horizontally
@@ -70,10 +72,15 @@ export function Bin({
     xOffset += scaledWidth;
   });
 
-  const [hovered, setHovered] = useState(false);
-
-  const handleBinClick = (e: any) => {
+  const handleBinClick = async (e: any) => {
     e.stopPropagation();
+    if (isPlacingProduct) {
+      const res = await placeProductOnBin(bin.id, 1);
+      if (!res.success && res.message) {
+        /* error shown via store.addProductError */
+      }
+      return;
+    }
     setSelected(bin.id, "bin");
   };
 
@@ -90,7 +97,7 @@ export function Bin({
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
-          document.body.style.cursor = "pointer";
+          document.body.style.cursor = placing ? "copy" : "pointer";
         }}
         onPointerOut={() => {
           setHovered(false);
@@ -103,15 +110,23 @@ export function Bin({
           metalness={0.25}
           roughness={0.55}
           transparent
-          opacity={isSelected ? 0.6 : 0.5}
-          emissive={hovered ? "#2C5282" : "#000000"}
-          emissiveIntensity={hovered ? 0.4 : 0}
+          opacity={isSelected || (placing && hovered) ? 0.7 : 0.5}
+          emissive={hovered || (placing && isSelected) ? "#2C5282" : placing ? "#059669" : "#000000"}
+          emissiveIntensity={hovered || placing ? 0.45 : 0}
         />
         <Edges
           scale={1}
           threshold={15}
-          color={isSelected ? "#2C5282" : hovered ? "#2C5282" : "#2c3e50"}
-          lineWidth={isSelected ? 3 : 2}
+          color={
+            isSelected
+              ? "#2C5282"
+              : placing && hovered
+                ? "#10b981"
+                : hovered
+                  ? "#2C5282"
+                  : "#2c3e50"
+          }
+          lineWidth={isSelected || (placing && hovered) ? 3 : 2}
         />
       </mesh>
       {/* Lip/rim – skip raycast so clicks hit the main bin mesh */}

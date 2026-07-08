@@ -11,6 +11,7 @@ import { SceneAtmosphere, SceneLighting } from "@/components/scene/SceneAtmosphe
 import { usePlanogramStore } from "@/store/planogramStore";
 import { WAREHOUSE_SCALE } from "@/constants/warehouse";
 import { FloorDropHandler } from "@/components/scene/FloorDropHandler";
+import { ProductDropHandler } from "@/components/scene/ProductDropHandler";
 
 const S = WAREHOUSE_SCALE;
 
@@ -32,6 +33,7 @@ export function Scene3DCanvas() {
       />
       <CameraManager controlsRef={controlsRef} />
       <FloorDropHandler />
+      <ProductDropHandler />
       <SelectionPopup />
       <Area />
     </Canvas>

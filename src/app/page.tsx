@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle'
 import { FixturePalette } from '@/components/FixturePalette'
+import { ProductPalette } from '@/components/ProductPalette'
 import { DayNightToggle } from '@/components/ui/DayNightToggle'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { CustomRackBuilder } from '@/components/CustomRackBuilder'
@@ -13,6 +14,14 @@ import { ContextAddButton } from '@/components/ContextAddButton'
 import Link from 'next/link'
 import { usePlanogramStore, type Bin, type Product } from '@/store/planogramStore'
 import StoreLayout from '@/components/StoreLayout'
+import {
+  DEFAULT_PRODUCT_DEPTH,
+  DEFAULT_PRODUCT_HEIGHT,
+  DEFAULT_PRODUCT_WIDTH,
+  DEFAULT_RACK_DEPTH,
+  DEFAULT_RACK_WIDTH,
+  GROCERY_SHELF_SPACING,
+} from '@/constants/dimensions'
 
 const Scene3D = dynamic(() => import('@/components/Scene3D').then((m) => ({ default: m.Scene3D })), { ssr: false })
 
@@ -106,7 +115,10 @@ function StoreBadge({ dark = false, align = 'center' }: { dark?: boolean; align?
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
   const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
+  const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
+  const saveStoreLayoutToServer = usePlanogramStore((s) => s.saveStoreLayoutToServer)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
   if (!selectedStoreId) return null
 
   const badge = (
@@ -114,20 +126,43 @@ function StoreBadge({ dark = false, align = 'center' }: { dark?: boolean; align?
       className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-md text-sm ${dark ? 'bg-black/70 backdrop-blur-sm text-gray-100' : 'bg-white border border-gray-200 text-gray-800'
         }`}
     >
-      {isLoadingStoreLayout && (
+      {(isLoadingStoreLayout || isSavingLayout) && (
         <span className="w-4 h-4 border-2 border-brand/20 border-t-brand rounded-full animate-spin shrink-0" />
       )}
       <span className="font-semibold truncate max-w-[280px]">
-        {isLoadingStoreLayout ? 'Loading layout…' : (selectedStoreName || 'Selected store')}
+        {isLoadingStoreLayout
+          ? 'Loading layout…'
+          : isSavingLayout
+            ? 'Saving layout…'
+            : (selectedStoreName || 'Selected store')}
       </span>
       {!isLoadingStoreLayout && (
-        <button
-          onClick={() => setSelectedStore(null)}
-          className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${dark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-brand/10 hover:bg-brand/20 text-brand'
-            }`}
-        >
-          Change
-        </button>
+        <>
+          <button
+            type="button"
+            disabled={isSavingLayout}
+            onClick={async () => {
+              setSaveMessage(null)
+              const res = await saveStoreLayoutToServer()
+              setSaveMessage(res.message ?? (res.success ? 'Saved' : 'Save failed'))
+              setTimeout(() => setSaveMessage(null), 4000)
+            }}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 disabled:opacity-50 ${dark ? 'bg-brand/30 hover:bg-brand/40 text-white' : 'bg-brand/10 hover:bg-brand/20 text-brand'
+              }`}
+          >
+            Save all
+          </button>
+          <button
+            onClick={() => setSelectedStore(null)}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors shrink-0 ${dark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-brand/10 hover:bg-brand/20 text-brand'
+              }`}
+          >
+            Change
+          </button>
+        </>
+      )}
+      {saveMessage && (
+        <span className="text-[10px] text-brand-light truncate max-w-[140px]">{saveMessage}</span>
       )}
     </div>
   )
@@ -166,16 +201,21 @@ export default function Home() {
 
   const [showAddRackModal, setShowAddRackModal] = useState(false)
   const [showAddRowModal, setShowAddRowModal] = useState(false)
-  const [rackForm, setRackForm] = useState({ width: '2.5', length: '2', plankType: 'standard' as string, sided: 'one' as 'one' | 'two' })
-  const [rowHeightInput, setRowHeightInput] = useState('1.5') // string so user can clear field
+  const [rackForm, setRackForm] = useState({
+    width: String(DEFAULT_RACK_WIDTH),
+    length: String(DEFAULT_RACK_DEPTH),
+    plankType: 'standard' as string,
+    sided: 'one' as 'one' | 'two',
+  })
+  const [rowHeightInput, setRowHeightInput] = useState(String(GROCERY_SHELF_SPACING)) // string so user can clear field
   const [rowSidedInput, setRowSidedInput] = useState<'one' | 'two'>('one')
   const [showAddProductModal, setShowAddProductModal] = useState(false)
   const [productForm, setProductForm] = useState({
     name: '',
     color: '#2C5282',
-    width: '0.15',
-    depth: '0.2',
-    height: '0.08',
+    width: String(DEFAULT_PRODUCT_WIDTH),
+    depth: String(DEFAULT_PRODUCT_DEPTH),
+    height: String(DEFAULT_PRODUCT_HEIGHT),
     quantity: '1',
   })
 
@@ -250,8 +290,11 @@ export default function Home() {
       {/* View mode + fixture library + context actions (left column) */}
       <div className="absolute top-4 left-4 bottom-4 z-[100] flex flex-col gap-2 items-stretch w-[272px]">
         <ViewModeToggle mode="advanced" onChange={setViewMode} dark />
-        <FixturePalette />
-        <div className="shrink-0">
+        <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+          <FixturePalette />
+          <ProductPalette />
+        </div>
+        <div className="shrink-0 max-h-[38vh] overflow-y-auto">
           <ContextAddButton layout="sidebar" />
         </div>
       </div>

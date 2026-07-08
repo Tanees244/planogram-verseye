@@ -4,10 +4,9 @@ import { proxyLayout } from '@/app/api/utils/layoutProxy';
 
 interface DetachRequest {
   binId: string;
-  skuId?: string;
-  productId?: string;
-  quantity: number;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: NextRequest) {
   let body: DetachRequest;
@@ -16,26 +15,30 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json(
       { isRequestSuccess: false, message: 'Invalid JSON body', statusCode: 400 },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const skuId = body.skuId ?? body.productId;
-  const quantity = Number(body.quantity);
-
-  if (!body?.binId || !skuId) {
+  const binId = typeof body.binId === 'string' ? body.binId.trim() : '';
+  if (!binId) {
     return NextResponse.json(
-      { isRequestSuccess: false, message: 'binId and skuId are required', statusCode: 400 },
-      { status: 400 }
+      { isRequestSuccess: false, message: 'binId is required', statusCode: 400 },
+      { status: 400 },
+    );
+  }
+  if (!UUID_RE.test(binId)) {
+    return NextResponse.json(
+      {
+        isRequestSuccess: false,
+        message: 'binId must be a valid server UUID',
+        statusCode: 400,
+      },
+      { status: 400 },
     );
   }
 
   return proxyLayout(req, '/api/v1/layout/bin-inventory/detach', {
     method: 'POST',
-    body: {
-      binId: body.binId,
-      skuId,
-      quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-    },
+    body: { binId },
   });
 }

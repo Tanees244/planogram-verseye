@@ -1,3 +1,4 @@
+import { DEFAULT_RACK_DEPTH, DEFAULT_RACK_WIDTH } from '@/constants/dimensions'
 import type { FixtureType } from '@/components/fixtures/types'
 import type { RackFormState } from '@/components/forms/AddRackModal'
 
@@ -22,8 +23,8 @@ export function validateRackForm(
 }
 
 export const defaultRackForm = (): RackFormState => ({
-  width: '2.5',
-  depth: '1.2',
+  width: String(DEFAULT_RACK_WIDTH),
+  depth: String(DEFAULT_RACK_DEPTH),
   rackCode: '',
   plankType: 'standard',
   sided: 'two',

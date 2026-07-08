@@ -7,6 +7,8 @@ import { Mesh } from "three";
 import { Edges } from "@react-three/drei";
 import { Row as RowType, usePlanogramStore } from "@/store/planogramStore";
 import { Bin } from "./Bin";
+import { ShelfTalkerMeshes } from "./ShelfTalkerMeshes";
+import { safeDim } from "@/utils/safeDimensions";
 
 interface RowProps {
   row: RowType;
@@ -43,7 +45,10 @@ export function Row({
     }
   });
 
-  const binSpacing = row.bins.length > 0 ? rackDepth / row.bins.length : 0;
+  const rowHeight = safeDim(row.height, 1.5);
+  const safeRackWidth = safeDim(rackWidth, 1);
+  const safeRackDepth = safeDim(rackDepth, 1);
+  const binSpacing = row.bins.length > 0 ? safeRackDepth / row.bins.length : 0;
   const binDepth = binSpacing * 0.9;
   const borderThickness = 0.08;
   const z = shelfOffsetZ;
@@ -60,7 +65,7 @@ export function Row({
       {/* Hitbox for row selection – pushed to the back so bins in front get hit first */}
       <mesh
         userData={{ id: row.id }}
-        position={[0, 0, z + rackDepth / 2 - 0.05]}
+        position={[0, 0, z + safeRackDepth / 2 - 0.05]}
         onClick={selectRow}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -72,7 +77,7 @@ export function Row({
           document.body.style.cursor = "default";
         }}
       >
-        <boxGeometry args={[rackWidth, row.height, 0.1]} />
+        <boxGeometry args={[safeRackWidth, rowHeight, 0.1]} />
         <meshBasicMaterial
           color="#FFFFFF"
           transparent
@@ -84,8 +89,8 @@ export function Row({
       {/* Row as a container: one-sided = back wall blocks access from one side; two-sided = open both sides */}
       {/* Back wall – only for one-sided rows; skip raycast so bins can be clicked */}
       {!openBothSides && !hideBackWall && row.sided !== "two" && (
-        <mesh position={[0, 0, z + rackDepth / 2]} raycast={() => null}>
-          <boxGeometry args={[rackWidth, row.height, 0.06]} />
+        <mesh position={[0, 0, z + safeRackDepth / 2]} raycast={() => null}>
+          <boxGeometry args={[safeRackWidth, rowHeight, 0.06]} />
           <meshStandardMaterial
             color="#FFFFFF"
             metalness={0.5}
@@ -97,10 +102,10 @@ export function Row({
       {/* Floor of the slot – skip raycast so bins can be clicked */}
       <mesh
         ref={meshRef}
-        position={[0, -row.height / 2 + 0.03, z]}
+        position={[0, -rowHeight / 2 + 0.03, z]}
         raycast={() => null}
       >
-        <boxGeometry args={[rackWidth, 0.06, rackDepth]} />
+        <boxGeometry args={[safeRackWidth, 0.06, safeRackDepth]} />
         <meshStandardMaterial
           color="#FFFFFF"
           metalness={0.35}
@@ -117,19 +122,19 @@ export function Row({
       </mesh>
       {/* Front lip – skip raycast so clicks reach bins in front */}
       <mesh
-        position={[0, -row.height / 2 + 0.06, z - rackDepth / 2]}
+        position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
         raycast={() => null}
       >
-        <boxGeometry args={[rackWidth, 0.08, 0.06]} />
+        <boxGeometry args={[safeRackWidth, 0.08, 0.06]} />
         <meshStandardMaterial color="#34495e" metalness={0.5} roughness={0.4} />
       </mesh>
 
       {showBottomBorder && (
         <mesh
-          position={[0, -row.height / 2 - borderThickness / 2, z]}
+          position={[0, -rowHeight / 2 - borderThickness / 2, z]}
           raycast={() => null}
         >
-          <boxGeometry args={[rackWidth, borderThickness, rackDepth]} />
+          <boxGeometry args={[safeRackWidth, borderThickness, safeRackDepth]} />
           <meshStandardMaterial
             color="#FFFFFF"
             metalness={0.4}
@@ -144,19 +149,14 @@ export function Row({
       {row.bins.map((bin, index) => {
         const n = Math.max(row.bins.length, 1);
         // Calculate bin width: split row width equally among bins
-        const calculatedBinWidth = rackWidth / n;
-        // Constrain bin width to fit within allocated space (with small margin for spacing)
+        const calculatedBinWidth = safeRackWidth / n;
         const binWidth = Math.min(
-          bin.width ?? calculatedBinWidth,
+          safeDim(bin.width, calculatedBinWidth),
           calculatedBinWidth * 0.95,
         );
-        // Constrain bin depth to row depth (with small margin)
-        const binDepth = Math.min(bin.depth ?? rackDepth, rackDepth * 0.95);
-        // Bin height should match row height (minus small clearance for floor/lip)
-        const binHeightUse = bin.height ?? row.height - 0.15;
-        // Position bins evenly across row width, starting from left edge
-        // Use calculatedBinWidth for positioning to ensure even spacing
-        const xOffset = -rackWidth / 2 + calculatedBinWidth * (index + 0.5);
+        const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95);
+        const binHeightUse = safeDim(bin.height, rowHeight - 0.15);
+        const xOffset = -safeRackWidth / 2 + calculatedBinWidth * (index + 0.5);
         // Center bin vertically in the row (row group is at position, bin at y=0 is centered in row)
         const binY = 0;
         return (
@@ -170,6 +170,13 @@ export function Row({
           />
         );
       })}
+
+      <ShelfTalkerMeshes
+        talkers={row.talkers ?? []}
+        rowWidth={safeRackWidth}
+        rowHeight={rowHeight}
+        shelfZ={z - safeRackDepth / 2}
+      />
     </group>
   );
 }

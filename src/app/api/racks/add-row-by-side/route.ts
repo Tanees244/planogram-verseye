@@ -6,6 +6,13 @@ interface AddRowRequest {
   rackSideId: string;
   note?: string | null;
   height: number;
+  span?: number;
+  width?: number;
+  depth?: number;
+  sided?: string;
+  dividerThickness?: number;
+  yStart?: number;
+  yEnd?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -19,7 +26,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { rackSideId, note, height } = body;
+  const { rackSideId, note, height, span, width, depth, sided, dividerThickness, yStart, yEnd } =
+    body;
 
   if (!rackSideId || typeof rackSideId !== 'string') {
     return NextResponse.json(
@@ -34,8 +42,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return proxyLayout(req, '/api/v1/layout/rack-rows', {
-    method: 'POST',
-    body: { rackSideId, note: note ?? null, height },
-  });
+  const payload: Record<string, unknown> = { rackSideId, note: note ?? null, height };
+  if (span != null) payload.span = span;
+  if (width != null) payload.width = width;
+  if (depth != null) payload.depth = depth;
+  if (sided != null) payload.sided = sided;
+  if (dividerThickness != null) payload.dividerThickness = dividerThickness;
+  if (yStart != null) payload.yStart = yStart;
+  if (yEnd != null) payload.yEnd = yEnd;
+
+  return proxyLayout(req, '/api/v1/layout/rack-rows', { method: 'POST', body: payload });
 }

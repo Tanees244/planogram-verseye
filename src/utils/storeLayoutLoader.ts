@@ -1,5 +1,22 @@
 import type { Rack } from '@/store/planogramStore'
 import type { FixtureType } from '@/components/fixtures/types'
+import type { RackPlacement } from '@/types/rackBlueprint'
+import type { Dimensions3, RackShell, ShelfTalker } from '@/types/rackBlueprint'
+import { safeDim, safePosition } from '@/utils/safeDimensions'
+import {
+  DEFAULT_BIN_HEIGHT,
+  DEFAULT_PRODUCT_DEPTH,
+  DEFAULT_PRODUCT_HEIGHT,
+  DEFAULT_PRODUCT_WIDTH,
+} from '@/constants/dimensions'
+import {
+  parsePlacement,
+  parseQuadrant,
+  placementToPosition,
+  placementToRotation,
+  resolveRackDimensions,
+  shellToCustomConfig,
+} from '@/utils/rackBlueprintMapper'
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
@@ -17,13 +34,12 @@ export function resolveEntityId(value: unknown): string | undefined {
       resolveEntityId(obj.rackRowId) ??
       resolveEntityId(obj.binId) ??
       resolveEntityId(obj.rackId) ??
-      resolveEntityId(obj.sideId)
+      resolveEntityId(obj.sideId) ??
+      resolveEntityId(obj.shelfTalkerId)
     )
   }
   return undefined
 }
-
-const DEFAULT_BIN_HEIGHT = 0.12
 
 function computeBinDims(rackWidth: number, rackDepth: number, count: number) {
   const ext1 = rackWidth * 0.85
@@ -44,6 +60,7 @@ function asArray(value: any): any[] {
     value.bins ??
     value.sides ??
     value.skus ??
+    value.talkers ??
     value.data ??
     []
   )
@@ -55,15 +72,61 @@ export function normalizeSkus(skus: any[]): any[] {
     inventoryId: p.binInventoryId ?? p.inventoryId ?? p.id ?? undefined,
     name: p.skuName ?? p.name ?? p.productName ?? p.title ?? 'Product',
     color: p.color ?? `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
-    width: Number(p.width ?? 0.15),
-    height: Number(p.height ?? 0.08),
-    depth: Number(p.depth ?? 0.2),
-    quantity: Number(p.quantity ?? 1),
+    width: safeDim(p.width, DEFAULT_PRODUCT_WIDTH),
+    height: safeDim(p.height, DEFAULT_PRODUCT_HEIGHT),
+    depth: safeDim(p.depth, DEFAULT_PRODUCT_DEPTH),
+    quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
     brandName: p.brandName ?? undefined,
     categoryName: p.categoryName ?? undefined,
     imageUrl: p.imageUrl ?? p.image ?? undefined,
     imageStorageKey: p.imageStorageKey ?? undefined,
   }))
+}
+
+function normalizeBinProducts(raw: any) {
+  const productsRaw = raw.products ?? raw.skus ?? raw.inventory
+  if (productsRaw) return normalizeSkus(asArray(productsRaw))
+  if (raw.sku) return normalizeSkus([raw.sku])
+  return []
+}
+
+function resolveBinDimensions(
+  b: any,
+  rowHeight: number,
+  fallback: { width: number; depth: number },
+): { width: number; depth: number; height: number } {
+  return {
+    width: safeDim(b.width, fallback.width),
+    depth: safeDim(b.depth, fallback.depth),
+    height: safeDim(b.height, safeDim(rowHeight, DEFAULT_BIN_HEIGHT)),
+  }
+}
+
+function normalizeTalkers(raw: any): ShelfTalker[] {
+  return asArray(raw).map((t: any) => ({
+    id: resolveEntityId(t.id) ?? resolveEntityId(t.shelfTalkerId) ?? generateId(),
+    rackRowId: resolveEntityId(t.rackRowId) ?? null,
+    label: t.label ?? null,
+    length: safeDim(t.length, 0.2),
+    innerDepth: safeDim(t.innerDepth, 0.05),
+    outerHeight: safeDim(t.outerHeight, 0.08),
+    slotPosition: Math.max(1, Math.floor(Number(t.slotPosition) || 1)),
+    placementZone: t.placementZone ?? 'inner',
+  }))
+}
+
+/** Unwrap blueprint document (`data.rack` + `layout.sides`) into a flat structure shape. */
+export function unwrapRackPayload(raw: any): any {
+  if (!raw || typeof raw !== 'object') return raw
+  if (raw.rack && typeof raw.rack === 'object') {
+    const rack = raw.rack
+    return {
+      ...rack,
+      blueprintName: raw.name ?? rack.blueprintName,
+      sides: rack.sides ?? rack.layout?.sides ?? [],
+    }
+  }
+  return raw
 }
 
 const MAX_FACINGS = 24
@@ -98,35 +161,52 @@ export function totalProductFacings(products: { quantity?: number }[]): number {
   )
 }
 
-/** Turns one rack from the by-store payload into the store's rack shape. */
-export function normalizeRack(raw: any): Rack {
+/** Turns one rack from the by-store/structure/blueprint payload into the store's rack shape. */
+export function normalizeRack(rawInput: any): Rack {
+  const raw = unwrapRackPayload(rawInput)
   const rackId = resolveEntityId(raw.rackId) ?? resolveEntityId(raw.id) ?? generateId()
   const rackCode = raw.rackCode ?? raw.rack_code ?? `RACK-${rackId}`
-  const width = Number(raw.width ?? 2.5)
-  const depth = Number(raw.depth ?? raw.rackDepth ?? raw.height ?? 2)
+  const dims = resolveRackDimensions(raw)
+  const { width, depth, outerHeight } = dims
   const isDoubleSided = Boolean(raw.isDoubleSided ?? raw.is_double_sided)
-  const sidesRaw = asArray(raw.sides)
+  const fixtureType = (raw.fixtureType ?? raw.fixture_type ?? (isDoubleSided ? 'GONDOLA' : 'GONDOLA')) as FixtureType
+  const placement = parsePlacement(raw)
+  const rotation = placement ? placementToRotation(placement) : { x: 0, y: 0, z: 0 }
+  const quadrant = parseQuadrant(placement?.quadrant ?? raw.quadrant)
+  const shell = raw.shell as RackShell | null | undefined
+  const outer = raw.outer as Dimensions3 | null | undefined
+  const inner = raw.inner as Dimensions3 | null | undefined
+  const customConfig =
+    fixtureType === 'CUSTOM' ? shellToCustomConfig(shell, outer, 'CUSTOM') : undefined
+  const sidesRaw = asArray(raw.sides ?? raw.layout?.sides)
 
   const sides = (sidesRaw.length > 0 ? sidesRaw : [{ sideId: generateId(), sideCode: 'S1', rows: [] }]).map(
     (s: any, idx: number) => {
       const rowsRaw = asArray(s.rows)
       const rows = rowsRaw.map((r: any) => {
-        const rowHeight = Number(r.height ?? r.rowHeight ?? 1.5)
+        const rowHeight = safeDim(r.height ?? r.rowHeight, 1.5)
+        const rowWidth = r.width ?? r.span
         const binsRaw = asArray(r.bins)
-        const dims = computeBinDims(width, depth, binsRaw.length || 1)
-        const bins = binsRaw.map((b: any) => ({
-          id: resolveEntityId(b.binId) ?? resolveEntityId(b.id) ?? generateId(),
-          width: dims.width,
-          depth: dims.depth,
-          height: rowHeight || DEFAULT_BIN_HEIGHT,
-          binName: b.binName ?? b.name ?? b.binCode ?? undefined,
-          products: normalizeSkus(b.skus ?? b.products ?? b.inventory),
-        }))
+        const binFallback = computeBinDims(width, depth, binsRaw.length || 1)
+        const bins = binsRaw.map((b: any) => {
+          const binDims = resolveBinDimensions(b, rowHeight, binFallback)
+          return {
+            id: resolveEntityId(b.binId) ?? resolveEntityId(b.id) ?? generateId(),
+            width: binDims.width,
+            depth: binDims.depth,
+            height: binDims.height,
+            binName: b.binName ?? b.name ?? b.binCode ?? undefined,
+            products: normalizeBinProducts(b),
+          }
+        })
         return {
           id: resolveEntityId(r.rowId) ?? resolveEntityId(r.id) ?? resolveEntityId(r.rackRowId) ?? generateId(),
           height: rowHeight,
-          rowNumber: r.rowNumber ?? r.number ?? undefined,
-          sided: isDoubleSided ? ('two' as const) : ('one' as const),
+          ...(rowWidth != null ? { width: safeDim(rowWidth, width * 0.85) } : {}),
+          sided: (r.sided === 'two' ? 'two' : isDoubleSided ? 'two' : 'one') as 'one' | 'two',
+          yStart: r.yStart != null ? Number(r.yStart) : null,
+          yEnd: r.yEnd != null ? Number(r.yEnd) : null,
+          talkers: normalizeTalkers(r.talkers),
           bins,
         }
       })
@@ -143,13 +223,24 @@ export function normalizeRack(raw: any): Rack {
     id: rackId,
     rackId,
     rackCode,
-    width,
-    depth,
-    height: raw.height != null ? String(raw.height) : undefined,
-    fixtureType: (raw.fixtureType ?? raw.fixture_type ?? (isDoubleSided ? 'GONDOLA' : 'GONDOLA')) as FixtureType,
-    position: { x: 0, y: 0, z: 0 },
-    rotation: { x: 0, y: 0, z: 0 },
+    width: safeDim(width, 1),
+    depth: safeDim(depth, 0.5),
+    height: raw.height != null ? String(raw.height) : String(outerHeight),
+    fixtureType,
+    customConfig,
+    blueprintName: raw.blueprintName ?? raw.blueprint_name ?? undefined,
+    placement: placement ?? undefined,
+    outer: outer ?? undefined,
+    shell: shell ?? undefined,
+    inner: inner ?? undefined,
+    position: {
+      x: safePosition(placement?.position?.x, 0),
+      y: safePosition(placement?.position?.y, 0),
+      z: safePosition(placement?.position?.z, 0),
+    },
+    rotation,
     isDoubleSided,
+    quadrant,
     sides,
   }
 }
@@ -187,15 +278,23 @@ export function mergeRackPositions(existing: Rack[], fresh: Rack[]): Rack[] {
     const key = rack.rackId || rack.id
     const prev = byKey.get(key)
     if (!prev) return rack
+
+    const hasApiPlacement = Boolean(rack.placement?.position)
+
     return {
       ...rack,
-      position: prev.position,
-      rotation: prev.rotation ?? rack.rotation,
-      quadrant: prev.quadrant,
-      fixtureType: prev.fixtureType ?? rack.fixtureType,
-      customConfig: prev.customConfig ?? rack.customConfig,
-      width: prev.width || rack.width,
-      depth: prev.depth || rack.depth,
+      position: hasApiPlacement ? rack.position : prev.position,
+      rotation: hasApiPlacement ? (rack.rotation ?? prev.rotation) : (prev.rotation ?? rack.rotation),
+      quadrant: hasApiPlacement ? (rack.quadrant ?? prev.quadrant) : (prev.quadrant ?? rack.quadrant),
+      fixtureType: rack.fixtureType ?? prev.fixtureType,
+      customConfig: rack.customConfig ?? prev.customConfig,
+      blueprintName: rack.blueprintName ?? prev.blueprintName,
+      placement: rack.placement ?? prev.placement,
+      outer: rack.outer ?? prev.outer,
+      shell: rack.shell ?? prev.shell,
+      inner: rack.inner ?? prev.inner,
+      width: rack.width || prev.width,
+      depth: rack.depth || prev.depth,
     }
   })
 }
@@ -212,6 +311,38 @@ export async function authHeaders(): Promise<Record<string, string>> {
   return headers
 }
 
+export async function fetchRackStructure(
+  rackId: string,
+): Promise<{ success: boolean; rack?: Rack; message?: string }> {
+  const headers = await authHeaders()
+  const res = await fetch(`/api/racks/${encodeURIComponent(rackId)}/structure`, { headers })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.isRequestSuccess === false) {
+    return {
+      success: false,
+      message: json?.message || `Failed to load structure (${res.status})`,
+    }
+  }
+  return { success: true, rack: normalizeRack(json?.data ?? json) }
+}
+
+export async function fetchRackBlueprint(
+  rackId: string,
+): Promise<{ success: boolean; rack?: Rack; blueprint?: unknown; message?: string }> {
+  const headers = await authHeaders()
+  const res = await fetch(`/api/racks/${encodeURIComponent(rackId)}/blueprint`, { headers })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.isRequestSuccess === false) {
+    return {
+      success: false,
+      message: json?.message || `Failed to load blueprint (${res.status})`,
+    }
+  }
+  const blueprint = json?.data ?? json
+  return { success: true, blueprint, rack: normalizeRack(blueprint) }
+}
+
+/** Load store listing, then hydrate each rack with full structure (sides/rows/bins). */
 export async function fetchStoreLayoutRacks(
   storeId: string,
 ): Promise<{ success: boolean; racks: Rack[]; message?: string }> {
@@ -231,5 +362,27 @@ export async function fetchStoreLayoutRacks(
 
   const data = json?.data ?? json
   const racksRaw = asArray(data?.racks ?? data)
-  return { success: true, racks: racksRaw.map(normalizeRack) }
+  const summaries = racksRaw.map(normalizeRack)
+
+  const hydrated = await Promise.all(
+    summaries.map(async (summary) => {
+      const id = summary.rackId || summary.id
+      if (!id) return summary
+      try {
+        const structure = await fetchRackStructure(id)
+        if (structure.success && structure.rack) {
+          return mergeRackPositions([summary], [structure.rack])[0]
+        }
+        const blueprint = await fetchRackBlueprint(id)
+        if (blueprint.success && blueprint.rack) {
+          return mergeRackPositions([summary], [blueprint.rack])[0]
+        }
+      } catch {
+        /* keep summary */
+      }
+      return summary
+    }),
+  )
+
+  return { success: true, racks: hydrated }
 }

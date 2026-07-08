@@ -6,6 +6,12 @@ import { useFrame } from "@react-three/fiber";
 import { Mesh, Texture, TextureLoader, SRGBColorSpace } from "three";
 import { Product as ProductType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
+import {
+  DEFAULT_PRODUCT_DEPTH,
+  DEFAULT_PRODUCT_HEIGHT,
+  DEFAULT_PRODUCT_WIDTH,
+} from "@/constants/dimensions";
+import { safeDim } from "@/utils/safeDimensions";
 
 interface ProductProps {
   product: ProductType;
@@ -85,7 +91,13 @@ export function Product({ product, position }: ProductProps) {
       castShadow
       receiveShadow
     >
-      <boxGeometry args={[product.width, product.height, product.depth]} />
+      <boxGeometry
+        args={[
+          safeDim(product.width, DEFAULT_PRODUCT_WIDTH),
+          safeDim(product.height, DEFAULT_PRODUCT_HEIGHT),
+          safeDim(product.depth, DEFAULT_PRODUCT_DEPTH),
+        ]}
+      />
       <meshStandardMaterial
         key={texture ? "with-texture" : "no-texture"}
         map={texture ?? undefined}

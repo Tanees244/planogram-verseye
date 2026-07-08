@@ -1,0 +1,163 @@
+/**
+ * Realistic starting dimensions for warehouse / planogram scenes (meters).
+ * See docs/REALISTIC_DIMENSIONS.md
+ */
+
+/** Default store / warehouse floor footprint. */
+export const DEFAULT_WAREHOUSE_WIDTH = 30
+export const DEFAULT_WAREHOUSE_DEPTH = 20
+export const DEFAULT_WAREHOUSE_HEIGHT = 8
+
+/** Standard pallet / gondola bay (warehouse-style starting rack). */
+export const DEFAULT_RACK_WIDTH = 2.7
+export const DEFAULT_RACK_DEPTH = 1.1
+export const DEFAULT_RACK_HEIGHT = 6
+export const DEFAULT_SHELF_LEVELS = 5
+
+/** Retail grocery shelf bay. */
+export const GROCERY_SHELF_WIDTH = 1.2
+export const GROCERY_SHELF_DEPTH = 0.55
+export const GROCERY_SHELF_HEIGHT = 2.0
+export const GROCERY_SHELF_SPACING = 0.4
+
+/** End-cap promotional. */
+export const END_CAP_WIDTH = 0.9
+export const END_CAP_DEPTH = 0.5
+export const END_CAP_HEIGHT = 1.8
+
+/** Euro pallet footprint. */
+export const EURO_PALLET_LENGTH = 1.2
+export const EURO_PALLET_WIDTH = 0.8
+export const EURO_PALLET_HEIGHT = 0.144
+
+/** Typical aisle clearances. */
+export const AISLE_WALKING = 1.2
+export const AISLE_CART = 2.2
+export const AISLE_FORKLIFT = 3.5
+
+/** Default bin on a retail shelf (one bay section). */
+export const DEFAULT_BIN_WIDTH = 0.9
+export const DEFAULT_BIN_DEPTH = 0.55
+export const DEFAULT_BIN_HEIGHT = 0.4
+
+/**
+ * Default product when catalog dims are missing — approx. 1 L milk bottle.
+ * width × depth × height
+ */
+export const DEFAULT_PRODUCT_WIDTH = 0.08
+export const DEFAULT_PRODUCT_DEPTH = 0.08
+export const DEFAULT_PRODUCT_HEIGHT = 0.27
+
+export interface ProductSizePreset {
+  id: string
+  label: string
+  /** Facing width (m) */
+  width: number
+  /** Front-to-back depth (m) */
+  depth: number
+  /** Vertical height (m) */
+  height: number
+}
+
+/** Quick-fill presets for Create SKU / product forms (meters). */
+export const PRODUCT_SIZE_PRESETS: ProductSizePreset[] = [
+  {
+    id: 'milk-1l',
+    label: 'Milk 1 L',
+    width: 0.08,
+    depth: 0.08,
+    height: 0.27,
+  },
+  {
+    id: 'milk-2l',
+    label: 'Milk 2 L',
+    width: 0.11,
+    depth: 0.11,
+    height: 0.31,
+  },
+  {
+    id: 'water-500ml',
+    label: 'Water 500 mL',
+    width: 0.065,
+    depth: 0.065,
+    height: 0.22,
+  },
+  {
+    id: 'water-15l',
+    label: 'Water 1.5 L',
+    width: 0.09,
+    depth: 0.09,
+    height: 0.33,
+  },
+  {
+    id: 'can-330',
+    label: 'Can 330 mL',
+    width: 0.066,
+    depth: 0.066,
+    height: 0.12,
+  },
+  {
+    id: 'soda-15l',
+    label: 'Soft drink 1.5 L',
+    width: 0.095,
+    depth: 0.095,
+    height: 0.33,
+  },
+  {
+    id: 'cereal',
+    label: 'Cereal box',
+    width: 0.2,
+    depth: 0.065,
+    height: 0.3,
+  },
+  {
+    id: 'chips',
+    label: 'Chips packet',
+    width: 0.18,
+    depth: 0.06,
+    height: 0.3,
+  },
+  {
+    id: 'bread',
+    label: 'Bread loaf',
+    width: 0.24,
+    depth: 0.12,
+    height: 0.12,
+  },
+  {
+    id: 'eggs-12',
+    label: 'Eggs 12-pack',
+    width: 0.31,
+    depth: 0.11,
+    height: 0.07,
+  },
+  {
+    id: 'oil-1l',
+    label: 'Cooking oil 1 L',
+    width: 0.09,
+    depth: 0.09,
+    height: 0.27,
+  },
+  {
+    id: 'carton-milk-12',
+    label: 'Carton 12×1 L milk',
+    width: 0.4,
+    depth: 0.3,
+    height: 0.28,
+  },
+]
+
+export const DEFAULT_PRODUCT_PRESET =
+  PRODUCT_SIZE_PRESETS.find((p) => p.id === 'milk-1l') ?? PRODUCT_SIZE_PRESETS[0]
+
+export function presetToFormStrings(preset: ProductSizePreset): {
+  width: string
+  depth: string
+  height: string
+} {
+  return {
+    width: String(preset.width),
+    depth: String(preset.depth),
+    height: String(preset.height),
+  }
+}
