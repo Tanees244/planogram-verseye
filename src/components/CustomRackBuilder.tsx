@@ -13,6 +13,8 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import {
   computeCustomRackDimensions,
   fitCustomRackToRetailWall,
+  normalizeSectionSpans,
+  resolveSectionSize,
   type CustomRackConfig,
   type CustomRackSection,
 } from '@/components/fixtures/customRackTypes'
@@ -43,7 +45,14 @@ function NumInput({
         min={min}
         max={max}
         value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value) || min)}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value)
+          if (!Number.isFinite(v)) {
+            onChange(min <= 0 ? 0 : min)
+            return
+          }
+          onChange(v <= 0 && min <= 0 ? 0 : Math.max(v, min))
+        }}
         className="mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white focus:outline-none focus:ring-1 focus:ring-brand"
       />
     </label>
@@ -94,33 +103,95 @@ function Toggle({
   )
 }
 
+function sectionEnableDefaults(kind: 'header' | 'footer'): Partial<CustomRackSection> {
+  if (kind === 'header') {
+    return {
+      enabled: true,
+      height: 0.35,
+      width: 0,
+      depth: 0,
+      protrusion: 0,
+      color: '#2C5282',
+      emissive: '#1A365D',
+    }
+  }
+  return {
+    enabled: true,
+    height: 0.12,
+    width: 0,
+    depth: 0,
+    protrusion: 0,
+    color: '#ecf0f1',
+    emissive: undefined,
+  }
+}
+
 function SectionEditor({
   title,
   section,
+  kind,
   showDepth = true,
   onChange,
+  resolvedWidth,
+  resolvedDepth,
 }: {
   title: string
   section: CustomRackSection
+  kind: 'header' | 'footer'
   showDepth?: boolean
   onChange: (patch: Partial<CustomRackSection>) => void
+  resolvedWidth: number
+  resolvedDepth: number
 }) {
   return (
     <div className="space-y-2 p-2.5 rounded-lg bg-white/5 border border-white/10">
       <Toggle
         label={title}
         checked={section.enabled}
-        onChange={(enabled) => onChange({ enabled })}
+        onChange={(enabled) =>
+          onChange(enabled ? sectionEnableDefaults(kind) : { enabled: false })
+        }
       />
       {section.enabled && (
-        <div className="grid grid-cols-2 gap-2 pt-1">
-          <NumInput label="Height (m)" value={section.height} min={0.05} max={2} onChange={(height) => onChange({ height })} />
-          <NumInput label="Width (m)" value={section.width} min={0.1} max={10} onChange={(width) => onChange({ width })} />
-          {showDepth && (
-            <NumInput label="Depth (m)" value={section.depth} min={0.05} max={5} onChange={(depth) => onChange({ depth })} />
-          )}
-          <div className={showDepth ? 'col-span-2' : ''}>
-            <ColorInput label="Color" value={section.color} onChange={(color) => onChange({ color })} />
+        <div className="space-y-2 pt-1">
+          <p className="text-[10px] text-gray-500 leading-snug">
+            One {kind} per rack · width/depth <span className="text-gray-400">0</span> = full span (
+            {resolvedWidth.toFixed(2)} × {resolvedDepth.toFixed(2)} m)
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange({ width: 0, depth: 0 })}
+            className="text-[10px] px-2 py-1 rounded-md bg-white/10 border border-white/15 text-gray-300 hover:text-white hover:bg-white/15 transition-colors"
+          >
+            Reset to full rack span
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <NumInput
+              label="Height (m)"
+              value={section.height}
+              min={0.05}
+              max={kind === 'footer' ? 0.5 : 2}
+              onChange={(height) => onChange({ height })}
+            />
+            <NumInput
+              label="Width (m)"
+              value={section.width}
+              min={0}
+              max={10}
+              onChange={(width) => onChange({ width: width <= 0 ? 0 : width })}
+            />
+            {showDepth && (
+              <NumInput
+                label="Depth (m)"
+                value={section.depth}
+                min={0}
+                max={5}
+                onChange={(depth) => onChange({ depth: depth <= 0 ? 0 : depth })}
+              />
+            )}
+            <div className={showDepth ? 'col-span-2' : ''}>
+              <ColorInput label="Color" value={section.color} onChange={(color) => onChange({ color })} />
+            </div>
           </div>
         </div>
       )}
@@ -136,6 +207,7 @@ export function CustomRackBuilder() {
   const close = usePlanogramStore((s) => s.closeCustomRackBuilder)
   const place = usePlanogramStore((s) => s.placeCustomRackFromBuilder)
   const updateRack = usePlanogramStore((s) => s.updateRackCustomConfig)
+  const reloadStoreLayout = usePlanogramStore((s) => s.reloadStoreLayout)
   const saveRackLayout = usePlanogramStore((s) => s.saveRackLayoutToServer)
   const openBuilder = usePlanogramStore((s) => s.openCustomRackBuilder)
   const [saving, setSaving] = useState(false)
@@ -144,17 +216,19 @@ export function CustomRackBuilder() {
 
   if (!open) return null
 
-  const patch = (p: Partial<CustomRackConfig>) => setDraft(p)
+  const patch = (p: Partial<CustomRackConfig>) =>
+    setDraft((d) => normalizeSectionSpans({ ...d, ...p }))
   const patchHeader = (p: Partial<CustomRackSection>) =>
-    setDraft((d) => ({ ...d, header: { ...d.header, ...p } }))
+    setDraft((d) => normalizeSectionSpans({ ...d, header: { ...d.header, ...p } }))
   const patchFooter = (p: Partial<CustomRackSection>) =>
-    setDraft((d) => ({ ...d, footer: { ...d.footer, ...p } }))
+    setDraft((d) => normalizeSectionSpans({ ...d, footer: { ...d.footer, ...p } }))
   const patchWalls = (p: Partial<CustomRackConfig['walls']>) =>
     setDraft((d) => ({ ...d, walls: { ...d.walls, ...p } }))
 
   const handleSaveEdit = async () => {
     if (!editingId) return
-    const { exceptions } = updateRack(editingId, draft)
+    const normalized = normalizeSectionSpans(draft)
+    const { exceptions } = updateRack(editingId, normalized)
     if (exceptions && exceptions.length > 0) {
       const summary = exceptions
         .slice(0, 5)
@@ -168,11 +242,12 @@ export function CustomRackBuilder() {
     }
     setSaving(true)
     try {
-      const res = await saveRackLayout(editingId)
+      const res = await saveRackLayout(editingId, { reflowSkus: true })
       if (!res.success) {
-        window.alert(res.message ?? 'Failed to save rack layout')
+        window.alert(res.message ?? 'Failed to save rack structure to server')
         return
       }
+      await reloadStoreLayout()
       close()
     } finally {
       setSaving(false)
@@ -267,18 +342,34 @@ export function CustomRackBuilder() {
           </p>
           {draft.header.enabled && (
             <p className="text-[10px] text-gray-400 mt-0.5">
-              Header {dims.headerW.toFixed(2)} × {dims.headerD.toFixed(2)} × {dims.headerH.toFixed(2)} m
+              Header W×D×H {dims.headerW.toFixed(2)} × {dims.headerD.toFixed(2)} × {dims.headerH.toFixed(2)} m
             </p>
           )}
           {draft.footer.enabled && (
             <p className="text-[10px] text-gray-400">
-              Footer {dims.footerW.toFixed(2)} × {dims.footerD.toFixed(2)} × {dims.footerH.toFixed(2)} m
+              Footer W×D×H {dims.footerW.toFixed(2)} × {dims.footerD.toFixed(2)} × {dims.footerH.toFixed(2)} m
             </p>
           )}
         </div>
 
-        <SectionEditor title="Header / fascia" section={draft.header} showDepth onChange={patchHeader} />
-        <SectionEditor title="Footer / kick plate" section={draft.footer} showDepth={false} onChange={patchFooter} />
+        <SectionEditor
+          title="Header / fascia"
+          kind="header"
+          section={draft.header}
+          showDepth
+          resolvedWidth={resolveSectionSize(draft.header, draft.outerWidth, draft.outerDepth, 'header').width}
+          resolvedDepth={resolveSectionSize(draft.header, draft.outerWidth, draft.outerDepth, 'header').depth}
+          onChange={patchHeader}
+        />
+        <SectionEditor
+          title="Footer / kick plate"
+          kind="footer"
+          section={draft.footer}
+          showDepth
+          resolvedWidth={resolveSectionSize(draft.footer, draft.outerWidth, draft.outerDepth, 'footer').width}
+          resolvedDepth={resolveSectionSize(draft.footer, draft.outerWidth, draft.outerDepth, 'footer').depth}
+          onChange={patchFooter}
+        />
 
         {/* Walls — default 3-sided hollow bay (open front) */}
         <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
@@ -307,7 +398,7 @@ export function CustomRackBuilder() {
               disabled={saving}
               className="w-full py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors disabled:opacity-60"
             >
-              {saving ? 'Saving…' : 'Save changes'}
+              {saving ? 'Saving…' : 'Save structure'}
             </button>
             <button
               type="button"

@@ -12,7 +12,6 @@ function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | nul
     while (obj) {
       const id = obj.userData?.id
       if (typeof id === 'string' && id.length > 0) {
-        // Prefer bins: walk ancestors if needed — bin groups set userData.id
         const state = usePlanogramStore.getState()
         for (const rack of state.area.racks) {
           for (const side of rack.sides) {
@@ -28,21 +27,98 @@ function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | nul
   return null
 }
 
+function raycastBinAt(
+  clientX: number,
+  clientY: number,
+  el: HTMLCanvasElement,
+  raycaster: THREE.Raycaster,
+  mouse: THREE.Vector2,
+  camera: THREE.Camera,
+  scene: THREE.Scene,
+): string | null {
+  const rect = el.getBoundingClientRect()
+  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1
+  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
+  raycaster.setFromCamera(mouse, camera)
+  const hits = raycaster.intersectObjects(scene.children, true)
+  return findBinIdFromIntersects(hits)
+}
+
 /** HTML drag-and-drop from Product Library onto a bin mesh in the 3D scene. */
 export function ProductDropHandler() {
   const { camera, gl, scene } = useThree()
   const placeProductOnBin = usePlanogramStore((s) => s.placeProductOnBin)
   const startProductPlacement = usePlanogramStore((s) => s.startProductPlacement)
+  const setProductDropHover = usePlanogramStore((s) => s.setProductDropHover)
 
   useEffect(() => {
     const el = gl.domElement
     const raycaster = new THREE.Raycaster()
     const mouse = new THREE.Vector2()
+    let rafId = 0
+    let lastClientX = 0
+    let lastClientY = 0
+    let dragActive = false
+
+    const updateHover = () => {
+      rafId = 0
+      if (!dragActive) return
+
+      const binId = raycastBinAt(lastClientX, lastClientY, el, raycaster, mouse, camera, scene)
+      const state = usePlanogramStore.getState()
+      const pending = state.pendingProductParams
+
+      if (!binId || !pending) {
+        setProductDropHover(null)
+        return
+      }
+
+      const fit = state.canProductFitInBin(binId, {
+        width: pending.width,
+        depth: pending.depth,
+        height: pending.height,
+        quantity: 1,
+      })
+      setProductDropHover({
+        binId,
+        fits: fit.fits,
+        reason: fit.reason,
+      })
+    }
+
+    const scheduleHoverUpdate = (e: DragEvent) => {
+      lastClientX = e.clientX
+      lastClientY = e.clientY
+      if (!rafId) rafId = requestAnimationFrame(updateHover)
+    }
+
+    const clearHover = () => {
+      dragActive = false
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+        rafId = 0
+      }
+      setProductDropHover(null)
+    }
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes(PRODUCT_DRAG_MIME)) return
+      dragActive = true
+    }
 
     const onDragOver = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes(PRODUCT_DRAG_MIME)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
+      dragActive = true
+      scheduleHoverUpdate(e)
+    }
+
+    const onDragLeave = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes(PRODUCT_DRAG_MIME)) return
+      const related = e.relatedTarget as Node | null
+      if (related && el.contains(related)) return
+      clearHover()
     }
 
     const onDrop = async (e: DragEvent) => {
@@ -50,6 +126,7 @@ export function ProductDropHandler() {
       if (!raw) return
       e.preventDefault()
       e.stopPropagation()
+      clearHover()
 
       let pending: PendingProductParams
       try {
@@ -61,12 +138,7 @@ export function ProductDropHandler() {
 
       startProductPlacement(pending)
 
-      const rect = el.getBoundingClientRect()
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
-      raycaster.setFromCamera(mouse, camera)
-      const hits = raycaster.intersectObjects(scene.children, true)
-      const binId = findBinIdFromIntersects(hits)
+      const binId = raycastBinAt(e.clientX, e.clientY, el, raycaster, mouse, camera, scene)
       if (!binId) {
         usePlanogramStore.setState({
           addProductError: 'Drop the product onto a bin (select/add a bin first).',
@@ -76,13 +148,22 @@ export function ProductDropHandler() {
       await placeProductOnBin(binId, 1)
     }
 
+    const onDragEnd = () => clearHover()
+
+    el.addEventListener('dragenter', onDragEnter)
     el.addEventListener('dragover', onDragOver)
+    el.addEventListener('dragleave', onDragLeave)
     el.addEventListener('drop', onDrop)
+    el.addEventListener('dragend', onDragEnd)
     return () => {
+      clearHover()
+      el.removeEventListener('dragenter', onDragEnter)
       el.removeEventListener('dragover', onDragOver)
+      el.removeEventListener('dragleave', onDragLeave)
       el.removeEventListener('drop', onDrop)
+      el.removeEventListener('dragend', onDragEnd)
     }
-  }, [camera, gl, scene, placeProductOnBin, startProductPlacement])
+  }, [camera, gl, scene, placeProductOnBin, startProductPlacement, setProductDropHover])
 
   return null
 }

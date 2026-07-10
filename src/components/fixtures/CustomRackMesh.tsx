@@ -21,6 +21,11 @@ const POST_COLOR = '#1a1a1a'
 const WALL_COLOR = '#e8eaed'
 const PEG_COLOR = '#d5d8dc'
 
+/** Front (-Z) anchor for header fascia / footer kick plate. */
+function sectionFrontZ(outerDepth: number, sectionDepth: number, protrusion: number): number {
+  return -outerDepth / 2 - protrusion + sectionDepth / 2
+}
+
 /** Hollow 3-wall bay shell — back + sides open at front. Rows come from planogram slots. */
 export function CustomRackMesh({
   config,
@@ -55,6 +60,9 @@ export function CustomRackMesh({
   const innerW = dims.innerWidth
   const innerD = dims.innerDepth
   const cavityZ = -d / 2 + wt + innerD / 2
+  const footerFullBase = footerSize.depth >= d * 0.85
+  const footerZ = footerFullBase ? 0 : sectionFrontZ(d, footerSize.depth, config.footer.protrusion)
+  const headerZ = sectionFrontZ(d, headerSize.depth, config.header.protrusion)
 
   const wallMat = (
     <meshStandardMaterial
@@ -77,7 +85,15 @@ export function CustomRackMesh({
 
   return (
     <group>
-      {/* Hollow outline (preview) */}
+      {/* Full outer envelope (preview) */}
+      {isPreview && (
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[w, totalH, d]} />
+          <meshBasicMaterial color="#2C5282" wireframe transparent opacity={0.45} />
+        </mesh>
+      )}
+
+      {/* Hollow body outline (preview) */}
       {isPreview && (
         <group>
           {/* Back */}
@@ -98,27 +114,31 @@ export function CustomRackMesh({
         </group>
       )}
 
-      {/* Footer / base plinth */}
+      {/* Footer / base plinth — full outer footprint when depth is auto (0) */}
       {config.footer.enabled && dims.footerH > 0 && (
         <mesh
-          position={[0, footerCenterY, (footerSize.depth - d) / 2]}
+          position={[0, footerCenterY, footerZ]}
           {...bind}
         >
           <boxGeometry args={[footerSize.width, dims.footerH, footerSize.depth]} />
           <meshStandardMaterial
             color={config.footer.color}
             emissive={config.footer.emissive ?? config.footer.color}
-            emissiveIntensity={isPreview ? 0.2 : 0.1}
+            emissiveIntensity={isPreview ? 0.25 : 0.15}
             metalness={0.3}
-            roughness={0.5}
+            roughness={0.45}
           />
           <Edges color="#1a252f" lineWidth={1} />
         </mesh>
       )}
 
-      {/* Corner posts (metal frame) */}
+      {/* Corner posts (metal frame) — span body cavity, sit on footer */}
       {postPositions.map((pos, i) => (
-        <mesh key={`post-${i}`} position={[pos[0], bodyBottomY + dims.bodyH / 2, pos[2]]} {...bind}>
+        <mesh
+          key={`post-${i}`}
+          position={[pos[0], bottomY + dims.footerH + dims.bodyH / 2, pos[2]]}
+          {...bind}
+        >
           <boxGeometry args={[postR * 2, dims.bodyH, postR * 2]} />
           <meshStandardMaterial color={POST_COLOR} metalness={0.7} roughness={0.35} />
         </mesh>
@@ -181,9 +201,9 @@ export function CustomRackMesh({
         <meshStandardMaterial color="#f4f6f8" roughness={0.85} metalness={0.1} />
       </mesh>
 
-      {/* Header / fascia — full width, flush at top */}
+      {/* Header / fascia — flush on top, anchored to front face */}
       {config.header.enabled && dims.headerH > 0 && (
-        <mesh position={[0, headerCenterY, cavityZ - innerD / 2 + headerSize.depth / 2]} {...bind}>
+        <mesh position={[0, headerCenterY, headerZ]} {...bind}>
           <boxGeometry args={[headerSize.width, dims.headerH, headerSize.depth]} />
           <meshStandardMaterial
             color={config.header.color}

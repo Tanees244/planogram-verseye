@@ -139,6 +139,13 @@ export const PRODUCT_SIZE_PRESETS: ProductSizePreset[] = [
     height: 0.27,
   },
   {
+    id: 'tea-box',
+    label: 'Tea box (12×8×5 cm)',
+    width: 0.12,
+    depth: 0.08,
+    height: 0.05,
+  },
+  {
     id: 'carton-milk-12',
     label: 'Carton 12×1 L milk',
     width: 0.4,
@@ -147,8 +154,9 @@ export const PRODUCT_SIZE_PRESETS: ProductSizePreset[] = [
   },
 ]
 
-export const DEFAULT_PRODUCT_PRESET =
-  PRODUCT_SIZE_PRESETS.find((p) => p.id === 'milk-1l') ?? PRODUCT_SIZE_PRESETS[0]
+/** Sample GLB shipped in /public/models for local demos. */
+export const DEMO_PRODUCT_GLB = '/models/tapal_green_tea_box.glb'
+
 
 export function presetToFormStrings(preset: ProductSizePreset): {
   width: string

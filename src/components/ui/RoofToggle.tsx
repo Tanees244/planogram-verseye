@@ -4,7 +4,15 @@ import { FiHome, FiLayers } from 'react-icons/fi'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 
-export function RoofToggle({ className, dark }: { className?: string; dark?: boolean }) {
+export function RoofToggle({
+  className,
+  dark,
+  embedded,
+}: {
+  className?: string
+  dark?: boolean
+  embedded?: boolean
+}) {
   const roofVisible = usePlanogramStore((s) => s.roofVisible)
   const setRoofVisible = usePlanogramStore((s) => s.setRoofVisible)
 
@@ -13,8 +21,15 @@ export function RoofToggle({ className, dark }: { className?: string; dark?: boo
       type="button"
       onClick={() => setRoofVisible(!roofVisible)}
       className={cn(
-        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg backdrop-blur-sm border',
-        dark ? 'bg-black/70 border-white/10 text-gray-200 hover:bg-black/85' : 'bg-white/95 border-gray-200 text-gray-700 hover:bg-gray-50',
+        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all',
+        embedded
+          ? 'text-gray-300 hover:text-white hover:bg-white/10'
+          : cn(
+              'shadow-lg backdrop-blur-sm border',
+              dark
+                ? 'bg-black/70 border-white/10 text-gray-200 hover:bg-black/85'
+                : 'bg-white/95 border-gray-200 text-gray-700 hover:bg-gray-50',
+            ),
         className,
       )}
       title={roofVisible ? 'Click the roof in 3D, or use this button to open the building' : 'Show building roof'}

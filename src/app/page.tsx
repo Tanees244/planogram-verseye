@@ -1,13 +1,13 @@
 // @ts-nocheck
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { ViewModeToggle } from '@/components/ui/ViewModeToggle'
 import { FixturePalette } from '@/components/FixturePalette'
 import { ProductPalette } from '@/components/ProductPalette'
-import { DayNightToggle } from '@/components/ui/DayNightToggle'
-import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
+import { cn } from '@/lib/cn'
+import { SceneTopBar } from '@/components/SceneTopBar'
 import { CustomRackBuilder } from '@/components/CustomRackBuilder'
 import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
@@ -74,41 +74,6 @@ function getProductById(racks: Racks, productId: string) {
     }
   }
   return null
-}
-
-const MOVE_HINT =
-  'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus camera'
-
-function ControlsTooltip() {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [open])
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="px-3 py-2 bg-black/60 backdrop-blur-sm text-gray-300 hover:text-white rounded-lg text-sm border border-white/20 hover:border-white/40 transition-colors"
-        title="View controls"
-      >
-        Controls
-      </button>
-      {open && (
-        <div className="absolute top-full right-0 mt-2 px-4 py-3 min-w-[320px] bg-black/85 backdrop-blur-sm text-gray-200 rounded-xl text-sm border border-white/20 shadow-xl z-10">
-          {MOVE_HINT}
-        </div>
-      )}
-    </div>
-  )
 }
 
 function StoreBadge({ dark = false, align = 'center' }: { dark?: boolean; align?: 'center' | 'right' }) {
@@ -199,6 +164,10 @@ export default function Home() {
     deleteProduct,
   } = usePlanogramStore()
 
+  const fixturePaletteCollapsed = usePlanogramStore((s) => s.fixturePaletteCollapsed)
+  const productPaletteCollapsed = usePlanogramStore((s) => s.productPaletteCollapsed)
+  const anyPaletteOpen = !fixturePaletteCollapsed || !productPaletteCollapsed
+
   const [showAddRackModal, setShowAddRackModal] = useState(false)
   const [showAddRowModal, setShowAddRowModal] = useState(false)
   const [rackForm, setRackForm] = useState({
@@ -288,30 +257,33 @@ export default function Home() {
   return (
     <div className="w-screen h-screen relative">
       {/* View mode + fixture library + context actions (left column) */}
-      <div className="absolute top-4 left-4 bottom-4 z-[100] flex flex-col gap-2 items-stretch w-[272px]">
+      <div className="absolute top-4 left-4 bottom-4 z-[100] flex flex-col gap-2 items-stretch w-[272px] min-h-0">
         <ViewModeToggle mode="advanced" onChange={setViewMode} dark />
         <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
-          <FixturePalette />
-          <ProductPalette />
-        </div>
-        <div className="shrink-0 max-h-[38vh] overflow-y-auto">
-          <ContextAddButton layout="sidebar" />
+          <div
+            className={cn(
+              'flex flex-col gap-2 min-h-0 overflow-hidden',
+              anyPaletteOpen ? 'flex-1 basis-0' : 'shrink-0',
+            )}
+          >
+            <FixturePalette />
+            <ProductPalette />
+          </div>
+          <div
+            className={cn(
+              'min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin',
+              anyPaletteOpen ? 'shrink-0 max-h-[min(28vh,280px)]' : 'flex-1 basis-0',
+            )}
+          >
+            <ContextAddButton layout="sidebar" />
+          </div>
         </div>
       </div>
       <Scene3D />
       <StoreLayout />
       <CustomRackBuilder />
 
-      {/* Top-right: day/night, roof, controls, store name */}
-      <div className="absolute top-4 right-4 z-[100] flex flex-col items-end gap-2">
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <DayNightToggle dark />
-          <RoofToggle dark />
-          <ControlsTooltip />
-        </div>
-        <RoofHint />
-        <StoreBadge dark align="right" />
-      </div>
+      <SceneTopBar className="absolute top-4 right-4 z-[100]" />
     </div>
   )
 }

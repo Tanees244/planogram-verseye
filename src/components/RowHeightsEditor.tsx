@@ -98,7 +98,10 @@ export function RowDimensionsField({
           <button
             type="button"
             onClick={onSelect}
-            className="flex-1 min-w-0 text-left text-xs text-gray-300 truncate hover:text-white transition-colors"
+            className={cn(
+              'flex-1 min-w-0 text-left text-xs truncate transition-colors rounded px-1 -mx-1 py-0.5',
+              dark ? 'text-gray-200 hover:text-white hover:bg-white/10' : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100',
+            )}
           >
             {label}
           </button>
@@ -106,21 +109,27 @@ export function RowDimensionsField({
           <span className="flex-1 min-w-0 text-xs text-gray-300 truncate">{label}</span>
         )
       )}
-      <DimInput
-        value={row.width ?? maxWidth ?? 1}
-        dark={dark}
-        label={`${label} width`}
-        max={maxWidth ?? 10}
-        onCommit={(width) => void save({ width })}
-      />
-      <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>W</span>
-      <DimInput
-        value={row.height}
-        dark={dark}
-        label={`${label} height`}
-        onCommit={(height) => void save({ height })}
-      />
-      <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>H</span>
+      <div
+        className="flex items-center gap-1.5 shrink-0"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <DimInput
+          value={row.width ?? maxWidth ?? 1}
+          dark={dark}
+          label={`${label} width`}
+          max={maxWidth ?? 10}
+          onCommit={(width) => void save({ width })}
+        />
+        <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>W</span>
+        <DimInput
+          value={row.height}
+          dark={dark}
+          label={`${label} height`}
+          onCommit={(height) => void save({ height })}
+        />
+        <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>H</span>
+      </div>
     </div>
   )
 }
@@ -159,6 +168,8 @@ export function RackRowHeightsPanel({
   dark?: boolean
   onSelectRow?: (rowId: string) => void
 }) {
+  const selectedId = usePlanogramStore((s) => s.selectedId)
+  const selectedType = usePlanogramStore((s) => s.selectedType)
   const entries = collectRackRows(rack)
   if (entries.length === 0) return null
 
@@ -172,20 +183,43 @@ export function RackRowHeightsPanel({
 
   return (
     <div className={cn('w-full rounded-xl border p-2.5 space-y-2', shell)}>
-      <p className={cn('text-[10px] font-semibold uppercase tracking-wide', dark ? 'text-gray-400' : 'text-gray-500')}>
-        Rows ({entries.length}) — width × height
-      </p>
+      <div>
+        <p className={cn('text-[10px] font-semibold uppercase tracking-wide', dark ? 'text-gray-400' : 'text-gray-500')}>
+          Rows ({entries.length})
+        </p>
+        {onSelectRow && (
+          <p className={cn('text-[10px] mt-1 leading-snug', dark ? 'text-gray-500' : 'text-gray-400')}>
+            Click a row below, or Shift+click a bin in 3D. Front shelf lip also selects the row.
+          </p>
+        )}
+      </div>
       <div className="space-y-1.5">
-        {entries.map(({ row, label }) => (
-          <RowDimensionsField
-            key={row.id}
-            row={row}
-            label={label}
-            dark={dark}
-            maxWidth={innerW}
-            onSelect={onSelectRow ? () => onSelectRow(row.id) : undefined}
-          />
-        ))}
+        {entries.map(({ row, label }) => {
+          const isSelected = selectedType === 'row' && selectedId === row.id
+          return (
+            <div
+              key={row.id}
+              className={cn(
+                'rounded-lg border px-2 py-1.5 transition-colors',
+                isSelected
+                  ? dark
+                    ? 'border-brand/50 bg-brand/15'
+                    : 'border-brand/40 bg-brand/5'
+                  : dark
+                    ? 'border-white/10'
+                    : 'border-gray-100',
+              )}
+            >
+              <RowDimensionsField
+                row={row}
+                label={label}
+                dark={dark}
+                maxWidth={innerW}
+                onSelect={onSelectRow ? () => onSelectRow(row.id) : undefined}
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )

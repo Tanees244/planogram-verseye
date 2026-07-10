@@ -7,7 +7,7 @@ import { Mesh } from "three";
 import { Edges } from "@react-three/drei";
 import { Row as RowType, usePlanogramStore } from "@/store/planogramStore";
 import { Bin } from "./Bin";
-import { ShelfTalkerMeshes } from "./ShelfTalkerMeshes";
+import { RowDividerPosmMesh } from "./RowDividerPosmMesh";
 import { safeDim } from "@/utils/safeDimensions";
 
 interface RowProps {
@@ -60,24 +60,28 @@ export function Row({
     setSelected(row.id, "row");
   };
 
+  const rowHoverProps = {
+    onPointerOver: (e: any) => {
+      e.stopPropagation();
+      setHovered(true);
+      document.body.style.cursor = "pointer";
+    },
+    onPointerOut: () => {
+      setHovered(false);
+      document.body.style.cursor = "default";
+    },
+  };
+
   return (
     <group position={position}>
-      {/* Hitbox for row selection – pushed to the back so bins in front get hit first */}
+      {/* Hitbox at back – for clicks from behind the rack */}
       <mesh
         userData={{ id: row.id }}
         position={[0, 0, z + safeRackDepth / 2 - 0.05]}
         onClick={selectRow}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          setHovered(true);
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          setHovered(false);
-          document.body.style.cursor = "default";
-        }}
+        {...rowHoverProps}
       >
-        <boxGeometry args={[safeRackWidth, rowHeight, 0.1]} />
+        <boxGeometry args={[safeRackWidth, rowHeight, 0.15]} />
         <meshBasicMaterial
           color="#FFFFFF"
           transparent
@@ -99,11 +103,12 @@ export function Row({
           <Edges color="#1a252f" lineWidth={2} />
         </mesh>
       )}
-      {/* Floor of the slot – skip raycast so bins can be clicked */}
+      {/* Floor of the slot – click empty shelf areas to select row */}
       <mesh
         ref={meshRef}
         position={[0, -rowHeight / 2 + 0.03, z]}
-        raycast={() => null}
+        onClick={selectRow}
+        {...rowHoverProps}
       >
         <boxGeometry args={[safeRackWidth, 0.06, safeRackDepth]} />
         <meshStandardMaterial
@@ -120,7 +125,16 @@ export function Row({
           lineWidth={isSelected ? 2.5 : 2}
         />
       </mesh>
-      {/* Front lip – skip raycast so clicks reach bins in front */}
+      {/* Front shelf lip – easy row target from the shopper-facing side */}
+      <mesh
+        position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
+        onClick={selectRow}
+        {...rowHoverProps}
+      >
+        <boxGeometry args={[safeRackWidth, 0.12, 0.1]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      {/* Visible front lip */}
       <mesh
         position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
         raycast={() => null}
@@ -163,6 +177,7 @@ export function Row({
           <Bin
             key={bin.id}
             bin={bin}
+            rowId={row.id}
             position={[xOffset, binY, z]}
             binHeight={binHeightUse}
             binDepth={binDepth}
@@ -171,11 +186,12 @@ export function Row({
         );
       })}
 
-      <ShelfTalkerMeshes
-        talkers={row.talkers ?? []}
+      <RowDividerPosmMesh
+        posm={row.dividerPosm}
         rowWidth={safeRackWidth}
         rowHeight={rowHeight}
         shelfZ={z - safeRackDepth / 2}
+        onSelect={selectRow}
       />
     </group>
   );

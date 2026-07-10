@@ -54,28 +54,30 @@ export function FixturePalette() {
   const openCustomRackBuilder = usePlanogramStore((s) => s.openCustomRackBuilder)
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const addRackError = usePlanogramStore((s) => s.addRackError)
+  const setFixturePaletteCollapsed = usePlanogramStore((s) => s.setFixturePaletteCollapsed)
 
   const [dragging, setDragging] = useState<FixtureType | null>(null)
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
     try {
-      setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === '1')
+      const stored = window.localStorage.getItem(COLLAPSE_KEY) === '1'
+      setCollapsed(stored)
+      setFixturePaletteCollapsed(stored)
     } catch {
       /* ignore */
     }
-  }, [])
+  }, [setFixturePaletteCollapsed])
 
   const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev
-      try {
-        window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
-      } catch {
-        /* ignore */
-      }
-      return next
-    })
+    const next = !collapsed
+    setCollapsed(next)
+    setFixturePaletteCollapsed(next)
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
   }
 
   const onDragStart = (type: FixtureType, e: React.DragEvent) => {

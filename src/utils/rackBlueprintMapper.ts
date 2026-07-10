@@ -35,12 +35,29 @@ function bandFromSection(
   };
 }
 
-function sectionFromBand(band: HeaderFooterBand | null | undefined): CustomRackConfig['header'] {
+function normalizeBandSpan(value: number, outerSpan: number, innerSpan?: number): number {
+  if (value <= 0) return 0
+  if (outerSpan > 0 && Math.abs(value - outerSpan) < 0.05) return 0
+  if (innerSpan != null && innerSpan > 0 && Math.abs(value - innerSpan) < 0.05) return 0
+  return value
+}
+
+function sectionFromBand(
+  band: HeaderFooterBand | null | undefined,
+  outer?: Dimensions3 | null,
+  wallThickness = 0.08,
+): CustomRackConfig['header'] {
+  const ow = num(outer?.width, 0)
+  const od = num(outer?.depth, 0)
+  const iw = Math.max(0.1, ow - wallThickness * 2)
+  const id = Math.max(0.1, od - wallThickness * 2)
+  const rawW = band?.width != null ? num(band.width, 0) : 0
+  const rawD = band?.depth != null ? num(band.depth, 0) : 0
   return {
     enabled: Boolean(band?.enabled),
     height: num(band?.height, 0.35),
-    width: num(band?.width, 0),
-    depth: num(band?.depth, 0),
+    width: normalizeBandSpan(rawW, ow, iw),
+    depth: normalizeBandSpan(rawD, od, id),
     protrusion: num(band?.protrusion, 0),
     color: band?.color ?? '#2C5282',
     emissive: band?.emissive ?? undefined,
@@ -71,14 +88,15 @@ export function shellToCustomConfig(
   const ow = num(outer?.width, DEFAULT_RACK_WIDTH);
   const od = num(outer?.depth, DEFAULT_RACK_DEPTH);
   const oh = num(outer?.height, GROCERY_SHELF_HEIGHT);
+  const wt = num(shell?.wallThickness, 0.08);
   return {
     preset,
     outerWidth: ow,
     outerDepth: od,
     outerHeight: oh,
-    wallThickness: num(shell?.wallThickness, 0.08),
-    header: sectionFromBand(shell?.header),
-    footer: sectionFromBand(shell?.footer),
+    wallThickness: wt,
+    header: sectionFromBand(shell?.header, outer, wt),
+    footer: sectionFromBand(shell?.footer, outer, wt),
     walls: shell?.walls ?? { back: true, left: true, right: true, frontGlass: false },
     shelfCount: 0,
     shelfThickness: 0.03,
@@ -309,10 +327,11 @@ function mapRowForApi(
   rowDepth: number,
   yStart: number,
 ) {
-  const rowWidth = row.width ?? innerWidth;
+  const rowWidth = row.width ?? row.span ?? innerWidth;
   const apiId = isServerUuid(row.id) ? row.id : undefined;
   const yEnd = yStart + row.height;
   const slotCount = row.bins.length;
+  const dividerThickness = row.dividerThickness ?? 0.025;
 
   let x = 0;
   const bins = row.bins.map((bin, slotIndex) => {
@@ -321,7 +340,7 @@ function mapRowForApi(
     return mapped;
   });
 
-  return {
+  const rowPayload: Record<string, unknown> = {
     ...(apiId ? { id: apiId } : {}),
     rowNumber,
     width: rowWidth,
@@ -329,11 +348,17 @@ function mapRowForApi(
     height: row.height,
     depth: rowDepth,
     sided: row.sided ?? 'one',
-    dividerThickness: 0.025,
+    dividerThickness,
     yStart,
     yEnd,
     bins,
   };
+
+  if (row.dividerPosmItemId) {
+    rowPayload.dividerPosmItemId = row.dividerPosmItemId;
+  }
+
+  return rowPayload;
 }
 
 export function resolveRackOuter(rack: Rack): { width: number; depth: number; height: number } {
@@ -391,7 +416,10 @@ export function clampRowSpanToInner(rack: Rack, requested?: number | null): numb
 }
 
 /** Builds the nested PUT /api/v1/layout/racks/{rackId} body from local store state. */
-export function buildUpdateRackPayload(rack: Rack): Record<string, unknown> {
+export function buildUpdateRackPayload(
+  rack: Rack,
+  options?: { reflowSkus?: boolean },
+): Record<string, unknown> {
   const serverRackId = rack.rackId || rack.id;
   const outer = resolveRackOuter(rack);
   const inner = resolveRackInner(rack);
@@ -418,10 +446,16 @@ export function buildUpdateRackPayload(rack: Rack): Record<string, unknown> {
         y += row.height;
         return mapped;
       });
-      return {
+      const sidePayload: Record<string, unknown> = {
         ...(isServerUuid(sideId) ? { id: sideId } : {}),
         rows,
       };
+      if (side.inner) sidePayload.inner = side.inner;
+      if (side.outer) sidePayload.outer = side.outer;
+      if (side.header) sidePayload.header = side.header;
+      if (side.footer) sidePayload.footer = side.footer;
+      if (side.depth != null) sidePayload.depth = side.depth;
+      return sidePayload;
     }),
   };
 
@@ -429,9 +463,21 @@ export function buildUpdateRackPayload(rack: Rack): Record<string, unknown> {
     const shell = rack.customConfig
       ? customConfigToShell(rack.customConfig)
       : rack.shell;
-    if (shell) payload.shell = shell;
+    if (shell) {
+      payload.shell = {
+        ...shell,
+        headerPosmItemId: rack.shell?.headerPosmItemId ?? null,
+        footerPosmItemId: rack.shell?.footerPosmItemId ?? null,
+        leftWallPosmItemId: rack.shell?.leftWallPosmItemId ?? null,
+        rightWallPosmItemId: rack.shell?.rightWallPosmItemId ?? null,
+      };
+    }
   } else if (rack.shell) {
     payload.shell = rack.shell;
+  }
+
+  if (options?.reflowSkus) {
+    payload.reflowSkus = true;
   }
 
   return payload;

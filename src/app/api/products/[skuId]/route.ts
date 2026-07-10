@@ -71,12 +71,33 @@ export async function PUT(
   if (typeof body.imageStorageKey === 'string' && body.imageStorageKey.trim()) {
     patch.imageStorageKey = body.imageStorageKey.trim();
   }
+  if (typeof body.modelStorageKey === 'string' && body.modelStorageKey.trim()) {
+    patch.modelStorageKey = body.modelStorageKey.trim();
+  }
+  if (Array.isArray(body.attachments)) {
+    patch.attachments = body.attachments
+      .filter(
+        (a) =>
+          a &&
+          typeof a === 'object' &&
+          typeof (a as { storageKey?: string }).storageKey === 'string' &&
+          (a as { storageKey: string }).storageKey.trim(),
+      )
+      .map((a) => ({
+        storageKey: (a as { storageKey: string }).storageKey.trim(),
+        is3D: Boolean((a as { is3D?: boolean }).is3D),
+      }));
+  } else if (Array.isArray(body.attachmentStorageKeys)) {
+    patch.attachments = body.attachmentStorageKeys
+      .filter((k) => typeof k === 'string' && k.trim())
+      .map((storageKey) => ({
+        storageKey,
+        is3D: storageKey.includes('/models') || storageKey.endsWith('.glb'),
+      }));
+  }
   if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim();
   if (typeof body.code === 'string' && body.code.trim()) patch.code = body.code.trim();
   if (typeof body.status === 'string') patch.status = body.status;
-  if (Array.isArray(body.attachmentStorageKeys)) {
-    patch.attachmentStorageKeys = body.attachmentStorageKeys;
-  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(

@@ -1,7 +1,12 @@
 import type { Rack } from '@/store/planogramStore'
 import type { FixtureType } from '@/components/fixtures/types'
 import type { RackPlacement } from '@/types/rackBlueprint'
-import type { Dimensions3, RackShell, ShelfTalker } from '@/types/rackBlueprint'
+import type { Dimensions3, RackShell } from '@/types/rackBlueprint'
+import {
+  normalizeRackPosm,
+  normalizeZoneFootprint,
+  normalizeZoneVolume,
+} from '@/utils/rackZones'
 import { safeDim, safePosition } from '@/utils/safeDimensions'
 import {
   DEFAULT_BIN_HEIGHT,
@@ -80,6 +85,8 @@ export function normalizeSkus(skus: any[]): any[] {
     categoryName: p.categoryName ?? undefined,
     imageUrl: p.imageUrl ?? p.image ?? undefined,
     imageStorageKey: p.imageStorageKey ?? undefined,
+    modelUrl: p.modelUrl ?? p.glbUrl ?? p.model3dUrl ?? undefined,
+    modelStorageKey: p.modelStorageKey ?? p.glbStorageKey ?? undefined,
   }))
 }
 
@@ -102,17 +109,19 @@ function resolveBinDimensions(
   }
 }
 
-function normalizeTalkers(raw: any): ShelfTalker[] {
-  return asArray(raw).map((t: any) => ({
-    id: resolveEntityId(t.id) ?? resolveEntityId(t.shelfTalkerId) ?? generateId(),
-    rackRowId: resolveEntityId(t.rackRowId) ?? null,
-    label: t.label ?? null,
-    length: safeDim(t.length, 0.2),
-    innerDepth: safeDim(t.innerDepth, 0.05),
-    outerHeight: safeDim(t.outerHeight, 0.08),
-    slotPosition: Math.max(1, Math.floor(Number(t.slotPosition) || 1)),
-    placementZone: t.placementZone ?? 'inner',
-  }))
+function enrichShell(raw: any): RackShell | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  return {
+    ...(raw as RackShell),
+    headerPosm: normalizeRackPosm(raw.headerPosm ?? raw.headerDisplay),
+    footerPosm: normalizeRackPosm(raw.footerPosm ?? raw.footerDisplay),
+    leftWallPosm: normalizeRackPosm(raw.leftWallPosm ?? raw.leftWallDisplay),
+    rightWallPosm: normalizeRackPosm(raw.rightWallPosm ?? raw.rightWallDisplay),
+    headerPosmItemId: raw.headerPosmItemId ?? raw.headerDisplayProgramId ?? null,
+    footerPosmItemId: raw.footerPosmItemId ?? raw.footerDisplayProgramId ?? null,
+    leftWallPosmItemId: raw.leftWallPosmItemId ?? raw.leftWallDisplayProgramId ?? null,
+    rightWallPosmItemId: raw.rightWallPosmItemId ?? raw.rightWallDisplayProgramId ?? null,
+  }
 }
 
 /** Unwrap blueprint document (`data.rack` + `layout.sides`) into a flat structure shape. */
@@ -136,7 +145,9 @@ export function expandProductsByQuantity<T extends { id: string; quantity?: numb
   products: T[],
 ): T[] {
   const expanded: T[] = []
+  let facingCounter = 0
   for (const product of products) {
+    const baseId = String(product.id).replace(/::facing-\d+$/, '')
     const n = Math.min(
       Math.max(1, Math.floor(Number(product.quantity) || 1)),
       MAX_FACINGS,
@@ -144,12 +155,17 @@ export function expandProductsByQuantity<T extends { id: string; quantity?: numb
     for (let i = 0; i < n; i++) {
       expanded.push({
         ...product,
-        id: n > 1 ? `${product.id}::facing-${i}` : product.id,
+        id: `${baseId}::facing-${facingCounter++}`,
         quantity: 1,
       } as T)
     }
   }
   return expanded
+}
+
+/** Strip `::facing-N` suffix added by {@link expandProductsByQuantity} for selection/API ids. */
+export function resolveProductFacingId(id: string): string {
+  return id.replace(/::facing-\d+$/, '')
 }
 
 export function totalProductFacings(products: { quantity?: number }[]): number {
@@ -173,7 +189,7 @@ export function normalizeRack(rawInput: any): Rack {
   const placement = parsePlacement(raw)
   const rotation = placement ? placementToRotation(placement) : { x: 0, y: 0, z: 0 }
   const quadrant = parseQuadrant(placement?.quadrant ?? raw.quadrant)
-  const shell = raw.shell as RackShell | null | undefined
+  const shell = enrichShell(raw.shell)
   const outer = raw.outer as Dimensions3 | null | undefined
   const inner = raw.inner as Dimensions3 | null | undefined
   const customConfig =
@@ -185,7 +201,7 @@ export function normalizeRack(rawInput: any): Rack {
       const rowsRaw = asArray(s.rows)
       const rows = rowsRaw.map((r: any) => {
         const rowHeight = safeDim(r.height ?? r.rowHeight, 1.5)
-        const rowWidth = r.width ?? r.span
+        const rowWidth = r.span ?? r.width
         const binsRaw = asArray(r.bins)
         const binFallback = computeBinDims(width, depth, binsRaw.length || 1)
         const bins = binsRaw.map((b: any) => {
@@ -202,11 +218,19 @@ export function normalizeRack(rawInput: any): Rack {
         return {
           id: resolveEntityId(r.rowId) ?? resolveEntityId(r.id) ?? resolveEntityId(r.rackRowId) ?? generateId(),
           height: rowHeight,
-          ...(rowWidth != null ? { width: safeDim(rowWidth, width * 0.85) } : {}),
+          ...(rowWidth != null
+            ? {
+                width: safeDim(rowWidth, width * 0.85),
+                span: safeDim(rowWidth, width * 0.85),
+              }
+            : {}),
+          dividerThickness:
+            r.dividerThickness != null ? safeDim(r.dividerThickness, 0.025) : 0.025,
+          dividerPosmItemId: r.dividerPosmItemId ?? r.dividerDisplayProgramId ?? null,
+          dividerPosm: normalizeRackPosm(r.dividerPosm ?? r.dividerDisplay),
           sided: (r.sided === 'two' ? 'two' : isDoubleSided ? 'two' : 'one') as 'one' | 'two',
           yStart: r.yStart != null ? Number(r.yStart) : null,
           yEnd: r.yEnd != null ? Number(r.yEnd) : null,
-          talkers: normalizeTalkers(r.talkers),
           bins,
         }
       })
@@ -214,6 +238,11 @@ export function normalizeRack(rawInput: any): Rack {
         id: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
         sideId: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
         sideCode: s.sideCode ?? s.side_code ?? `S${idx + 1}`,
+        depth: s.depth != null ? Number(s.depth) : null,
+        inner: normalizeZoneFootprint(s.inner),
+        outer: normalizeZoneFootprint(s.outer),
+        header: normalizeZoneVolume(s.header),
+        footer: normalizeZoneVolume(s.footer),
         rows,
       }
     },

@@ -5,7 +5,15 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import type { SceneTheme } from '@/constants/sceneTheme'
 import { cn } from '@/lib/cn'
 
-export function DayNightToggle({ className, dark }: { className?: string; dark?: boolean }) {
+export function DayNightToggle({
+  className,
+  dark,
+  embedded,
+}: {
+  className?: string
+  dark?: boolean
+  embedded?: boolean
+}) {
   const theme = usePlanogramStore((s) => s.sceneTheme)
   const setSceneTheme = usePlanogramStore((s) => s.setSceneTheme)
 
@@ -14,8 +22,13 @@ export function DayNightToggle({ className, dark }: { className?: string; dark?:
   return (
     <div
       className={cn(
-        'flex items-center gap-1 p-1 rounded-xl shadow-lg backdrop-blur-sm',
-        dark ? 'bg-black/70 border border-white/10' : 'bg-white/95 border border-gray-200',
+        'flex items-center gap-1 p-1 rounded-lg',
+        !embedded && 'rounded-xl shadow-lg backdrop-blur-sm',
+        embedded
+          ? 'bg-white/5'
+          : dark
+            ? 'bg-black/70 border border-white/10'
+            : 'bg-white/95 border border-gray-200',
         className,
       )}
     >
@@ -24,6 +37,7 @@ export function DayNightToggle({ className, dark }: { className?: string; dark?:
         onClick={() => set('day')}
         className={cn(
           'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all',
+          embedded && 'flex-1 justify-center',
           theme === 'day'
             ? 'bg-brand text-white shadow-sm'
             : dark
@@ -40,6 +54,7 @@ export function DayNightToggle({ className, dark }: { className?: string; dark?:
         onClick={() => set('night')}
         className={cn(
           'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all',
+          embedded && 'flex-1 justify-center',
           theme === 'night'
             ? 'bg-brand text-white shadow-sm'
             : dark

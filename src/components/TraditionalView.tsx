@@ -21,6 +21,8 @@ import AttachProductToBinModal from './AttachProductToBinModal'
 import { Spinner } from './Spinner'
 import { RowDimensionsField } from '@/components/RowHeightsEditor'
 import { resolveEntityId, totalProductFacings } from '@/utils/storeLayoutLoader'
+import { toastApiError } from '@/utils/apiMessages'
+import toast from 'react-hot-toast'
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
@@ -164,9 +166,8 @@ export function TraditionalView() {
   const handleAttachProductSuccess = async (product: any, quantity: number) => {
     if (selectedBinId) {
       const result = await attachProductToBin(selectedBinId, product, quantity)
-      if (!result.success && (result as { message?: string }).message) {
-        alert((result as { message?: string }).message)
-      }
+      if (!result.success) toastApiError(result.message)
+      else toast.success(result.message ?? 'Product attached')
     }
   }
 

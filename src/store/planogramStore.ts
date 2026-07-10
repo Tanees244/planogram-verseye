@@ -1,20 +1,21 @@
 import { create } from "zustand";
-import { resolveEntityId } from "@/utils/storeLayoutLoader";
+import { resolveEntityId, resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import type { FixtureType } from "@/components/fixtures/types";
 import type { CustomRackConfig } from "@/components/fixtures/customRackTypes";
-import type { Dimensions3, RackPlacement, RackShell, ShelfTalker } from "@/types/rackBlueprint";
+import type { Dimensions3, RackPlacement, RackShell, RackSurfacePosm, ZoneFootprint, ZoneVolume } from "@/types/rackBlueprint";
 import {
   cloneCustomRackConfig,
   createBlankCustomRack,
   createEndCapPreset,
   createRefrigeratedPreset,
+  normalizeSectionSpans,
 } from "@/components/fixtures/customRackTypes";
 import {
   getRotatedFootprintHalf,
   isRackInsideFloor,
   snapRackToWall,
 } from "@/utils/rackPlacement";
-import { buildCreateRackPayload, buildUpdateRackPayload, clampRowSpanToInner } from "@/utils/rackBlueprintMapper";
+import { buildCreateRackPayload, buildUpdateRackPayload, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
 import {
   applyCustomConfigWithCascade,
   binOccupiedFacingWidth,
@@ -23,6 +24,7 @@ import {
   type CascadeException,
 } from "@/utils/layoutCascade";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
+import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
 import type { SceneTheme } from "@/constants/sceneTheme";
 import {
   DEFAULT_BIN_DEPTH,
@@ -51,6 +53,10 @@ export interface Product {
   brandName?: string;
   categoryName?: string;
   imageUrl?: string;
+  /** Direct GLB URL or path (e.g. /models/foo.glb) */
+  modelUrl?: string;
+  /** Object storage key for .glb — loaded via /api/files/model?key= */
+  modelStorageKey?: string;
   quantity?: number;
 }
 
@@ -63,6 +69,8 @@ export interface PendingProductParams {
   size?: string | null;
   variant?: string | null;
   imageUrl?: string | null;
+  modelUrl?: string | null;
+  modelStorageKey?: string | null;
   width: number;
   height: number;
   depth: number;
@@ -83,11 +91,14 @@ export type RowSided = "one" | "two";
 export interface Row {
   id: string;
   height: number;
-  /** Shelf span inside rack (m). Defaults to rack inner width. */
+  /** Shelf span inside rack (m). API field: `span`. */
   width?: number;
+  span?: number;
+  dividerThickness?: number;
   sided?: RowSided;
   bins: Bin[];
-  talkers?: ShelfTalker[];
+  dividerPosmItemId?: string | null;
+  dividerPosm?: RackSurfacePosm | null;
   yStart?: number | null;
   yEnd?: number | null;
 }
@@ -96,6 +107,11 @@ export interface RackSide {
   id: string;
   sideId: string;
   sideCode: string;
+  depth?: number | null;
+  inner?: ZoneFootprint | null;
+  outer?: ZoneFootprint | null;
+  header?: ZoneVolume | null;
+  footer?: ZoneVolume | null;
   rows: Row[];
 }
 
@@ -163,6 +179,10 @@ export interface PlanogramState {
   setSceneTheme: (theme: SceneTheme) => void;
   roofVisible: boolean;
   setRoofVisible: (visible: boolean) => void;
+  fixturePaletteCollapsed: boolean;
+  productPaletteCollapsed: boolean;
+  setFixturePaletteCollapsed: (collapsed: boolean) => void;
+  setProductPaletteCollapsed: (collapsed: boolean) => void;
   selectedId: string | null;
   selectedType: "area" | "rack" | "row" | "bin" | "product" | null;
   isPlacingRack: boolean;
@@ -170,6 +190,11 @@ export interface PlanogramState {
   placingFixtureType: FixtureType | null;
   isPlacingProduct: boolean;
   pendingProductParams: PendingProductParams | null;
+  /** Bin under cursor during SKU drag-over (for highlight + slot preview). */
+  productDropHover: { binId: string; fits: boolean; reason?: string } | null;
+  setProductDropHover: (
+    hover: { binId: string; fits: boolean; reason?: string } | null,
+  ) => void;
   startProductPlacement: (product: PendingProductParams) => void;
   cancelProductPlacement: () => void;
   placeProductOnBin: (
@@ -287,7 +312,10 @@ export interface PlanogramState {
   /** Re-fetch store layout from the API (preserves rack positions). */
   reloadStoreLayout: () => Promise<{ success: boolean; message?: string }>;
   /** Persist one rack's full nested layout (placement, shell, sides/rows/bins/products). */
-  saveRackLayoutToServer: (rackId: string, options?: { suppressLoading?: boolean }) => Promise<{ success: boolean; message?: string }>;
+  saveRackLayoutToServer: (
+    rackId: string,
+    options?: { suppressLoading?: boolean; reflowSkus?: boolean },
+  ) => Promise<{ success: boolean; message?: string }>;
   /** Persist all server-backed racks in the current store layout. */
   saveStoreLayoutToServer: () => Promise<{
     success: boolean;
@@ -319,21 +347,19 @@ export interface PlanogramState {
   deleteRow: (rowId: string) => void;
   deleteBin: (binId: string) => void;
   deleteProduct: (productId: string) => void;
+  clearBinProductsLocally: (binId: string) => void;
+  detachBinInventory: (binId: string) => Promise<{ success: boolean; message?: string }>;
   deleteProductFromServer: (productId: string) => Promise<{ success: boolean; message?: string }>;
-  addShelfTalkerToServer: (
+  assignRackPosmItems: (
+    rackId: string,
+    payload: import('@/types/rackBlueprint').UpdateRackPosmItemsRequest,
+    posmCatalog?: Record<string, RackSurfacePosm>,
+  ) => Promise<{ success: boolean; message?: string }>;
+  assignRowDividerPosm: (
+    rackId: string,
     rowId: string,
-    talker: {
-      label?: string | null;
-      length: number;
-      innerDepth: number;
-      outerHeight: number;
-      slotPosition: number;
-      placementZone?: string;
-    },
-  ) => Promise<{ success: boolean; message?: string; talkerId?: string }>;
-  deleteShelfTalkerFromServer: (
-    talkerId: string,
-    rowId: string,
+    posmItemId: string | null,
+    hydrated?: RackSurfacePosm | null,
   ) => Promise<{ success: boolean; message?: string }>;
   loadFromJSON: (
     jsonData: any,
@@ -477,6 +503,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   setSceneTheme: (theme) => set({ sceneTheme: theme }),
   roofVisible: true,
   setRoofVisible: (visible) => set({ roofVisible: visible }),
+  fixturePaletteCollapsed: false,
+  productPaletteCollapsed: false,
+  setFixturePaletteCollapsed: (collapsed) => set({ fixturePaletteCollapsed: collapsed }),
+  setProductPaletteCollapsed: (collapsed) => set({ productPaletteCollapsed: collapsed }),
   selectedId: null,
   selectedType: null,
   isPlacingRack: false,
@@ -484,6 +514,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   placingFixtureType: null,
   isPlacingProduct: false,
   pendingProductParams: null,
+  productDropHover: null,
   customRackBuilderOpen: false,
   customRackDraft: createBlankCustomRack(),
   editingCustomRackId: null,
@@ -555,6 +586,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       pendingRackParams: null,
       placingFixtureType: null,
     }),
+  setProductDropHover: (hover) => set({ productDropHover: hover }),
   startProductPlacement: (product) => {
     set({
       isPlacingProduct: true,
@@ -563,6 +595,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       pendingRackParams: null,
       placingFixtureType: null,
       addProductError: null,
+      productDropHover: null,
       selectedId: null,
       selectedType: null,
     });
@@ -571,6 +604,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set({
       isPlacingProduct: false,
       pendingProductParams: null,
+      productDropHover: null,
     }),
   placeProductOnBin: async (binId, quantity = 1) => {
     const state = get();
@@ -591,6 +625,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         brandName: pending.brandName ?? undefined,
         categoryName: pending.categoryName ?? undefined,
         imageUrl: pending.imageUrl ?? undefined,
+        modelUrl: pending.modelUrl ?? undefined,
+        modelStorageKey: pending.modelStorageKey ?? undefined,
       },
       quantity,
     );
@@ -599,6 +635,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       set({
         isPlacingProduct: false,
         pendingProductParams: null,
+        productDropHover: null,
         selectedId: binId,
         selectedType: 'bin',
         addProductError: null,
@@ -616,7 +653,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     if (rackId) {
       const rack = state.area.racks.find((r) => r.id === rackId);
       if (rack?.customConfig) draft = cloneCustomRackConfig(rack.customConfig);
-      else if (rack) {
+      else if (rack?.shell && rack?.outer) {
+        const fromShell = shellToCustomConfig(rack.shell, rack.outer, 'CUSTOM');
+        if (fromShell) draft = fromShell;
+      } else if (rack) {
         draft = {
           ...draft,
           outerWidth: rack.width,
@@ -624,6 +664,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         };
       }
     }
+    draft = normalizeSectionSpans(draft);
     set({
       customRackBuilderOpen: true,
       customRackDraft: draft,
@@ -882,12 +923,30 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           const returned = data.data ?? {};
           if (returned.rackId) {
             rack.rackId = returned.rackId;
+            rack.id = returned.rackId;
           }
           if (Array.isArray(returned.sideIds) && returned.sideIds.length > 0) {
             rack.sides = rack.sides.map((side, idx) => ({
               ...side,
               sideId: returned.sideIds[idx] ?? side.sideId,
+              id: returned.sideIds[idx] ?? side.sideId,
             }));
+          } else if (Array.isArray(returned.sides) && returned.sides.length > 0) {
+            rack.sides = rack.sides.map((side, idx) => {
+              const apiSide = returned.sides[idx];
+              const sideId = apiSide?.sideId ?? apiSide?.id ?? side.sideId;
+              return { ...side, sideId, id: sideId };
+            });
+          }
+          if (returned.shell && returned.outer && rack.fixtureType === 'CUSTOM') {
+            const fromApi = shellToCustomConfig(
+              returned.shell as RackShell,
+              returned.outer as Dimensions3,
+              'CUSTOM',
+            );
+            if (fromApi) rack.customConfig = fromApi;
+            rack.shell = returned.shell as RackShell;
+            rack.outer = returned.outer as Dimensions3;
           }
         } catch (e) {
           // non-fatal: if response shape differs, fall back to local ids
@@ -1006,17 +1065,26 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             rowWidth,
           });
         } else {
-          sideResults.push({ success: false, message: data?.message || 'Failed', sideIndex: i });
+          const message = extractApiErrorMessage(data, 'Failed to add row');
+          sideResults.push({ success: false, message, sideIndex: i });
         }
       } catch (err) {
         sideResults.push({ success: false, message: 'Network error', sideIndex: i });
       }
     }
 
+    const failedMessages = [
+      ...new Set(sideResults.filter((s) => !s.success).map((s) => s.message)),
+    ];
+    if (failedMessages.length > 0) {
+      toastApiError(failedMessages.join('; '));
+    }
+
     // Apply successful results to local state
     const appliedCount = sideResults.filter((s) => s.success).length;
     if (appliedCount === 0) {
-      return { success: false, message: sideResults.map((s) => s.message).join('; ') };
+      const message = sideResults.map((s) => s.message).join('; ');
+      return { success: false, message };
     }
 
     set((s) => {
@@ -1369,9 +1437,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const usedWidth = binOccupiedFacingWidth(bin.products);
     const need = productFacingWidth({ width: product.width, quantity: qty });
     if (usedWidth + need > bin.width + 0.001) {
+      const maxNew = Math.max(0, Math.floor((bin.width - usedWidth) / product.width + 1e-9));
+      const maxTotal = Math.max(0, Math.floor(bin.width / product.width + 1e-9));
       return {
         fits: false,
-        reason: `No space: used ${(usedWidth * 100).toFixed(0)} cm of ${(bin.width * 100).toFixed(0)} cm; need ${(need * 100).toFixed(0)} cm more (width×facings)`,
+        reason:
+          maxNew > 0
+            ? `${qty} facing${qty === 1 ? '' : 's'} need ${(need * 100).toFixed(0)} cm of shelf width (${(product.width * 100).toFixed(0)} cm each) but only ${(bin.width * 100).toFixed(0)} cm is available (used ${(usedWidth * 100).toFixed(0)} cm). Max ${maxNew} more facing${maxNew === 1 ? '' : 's'} (bin fits ${maxTotal} total).`
+            : `Product facing (${(product.width * 100).toFixed(0)} cm) is too wide or bin shelf (${(bin.width * 100).toFixed(0)} cm) is full.`,
       };
     }
     return { fits: true };
@@ -1379,11 +1452,25 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   addProduct: (binId, productOverrides) => {
     const state = get();
     const product = createProduct(productOverrides);
+    let existingQty = 0;
+    for (const rack of state.area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const bin = row.bins.find((b) => b.id === binId);
+          if (bin) {
+            const existing = bin.products.find((p) => p.id === product.id);
+            if (existing) existingQty = existing.quantity ?? 1;
+            break;
+          }
+        }
+      }
+    }
+    const mergedQty = existingQty > 0 ? existingQty + (product.quantity ?? 1) : (product.quantity ?? 1);
     const check = get().canProductFitInBin(binId, {
       width: product.width,
       depth: product.depth,
       height: product.height,
-      quantity: product.quantity ?? 1,
+      quantity: mergedQty,
     });
     if (!check.fits) {
       set({ addProductError: check.reason ?? "Product does not fit" });
@@ -1399,11 +1486,19 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             ...side,
             rows: side.rows.map((row) => ({
               ...row,
-              bins: row.bins.map((bin) =>
-                bin.id === binId
-                  ? { ...bin, products: [...bin.products, product] }
-                  : bin,
-              ),
+              bins: row.bins.map((bin) => {
+                if (bin.id !== binId) return bin;
+                const existingIdx = bin.products.findIndex((p) => p.id === product.id);
+                if (existingIdx >= 0) {
+                  return {
+                    ...bin,
+                    products: bin.products.map((p, i) =>
+                      i === existingIdx ? { ...p, quantity: mergedQty } : p,
+                    ),
+                  };
+                }
+                return { ...bin, products: [...bin.products, product] };
+              }),
             })),
           })),
         })),
@@ -1466,7 +1561,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         /* ignore */
       }
 
-      // Backend rule: both bin and SKU must have width/height/depth > 0 before attach
+      // Bins and SKUs should already have dims from create flows; attach directly.
       try {
         if (!binDimsOk) {
           return {
@@ -1474,13 +1569,6 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             message: 'Bin dimensions must be set before attaching a SKU. Edit the bin size and retry.',
           };
         }
-        // Always sync bin dims to server (create may have omitted them historically)
-        await fetch(`/api/bins/${encodeURIComponent(serverBinId)}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({ width: binW, height: binH, depth: binD }),
-        });
-
         if (!skuDimsOk) {
           return {
             success: false,
@@ -1489,15 +1577,6 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           };
         }
 
-        // Ensure catalog SKU has dims (required by attach business rule)
-        const skuPatchRes = await fetch(`/api/products/${encodeURIComponent(skuId)}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({ width: skuW, height: skuH, depth: skuD }),
-        });
-        const skuPatchJson = await skuPatchRes.json().catch(() => ({}));
-        const skuPatchOk = skuPatchRes.ok && skuPatchJson?.isRequestSuccess !== false;
-
         const res = await fetch('/api/bins/attach-product', {
           method: 'POST',
           headers,
@@ -1505,18 +1584,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data?.isRequestSuccess === false) {
-          const detail =
-            Array.isArray(data?.errors) && data.errors.length
-              ? data.errors.map((e: any) => e.message || e.field).join('; ')
-              : null;
-          const attachMsg =
-            detail || data?.message || 'Failed to attach product to bin inventory';
-          if (!skuPatchOk) {
-            return {
-              success: false,
-              message: `${attachMsg} (also failed to update SKU dims: ${skuPatchJson?.message || skuPatchRes.status})`,
-            };
-          }
+          const attachMsg = extractApiErrorMessage(data, 'Failed to attach product to bin inventory');
           return { success: false, message: attachMsg };
         }
       } catch {
@@ -1532,6 +1600,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       depth: skuDimsOk ? skuD : product.depth,
       quantity: qty,
       imageUrl: product.imageUrl,
+      modelUrl: product.modelUrl,
+      modelStorageKey: product.modelStorageKey,
       brandName: product.brandName,
       categoryName: product.categoryName,
     });
@@ -1601,7 +1671,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const payload = buildUpdateRackPayload(rack);
+      const payload = buildUpdateRackPayload(rack, { reflowSkus: options?.reflowSkus });
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,
@@ -2052,23 +2122,88 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
               ...row,
               bins: row.bins.map((bin) => ({
                 ...bin,
-                products: bin.products.filter((p) => p.id !== productId),
+                products: bin.products.filter(
+                  (p) =>
+                    p.id !== productId &&
+                    !p.id.startsWith(`${productId}::`) &&
+                    resolveProductFacingId(p.id) !== productId,
+                ),
               })),
             })),
           })),
         })),
       },
-      selectedId: null,
-      selectedType: null,
+      selectedId: state.selectedId === productId ? null : state.selectedId,
+      selectedType: state.selectedId === productId ? null : state.selectedType,
     })),
+  clearBinProductsLocally: (binId) =>
+    set((state) => ({
+      area: {
+        ...state.area,
+        racks: state.area.racks.map((rack) => ({
+          ...rack,
+          sides: rack.sides.map((side) => ({
+            ...side,
+            rows: side.rows.map((row) => ({
+              ...row,
+              bins: row.bins.map((bin) =>
+                bin.id === binId ? { ...bin, products: [] } : bin,
+              ),
+            })),
+          })),
+        })),
+      },
+      selectedId: state.selectedType === 'product' ? null : state.selectedId,
+      selectedType: state.selectedType === 'product' ? null : state.selectedType,
+    })),
+  detachBinInventory: async (binId) => {
+    const serverBinId = resolveEntityId(binId);
+    if (!serverBinId || !UUID_RE.test(serverBinId)) {
+      get().clearBinProductsLocally(binId);
+      return { success: true, message: 'Cleared local inventory' };
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const res = await fetch('/api/bin-inventory/detach', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ binId: serverBinId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false) {
+        return {
+          success: false,
+          message: extractApiErrorMessage(data, 'Failed to detach product from inventory'),
+        };
+      }
+      get().clearBinProductsLocally(binId);
+      return { success: true, message: data?.message || 'Inventory detached' };
+    } catch {
+      return { success: false, message: 'Network error while detaching product' };
+    }
+  },
   deleteProductFromServer: async (productId) => {
+    const catalogId = resolveProductFacingId(productId);
     const state = get();
     let binId: string | null = null;
     for (const rack of state.area.racks) {
       for (const side of rack.sides) {
         for (const row of side.rows) {
           for (const bin of row.bins) {
-            if (bin.products.some((p) => p.id === productId || p.id.startsWith(`${productId}::`))) {
+            if (
+              bin.products.some(
+                (p) => p.id === productId || p.id.startsWith(`${catalogId}::`) || p.id === catalogId,
+              )
+            ) {
               binId = bin.id;
               break;
             }
@@ -2080,41 +2215,18 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (binId) break;
     }
 
-    const serverBinId = resolveEntityId(binId);
-    if (serverBinId && UUID_RE.test(serverBinId)) {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      try {
-        const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
-        const t = getPlanogramTokenFromCookie();
-        if (t) headers['Authorization'] = `Bearer ${t}`;
-      } catch {
-        /* ignore */
-      }
-      try {
-        const res = await fetch('/api/bin-inventory/detach', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ binId: serverBinId }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || data?.isRequestSuccess === false) {
-          return {
-            success: false,
-            message: data?.message || 'Failed to detach product from inventory',
-          };
-        }
-      } catch {
-        return { success: false, message: 'Network error while detaching product' };
-      }
+    if (!binId) {
+      get().deleteProduct(productId);
+      return { success: true, message: 'Product removed locally' };
     }
 
-    get().deleteProduct(productId);
-    return { success: true, message: 'Product removed' };
+    return get().detachBinInventory(binId);
   },
-  addShelfTalkerToServer: async (rowId, talker) => {
-    const rackRowId = resolveEntityId(rowId);
-    if (!rackRowId || !UUID_RE.test(rackRowId)) {
-      return { success: false, message: 'Row has no server id yet' };
+  assignRackPosmItems: async (rackId, payload, posmCatalog = {}) => {
+    const rack = get().area.racks.find((r) => r.id === rackId || r.rackId === rackId);
+    const serverRackId = rack?.rackId ?? rack?.id ?? rackId;
+    if (!serverRackId || !UUID_RE.test(serverRackId)) {
+      return { success: false, message: 'Rack has no server id yet' };
     }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -2127,106 +2239,132 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const res = await fetch('/api/shelf-talkers', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          rackRowId,
-          label: talker.label ?? null,
-          length: talker.length,
-          innerDepth: talker.innerDepth,
-          outerHeight: talker.outerHeight,
-          slotPosition: talker.slotPosition,
-          placementZone: talker.placementZone ?? 'inner',
-        }),
-      });
+      const res = await fetch(
+        `/api/racks/${encodeURIComponent(serverRackId)}/posm-items`,
+        { method: 'PUT', headers, body: JSON.stringify(payload) },
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.isRequestSuccess === false) {
-        return { success: false, message: data?.message || 'Failed to create shelf talker' };
+        return { success: false, message: data?.message || 'Failed to assign POSM items' };
       }
 
-      const created = data?.data ?? {};
-      const talkerId =
-        resolveEntityId(created.id) ??
-        resolveEntityId(created.shelfTalkerId) ??
-        resolveEntityId(created);
-
-      const entry: ShelfTalker = {
-        id: talkerId ?? `local-talker-${Date.now()}`,
-        rackRowId,
-        label: talker.label ?? null,
-        length: talker.length,
-        innerDepth: talker.innerDepth,
-        outerHeight: talker.outerHeight,
-        slotPosition: talker.slotPosition,
-        placementZone: talker.placementZone ?? 'inner',
+      const responseShell = data?.data?.shell ?? data?.data ?? {};
+      const posmFromCatalog = (id: string | null | undefined): RackSurfacePosm | null => {
+        if (!id) return null;
+        if (posmCatalog[id]) return posmCatalog[id];
+        const fromShell =
+          (responseShell.headerPosm?.id === id && responseShell.headerPosm) ||
+          (responseShell.footerPosm?.id === id && responseShell.footerPosm) ||
+          (responseShell.leftWallPosm?.id === id && responseShell.leftWallPosm) ||
+          (responseShell.rightWallPosm?.id === id && responseShell.rightWallPosm);
+        if (fromShell) return fromShell as RackSurfacePosm;
+        for (const rack of get().area.racks) {
+          for (const side of rack.sides) {
+            for (const row of side.rows) {
+              if (row.dividerPosm?.id === id) return row.dividerPosm;
+            }
+          }
+          const shell = rack.shell;
+          if (shell?.headerPosm?.id === id) return shell.headerPosm;
+          if (shell?.footerPosm?.id === id) return shell.footerPosm;
+          if (shell?.leftWallPosm?.id === id) return shell.leftWallPosm;
+          if (shell?.rightWallPosm?.id === id) return shell.rightWallPosm;
+        }
+        return { id, name: 'POSM item', posmType: 'ShelfTalker' };
       };
 
       set((s) => ({
         area: {
           ...s.area,
-          racks: s.area.racks.map((rack) => ({
-            ...rack,
-            sides: rack.sides.map((side) => ({
-              ...side,
-              rows: side.rows.map((row) =>
-                row.id === rowId || resolveEntityId(row.id) === rackRowId
-                  ? { ...row, talkers: [...(row.talkers ?? []), entry] }
-                  : row,
-              ),
-            })),
-          })),
+          racks: s.area.racks.map((r) => {
+            if (r.id !== rackId && r.rackId !== serverRackId) return r;
+            const shell = r.shell
+              ? {
+                  ...r.shell,
+                  headerPosmItemId:
+                    payload.headerPosmItemId !== undefined
+                      ? payload.headerPosmItemId
+                      : r.shell.headerPosmItemId,
+                  footerPosmItemId:
+                    payload.footerPosmItemId !== undefined
+                      ? payload.footerPosmItemId
+                      : r.shell.footerPosmItemId,
+                  leftWallPosmItemId:
+                    payload.leftWallPosmItemId !== undefined
+                      ? payload.leftWallPosmItemId
+                      : r.shell.leftWallPosmItemId,
+                  rightWallPosmItemId:
+                    payload.rightWallPosmItemId !== undefined
+                      ? payload.rightWallPosmItemId
+                      : r.shell.rightWallPosmItemId,
+                  headerPosm:
+                    responseShell.headerPosm ??
+                    (payload.headerPosmItemId !== undefined
+                      ? posmFromCatalog(payload.headerPosmItemId)
+                      : r.shell.headerPosm) ??
+                    null,
+                  footerPosm:
+                    responseShell.footerPosm ??
+                    (payload.footerPosmItemId !== undefined
+                      ? posmFromCatalog(payload.footerPosmItemId)
+                      : r.shell.footerPosm) ??
+                    null,
+                  leftWallPosm:
+                    responseShell.leftWallPosm ??
+                    (payload.leftWallPosmItemId !== undefined
+                      ? posmFromCatalog(payload.leftWallPosmItemId)
+                      : r.shell.leftWallPosm) ??
+                    null,
+                  rightWallPosm:
+                    responseShell.rightWallPosm ??
+                    (payload.rightWallPosmItemId !== undefined
+                      ? posmFromCatalog(payload.rightWallPosmItemId)
+                      : r.shell.rightWallPosm) ??
+                    null,
+                }
+              : r.shell;
+
+            let sides = r.sides;
+            if (payload.rowPosmItems?.length) {
+              const byRow = new Map(
+                payload.rowPosmItems.map((rd) => [rd.rowId, rd.dividerPosmItemId]),
+              );
+              sides = r.sides.map((side) => ({
+                ...side,
+                rows: side.rows.map((row) => {
+                  const rowKey = resolveEntityId(row.id) ?? row.id;
+                  if (!byRow.has(rowKey)) return row;
+                  const itemId = byRow.get(rowKey) ?? null;
+                  return {
+                    ...row,
+                    dividerPosmItemId: itemId,
+                    dividerPosm: itemId ? posmFromCatalog(itemId) : null,
+                  };
+                }),
+              }));
+            }
+
+            return { ...r, shell, sides };
+          }),
         },
       }));
 
-      return { success: true, message: 'Shelf talker added', talkerId: entry.id };
+      return { success: true, message: 'POSM items updated' };
     } catch {
-      return { success: false, message: 'Network error while creating shelf talker' };
+      return { success: false, message: 'Network error while assigning POSM items' };
     }
   },
-  deleteShelfTalkerFromServer: async (talkerId, rowId) => {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    try {
-      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
-      const t = getPlanogramTokenFromCookie();
-      if (t) headers['Authorization'] = `Bearer ${t}`;
-    } catch {
-      /* ignore */
+  assignRowDividerPosm: async (rackId, rowId, posmItemId, hydrated) => {
+    const rackRowId = resolveEntityId(rowId);
+    if (!rackRowId || !UUID_RE.test(rackRowId)) {
+      return { success: false, message: 'Row has no server id yet' };
     }
-
-    if (UUID_RE.test(talkerId)) {
-      try {
-        const res = await fetch(`/api/shelf-talkers/${encodeURIComponent(talkerId)}`, {
-          method: 'DELETE',
-          headers,
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || data?.isRequestSuccess === false) {
-          return { success: false, message: data?.message || 'Failed to delete shelf talker' };
-        }
-      } catch {
-        return { success: false, message: 'Network error while deleting shelf talker' };
-      }
-    }
-
-    set((s) => ({
-      area: {
-        ...s.area,
-        racks: s.area.racks.map((rack) => ({
-          ...rack,
-          sides: rack.sides.map((side) => ({
-            ...side,
-            rows: side.rows.map((row) =>
-              row.id === rowId
-                ? { ...row, talkers: (row.talkers ?? []).filter((t) => t.id !== talkerId) }
-                : row,
-            ),
-          })),
-        })),
-      },
-    }));
-
-    return { success: true, message: 'Shelf talker deleted' };
+    const catalog = posmItemId && hydrated ? { [posmItemId]: hydrated } : undefined;
+    return get().assignRackPosmItems(
+      rackId,
+      { rowPosmItems: [{ rowId: rackRowId, dividerPosmItemId: posmItemId }] },
+      catalog,
+    );
   },
   loadFromJSON: async (jsonData, onProgress) => {
     const startTime =

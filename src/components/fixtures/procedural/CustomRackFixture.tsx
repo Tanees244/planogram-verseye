@@ -4,6 +4,7 @@
 import type { FixtureShellProps } from '../types'
 import { CustomRackMesh } from '../CustomRackMesh'
 import { CustomRackSlotLayer } from '../CustomRackSlotLayer'
+import { RackShellPosmMarkers } from '@/components/RackShellPosmMarkers'
 import { createBlankCustomRack } from '../customRackTypes'
 
 export function CustomRackFixture({
@@ -27,6 +28,7 @@ export function CustomRackFixture({
         onPointerOver={onPointerOver}
         onPointerOut={onPointerOut}
       />
+      <RackShellPosmMarkers config={config} shell={rack.shell} />
       {hasRows && <CustomRackSlotLayer rack={rack} config={config} />}
     </>
   )

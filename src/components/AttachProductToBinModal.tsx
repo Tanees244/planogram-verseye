@@ -1,20 +1,28 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { FiSearch, FiPlus, FiImage, FiX } from 'react-icons/fi'
+import { FiSearch, FiPlus, FiImage, FiX, FiBox } from 'react-icons/fi'
 import { Modal } from '@/components/ui/Modal'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { safeDim } from '@/utils/safeDimensions'
-import { uploadCatalogImage } from '@/utils/catalogUpload'
+import { uploadCatalogFile, buildSkuAttachments } from '@/utils/catalogUpload'
 import {
   DEFAULT_PRODUCT_DEPTH,
   DEFAULT_PRODUCT_HEIGHT,
   DEFAULT_PRODUCT_WIDTH,
+  DEMO_PRODUCT_GLB,
   presetToFormStrings,
 } from '@/constants/dimensions'
+import {
+  fetchBinInventory,
+  facingCapacityMessage,
+  maxFacingsForShelf,
+  remainingBinFacings,
+  type BinInventoryData,
+} from '@/utils/binInventoryApi'
 import { ProductSizePresetPicker } from '@/components/ProductSizePresetPicker'
 
 interface AttachProductToBinModalProps {
@@ -22,6 +30,7 @@ interface AttachProductToBinModalProps {
   onClose: () => void
   binId: string
   onSuccess: (product: Product, quantity: number) => void
+  inventoryRefreshKey?: number
   logPayload?: boolean
 }
 
@@ -37,6 +46,8 @@ interface CatalogSku {
   height?: number | null
   depth?: number | null
   imageUrl?: string | null
+  modelUrl?: string | null
+  modelStorageKey?: string | null
   status?: string
 }
 
@@ -76,6 +87,8 @@ function skuToProduct(sku: CatalogSku): Product {
     status: 'Active',
     createdDate: new Date().toISOString(),
     imageUrl: sku.imageUrl ?? undefined,
+    modelUrl: sku.modelUrl ?? undefined,
+    modelStorageKey: sku.modelStorageKey ?? undefined,
     code: sku.code ?? undefined,
   }
 }
@@ -83,13 +96,16 @@ function skuToProduct(sku: CatalogSku): Product {
 export default function AttachProductToBinModal({
   isOpen,
   onClose,
-  binId: _binId,
+  binId,
   onSuccess,
+  inventoryRefreshKey = 0,
 }: AttachProductToBinModalProps) {
   const [mode, setMode] = useState<Mode>('browse')
   const [submitting, setSubmitting] = useState(false)
   const [loadingSkus, setLoadingSkus] = useState(false)
   const [loadingCategories, setLoadingCategories] = useState(false)
+  const [loadingInventory, setLoadingInventory] = useState(false)
+  const [inventory, setInventory] = useState<BinInventoryData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [skus, setSkus] = useState<CatalogSku[]>([])
@@ -113,6 +129,17 @@ export default function AttachProductToBinModal({
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [modelFile, setModelFile] = useState<File | null>(null)
+  const [localModelUrl, setLocalModelUrl] = useState<string | null>(null)
+  const [uploadingModel, setUploadingModel] = useState(false)
+
+  const loadInventory = useCallback(async () => {
+    if (!binId) return
+    setLoadingInventory(true)
+    const res = await fetchBinInventory(binId)
+    setLoadingInventory(false)
+    if (res.success) setInventory(res.data ?? null)
+  }, [binId])
 
   const fetchSkus = useCallback(async (term: string) => {
     setLoadingSkus(true)
@@ -141,6 +168,8 @@ export default function AttachProductToBinModal({
           height: s.height ?? null,
           depth: s.depth ?? null,
           imageUrl: s.imageUrl ?? null,
+          modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+          modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
           status: s.status,
         })),
       )
@@ -183,8 +212,11 @@ export default function AttachProductToBinModal({
       if (prev) URL.revokeObjectURL(prev)
       return null
     })
+    setModelFile(null)
+    setLocalModelUrl(null)
     void fetchCategories()
-  }, [isOpen, fetchCategories])
+    void loadInventory()
+  }, [isOpen, fetchCategories, loadInventory, inventoryRefreshKey])
 
   useEffect(() => {
     if (!isOpen || mode !== 'browse') return
@@ -217,9 +249,51 @@ export default function AttachProductToBinModal({
   const parsedQuantity = Math.floor(Number(quantityInput))
   const quantityOk = Number.isFinite(parsedQuantity) && parsedQuantity >= 1
 
+  const facingWidthM = selectedSku
+    ? parseFloat(overrideDims.width) || safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)
+    : mode === 'create'
+      ? parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
+      : 0
+
+  const binWidthM = inventory?.width ?? 0
+  const apiRemaining = remainingBinFacings(inventory)
+  const shelfMaxTotal =
+    binWidthM > 0 && facingWidthM > 0 ? maxFacingsForShelf(binWidthM, facingWidthM) : null
+  const usedFacings = inventory?.sku?.quantity ?? 0
+  const shelfRemaining =
+    shelfMaxTotal != null ? Math.max(0, shelfMaxTotal - usedFacings) : null
+  const maxAttachQty =
+    apiRemaining != null
+      ? apiRemaining
+      : shelfRemaining != null && shelfRemaining > 0
+        ? shelfRemaining
+        : undefined
+
+  const capacityError =
+    quantityOk && binWidthM > 0 && facingWidthM > 0
+      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedFacings)
+      : null
+
+  const validateAttachQuantity = (skuId: string): string | null => {
+    if (!quantityOk) return 'Quantity (facings) must be at least 1'
+    if (inventory?.sku && inventory.sku.skuId !== skuId) {
+      return `Bin already contains "${inventory.sku.skuName}". Detach it before attaching a different SKU.`
+    }
+    if (apiRemaining != null && parsedQuantity > apiRemaining) {
+      return `Only ${apiRemaining} more facing${apiRemaining === 1 ? '' : 's'} fit in this bin.`
+    }
+    if (capacityError) return capacityError
+    return null
+  }
+
   const handleAttachExisting = async () => {
     if (!selectedSku || !quantityOk) {
       if (!quantityOk) setError('Quantity (facings) must be at least 1')
+      return
+    }
+    const qtyError = validateAttachQuantity(selectedSku.id)
+    if (qtyError) {
+      setError(qtyError)
       return
     }
     setSubmitting(true)
@@ -270,6 +344,11 @@ export default function AttachProductToBinModal({
     setImagePreview(null)
   }
 
+  const clearModel = () => {
+    setModelFile(null)
+    setLocalModelUrl(null)
+  }
+
   const handleCreateAndAttach = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (!createForm.name.trim() || !createForm.code.trim() || !createForm.categoryId) {
@@ -283,8 +362,28 @@ export default function AttachProductToBinModal({
       setError('Width, depth, and height must be greater than 0')
       return
     }
+    if (inventory?.sku) {
+      setError(
+        `Bin already contains "${inventory.sku.skuName}". Detach it before creating a new SKU here.`,
+      )
+      return
+    }
     if (!quantityOk) {
       setError('Quantity (facings) must be at least 1')
+      return
+    }
+    if (shelfRemaining != null && shelfRemaining === 0) {
+      setError('This bin has no remaining facing capacity.')
+      return
+    }
+    const createFacingW = parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
+    const createCapError = facingCapacityMessage(binWidthM, createFacingW, parsedQuantity, usedFacings)
+    if (createCapError) {
+      setError(createCapError)
+      return
+    }
+    if (apiRemaining != null && parsedQuantity > apiRemaining) {
+      setError(`Only ${apiRemaining} more facing${apiRemaining === 1 ? '' : 's'} fit in this bin.`)
       return
     }
 
@@ -293,9 +392,10 @@ export default function AttachProductToBinModal({
     try {
       let imageStorageKey: string | null = null
       let uploadedImageUrl: string | undefined
+      let modelStorageKey: string | null = null
       if (imageFile) {
         setUploadingImage(true)
-        const up = await uploadCatalogImage(imageFile, 'skus')
+        const up = await uploadCatalogFile(imageFile, 'skus')
         setUploadingImage(false)
         if (!up.success || !up.storageKey) {
           setError(up.message || 'Image upload failed')
@@ -304,6 +404,33 @@ export default function AttachProductToBinModal({
         imageStorageKey = up.storageKey
         uploadedImageUrl = up.imageUrl
       }
+
+      let modelFileToUpload = modelFile
+      if (!modelFileToUpload && localModelUrl?.startsWith('/')) {
+        try {
+          const demoRes = await fetch(localModelUrl)
+          if (demoRes.ok) {
+            const blob = await demoRes.blob()
+            const name = localModelUrl.split('/').pop() ?? 'model.glb'
+            modelFileToUpload = new File([blob], name, { type: 'model/gltf-binary' })
+          }
+        } catch {
+          /* demo model stays local-only */
+        }
+      }
+
+      if (modelFileToUpload) {
+        setUploadingModel(true)
+        const up = await uploadCatalogFile(modelFileToUpload, 'skus/models')
+        setUploadingModel(false)
+        if (!up.success || !up.storageKey) {
+          setError(up.message || '3D model upload failed')
+          return
+        }
+        modelStorageKey = up.storageKey
+      }
+
+      const attachments = buildSkuAttachments(imageStorageKey, modelStorageKey)
 
       const headers = { ...authHeaders(), 'Content-Type': 'application/json' }
       const res = await fetch('/api/products/create', {
@@ -317,7 +444,8 @@ export default function AttachProductToBinModal({
           height: h,
           depth: d,
           imageStorageKey,
-          attachmentStorageKeys: imageStorageKey ? [imageStorageKey] : [],
+          modelStorageKey,
+          attachments,
           status: 'active',
         }),
       })
@@ -346,6 +474,8 @@ export default function AttachProductToBinModal({
         height: created.height ?? h,
         depth: created.depth ?? d,
         imageUrl: created.imageUrl ?? uploadedImageUrl ?? null,
+        modelUrl: created.modelUrl ?? localModelUrl ?? null,
+        modelStorageKey: created.modelStorageKey ?? modelStorageKey ?? null,
       })
 
       onSuccess(product, parsedQuantity)
@@ -358,11 +488,13 @@ export default function AttachProductToBinModal({
         height: String(DEFAULT_PRODUCT_HEIGHT),
       })
       clearImage()
+      clearModel()
       onClose()
     } catch {
       setError('Network error while creating SKU')
     } finally {
       setUploadingImage(false)
+      setUploadingModel(false)
       setSubmitting(false)
     }
   }
@@ -388,17 +520,19 @@ export default function AttachProductToBinModal({
           </Btn>
           <Btn
             variant="primary"
-            disabled={!canSubmit || uploadingImage}
+            disabled={!canSubmit || uploadingImage || uploadingModel}
             onClick={() => (mode === 'browse' ? handleAttachExisting() : handleCreateAndAttach())}
           >
-            {(submitting || uploadingImage) && <Spinner />}
+            {(submitting || uploadingImage || uploadingModel) && <Spinner />}
             {uploadingImage
               ? 'Uploading image…'
-              : submitting
-                ? 'Attaching…'
-                : mode === 'browse'
-                  ? 'Attach SKU'
-                  : 'Create & Attach'}
+              : uploadingModel
+                ? 'Uploading 3D model…'
+                : submitting
+                  ? 'Attaching…'
+                  : mode === 'browse'
+                    ? 'Attach SKU'
+                    : 'Create & Attach'}
           </Btn>
         </>
       }
@@ -441,23 +575,78 @@ export default function AttachProductToBinModal({
           </div>
         )}
 
-        <FormField label="Quantity (facings)" required>
+        <div className="rounded-xl border border-[#2C5282]/20 bg-[#2C5282]/5 px-3 py-2.5 text-sm">
+          <p className="font-semibold text-[#2C5282]">Bin capacity</p>
+          {loadingInventory ? (
+            <p className="text-xs text-gray-600 mt-1 flex items-center gap-2">
+              <Spinner /> Loading inventory…
+            </p>
+          ) : inventory?.sku ? (
+            <p className="text-xs text-gray-700 mt-1 leading-snug">
+              <span className="font-medium">{inventory.sku.skuName}</span> —{' '}
+              {inventory.sku.quantity} / {inventory.sku.maxQuantity} facings used
+              {apiRemaining != null ? ` · ${apiRemaining} available to add` : ''}
+            </p>
+          ) : inventory ? (
+            <p className="text-xs text-gray-700 mt-1 leading-snug">
+              Bin is empty · shelf {(inventory.width * 100).toFixed(0)}×
+              {(inventory.depth * 100).toFixed(0)}×{(inventory.height * 100).toFixed(0)} cm
+              {facingWidthM > 0 && shelfMaxTotal != null ? (
+                <>
+                  {' '}
+                  · <span className="font-medium">{(facingWidthM * 100).toFixed(0)} cm</span> facing → max{' '}
+                  <span className="font-medium">{shelfMaxTotal}</span> facings
+                </>
+              ) : (
+                '. Select a SKU to see how many facings fit.'
+              )}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-600 mt-1 leading-snug">Loading bin dimensions…</p>
+          )}
+        </div>
+
+        {capacityError && (
+          <div className="px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs leading-snug">
+            {capacityError}
+          </div>
+        )}
+
+        <FormField
+          label="Quantity (facings)"
+          required
+          hint={
+            maxAttachQty != null
+              ? `Up to ${maxAttachQty} facing${maxAttachQty === 1 ? '' : 's'} can fit on this shelf`
+              : facingWidthM > 0
+                ? 'Select a SKU with dimensions to calculate capacity'
+                : 'Number of product facings to place in this bin'
+          }
+          error={capacityError ?? undefined}
+        >
           <Input
             type="number"
             inputMode="numeric"
             min={1}
+            max={maxAttachQty}
             step={1}
             required
             value={quantityInput}
             onChange={(e) => {
-              // Allow empty while typing so user can clear "1" and enter "4"
               const next = e.target.value
               if (next === '' || /^\d+$/.test(next)) {
                 setQuantityInput(next)
+                setError(null)
               }
             }}
             onBlur={() => {
-              if (!quantityOk) setQuantityInput('1')
+              if (!quantityOk) {
+                setQuantityInput('1')
+                return
+              }
+              if (maxAttachQty != null && parsedQuantity > maxAttachQty) {
+                setQuantityInput(String(maxAttachQty))
+              }
             }}
           />
         </FormField>
@@ -689,6 +878,64 @@ export default function AttachProductToBinModal({
                     }}
                   />
                 </label>
+              )}
+            </FormField>
+
+            <FormField label="3D model (.glb)">
+              {modelFile || localModelUrl ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-lg border border-gray-200 bg-[#2C5282]/5 flex items-center justify-center text-[#2C5282]">
+                    <FiBox size={22} />
+                  </div>
+                  <div className="flex flex-col gap-1.5 min-w-0">
+                    <p className="text-xs text-gray-600 truncate max-w-[200px]">
+                      {modelFile?.name ?? localModelUrl}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearModel}
+                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
+                    >
+                      <FiX size={12} /> Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="flex flex-col items-center justify-center gap-2 w-full rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4 cursor-pointer hover:border-[#2C5282]/50 hover:bg-[#2C5282]/5 transition-colors">
+                    <FiBox className="text-gray-400" size={22} />
+                    <span className="text-sm text-gray-600">
+                      {uploadingModel ? 'Uploading…' : 'Click to upload .glb'}
+                    </span>
+                    <span className="text-[10px] text-gray-400">GLB only — scaled to catalog W×H×D</span>
+                    <input
+                      type="file"
+                      accept=".glb,model/gltf-binary"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null
+                        setLocalModelUrl(null)
+                        setModelFile(file)
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModelFile(null)
+                      setLocalModelUrl(DEMO_PRODUCT_GLB)
+                      setCreateForm((prev) => ({
+                        ...prev,
+                        width: '0.12',
+                        depth: '0.08',
+                        height: '0.05',
+                      }))
+                    }}
+                    className="w-full text-xs text-[#2C5282] hover:text-[#1a365d] py-1.5 rounded-lg border border-[#2C5282]/20 hover:bg-[#2C5282]/5 transition-colors"
+                  >
+                    Use sample Tapal tea box (local demo)
+                  </button>
+                </div>
               )}
             </FormField>
 

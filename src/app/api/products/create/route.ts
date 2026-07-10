@@ -16,10 +16,12 @@ interface CreateSkuBody {
   storageType?: string | null;
   shelfLifeDays?: number | null;
   imageStorageKey?: string | null;
+  modelStorageKey?: string | null;
   width?: number | null;
   height?: number | null;
   depth?: number | null;
   attachmentStorageKeys?: string[] | null;
+  attachments?: { storageKey: string; is3D: boolean }[] | null;
   status?: string;
 }
 
@@ -66,6 +68,46 @@ export async function POST(req: NextRequest) {
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
+  const imageStorageKey =
+    typeof body.imageStorageKey === 'string' && body.imageStorageKey.trim()
+      ? body.imageStorageKey.trim()
+      : null;
+  const modelStorageKey =
+    typeof body.modelStorageKey === 'string' && body.modelStorageKey.trim()
+      ? body.modelStorageKey.trim()
+      : null;
+
+  const attachmentsFromBody = Array.isArray(body.attachments)
+    ? body.attachments
+        .filter(
+          (a) =>
+            a &&
+            typeof a === 'object' &&
+            typeof (a as { storageKey?: string }).storageKey === 'string' &&
+            (a as { storageKey: string }).storageKey.trim(),
+        )
+        .map((a) => ({
+          storageKey: (a as { storageKey: string }).storageKey.trim(),
+          is3D: Boolean((a as { is3D?: boolean }).is3D),
+        }))
+    : [];
+
+  const legacyKeys = Array.isArray(body.attachmentStorageKeys)
+    ? body.attachmentStorageKeys.filter((k) => typeof k === 'string' && k.trim())
+    : [];
+
+  const attachments =
+    attachmentsFromBody.length > 0
+      ? attachmentsFromBody
+      : [
+          ...(imageStorageKey ? [{ storageKey: imageStorageKey, is3D: false }] : []),
+          ...(modelStorageKey ? [{ storageKey: modelStorageKey, is3D: true }] : []),
+          ...legacyKeys.map((storageKey) => ({
+            storageKey,
+            is3D: storageKey.includes('/models') || storageKey.endsWith('.glb'),
+          })),
+        ];
+
   return proxyLayout(req, '/api/v1/catalog/skus', {
     method: 'POST',
     body: {
@@ -81,13 +123,12 @@ export async function POST(req: NextRequest) {
       netContent: body.netContent ?? null,
       storageType: body.storageType ?? null,
       shelfLifeDays: body.shelfLifeDays ?? null,
-      imageStorageKey: body.imageStorageKey ?? null,
+      imageStorageKey,
+      modelStorageKey,
       width: toNum(body.width),
       height: toNum(body.height),
       depth: toNum(body.depth),
-      attachmentStorageKeys: Array.isArray(body.attachmentStorageKeys)
-        ? body.attachmentStorageKeys.filter((k) => typeof k === 'string' && k.trim())
-        : [],
+      attachments,
       status: body.status ?? 'active',
     },
   });

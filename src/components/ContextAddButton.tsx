@@ -15,16 +15,23 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2 } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
+import { BinInventoryPanel } from "./BinInventoryPanel";
+import { toastApiError } from "@/utils/apiMessages";
+import toast from "react-hot-toast";
 import { Spinner } from "./Spinner";
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
 import { ActionBar, ActionBtn } from '@/components/ui/ActionBar'
 import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeightsEditor'
-import { ShelfTalkerPanel } from '@/components/ShelfTalkerPanel'
+import { RackPosmPanel } from '@/components/RackPosmPanel'
+import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
+import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
+import { RackPublishModal } from '@/components/RackPublishModal'
+import { RackReflowModal } from '@/components/RackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
 import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
@@ -61,7 +68,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     deleteRow,
     deleteBin,
     deleteProduct,
-    deleteProductFromServer,
     addProduct,
     openCustomRackBuilder,
     customRackBuilderOpen,
@@ -81,6 +87,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [addingRow, setAddingRow] = useState(false);
   const [addingBin, setAddingBin] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showReflowModal, setShowReflowModal] = useState(false);
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -136,12 +144,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     }
   }, [showRackModal, fetchLocations]);
 
-  // When user clicks a bin in Advanced view, open Add Product modal directly
-  useEffect(() => {
-    if (selectedType === "bin" && selectedId) {
-      setShowProductModal(true);
-    }
-  }, [selectedType, selectedId]);
+  // Bin inventory panel is shown when a bin is selected; attach via the action button.
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
 
   const [rackForm, setRackForm] = useState<RackFormState>(defaultRackForm);
   const [rackErrors, setRackErrors] = useState<Record<string, string | null>>({});
@@ -154,9 +158,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const handleAttachProductSuccess = async (product: any, quantity: number) => {
     if (!selectedId) return;
     const result = await attachProductToBin(selectedId, product, quantity);
-    if (!result.success && (result as { message?: string }).message) {
-      alert((result as { message?: string }).message);
+    if (!result.success) {
+      toastApiError(result.message);
+      return;
     }
+    toast.success(result.message ?? 'Product attached');
+    setInventoryRefreshKey((k) => k + 1);
   };
 
   if (!selectedId || !selectedType) return null;
@@ -219,7 +226,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     const isCustom = rack && resolveFixtureType(rack) === "CUSTOM";
     return (
       <>
-        <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
+        <div
+          className={cn(
+            'flex flex-col gap-2',
+            isSidebar ? 'w-full' : 'items-start',
+          )}
+        >
           <ActionBar label="Rack selected" layout={layout}>
             {isCustom && (
               <ActionBtn
@@ -329,6 +341,22 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               )}{' '}
               Save layout
             </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => setShowReflowModal(true)}
+              title="Preview server reflow after resize"
+            >
+              <FiMaximize2 /> Reflow preview
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => setShowPublishModal(true)}
+              title="Clone rack to other stores"
+            >
+              <FiShare2 /> Publish to stores
+            </ActionBtn>
             {isSidebar ? (
               <ActionBtn
                 variant="danger"
@@ -400,6 +428,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             </div>
           )}
           {rack && <RackRowHeightsPanel rack={rack} onSelectRow={(id) => setSelected(id, 'row')} />}
+          {rack && <RackSideZonesPanel rack={rack} dark={isSidebar} />}
+          {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
         </div>
 
         <AddRowModal
@@ -420,6 +450,20 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             }
           }}
         />
+        {rack && (
+          <>
+            <RackPublishModal
+              rack={rack}
+              open={showPublishModal}
+              onClose={() => setShowPublishModal(false)}
+            />
+            <RackReflowModal
+              rack={rack}
+              open={showReflowModal}
+              onClose={() => setShowReflowModal(false)}
+            />
+          </>
+        )}
       </>
     );
   }
@@ -485,7 +529,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
 
     return (
       <>
-        <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
+        <div
+          className={cn(
+            'flex flex-col gap-2',
+            isSidebar ? 'w-full' : 'items-start',
+          )}
+        >
           {row && (
             <div
               className={cn(
@@ -509,7 +558,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               />
             </div>
           )}
-          {row && <ShelfTalkerPanel row={row} dark={isSidebar} />}
+          {row && <RowDividerPosmPanel row={row} dark={isSidebar} />}
           <ActionBar label="Row selected" layout={layout}>
           <ActionBtn
             fullWidth={isSidebar}
@@ -564,37 +613,47 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   if (selectedType === "bin") {
     return (
       <>
-        <ActionBar label="Bin selected" layout={layout}>
-          <ActionBtn fullWidth={isSidebar} onClick={() => setShowProductModal(true)}>
-            <span className="text-lg leading-none">+</span> Attach Product
-          </ActionBtn>
-          {isSidebar ? (
-            <ActionBtn variant="danger" fullWidth onClick={() => deleteBin(selectedId)}>
-              <FiTrash2 /> Delete bin
+        <div className="space-y-2 w-full">
+          <BinInventoryPanel
+            binId={selectedId}
+            dark={isSidebar}
+            refreshKey={inventoryRefreshKey}
+            onInventoryChange={() => setInventoryRefreshKey((k) => k + 1)}
+          />
+          <ActionBar label="Bin selected" layout={layout}>
+            <ActionBtn fullWidth={isSidebar} onClick={() => setShowProductModal(true)}>
+              <span className="text-lg leading-none">+</span> Attach Product
             </ActionBtn>
-          ) : (
-            <Button
-              variant={"default"}
-              size={"sm"}
-              className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-              onClick={() => deleteBin(selectedId)}
-            >
-              <FiTrash2 />
-            </Button>
-          )}
-        </ActionBar>
+            {isSidebar ? (
+              <ActionBtn variant="danger" fullWidth onClick={() => deleteBin(selectedId)}>
+                <FiTrash2 /> Delete bin
+              </ActionBtn>
+            ) : (
+              <Button
+                variant={"default"}
+                size={"sm"}
+                className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                onClick={() => deleteBin(selectedId)}
+              >
+                <FiTrash2 />
+              </Button>
+            )}
+          </ActionBar>
+        </div>
 
         <AttachProductToBinModal
           isOpen={showProductModal}
           onClose={() => setShowProductModal(false)}
           binId={selectedId}
           onSuccess={handleAttachProductSuccess}
+          inventoryRefreshKey={inventoryRefreshKey}
         />
       </>
     );
   }
 
   if (selectedType === "product") {
+    const deleteProductFromServer = usePlanogramStore.getState().deleteProductFromServer;
     return (
       <ActionBar label="Product selected" layout={layout}>
         {isSidebar ? (
@@ -603,7 +662,11 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             fullWidth
             onClick={async () => {
               const res = await deleteProductFromServer(selectedId);
-              if (!res.success) alert(res.message);
+              if (!res.success) toastApiError(res.message);
+              else {
+                toast.success(res.message ?? 'Inventory detached');
+                setInventoryRefreshKey((k) => k + 1);
+              }
             }}
           >
             <FiTrash2 /> Detach product
@@ -615,7 +678,11 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
             onClick={async () => {
               const res = await deleteProductFromServer(selectedId);
-              if (!res.success) alert(res.message);
+              if (!res.success) toastApiError(res.message);
+              else {
+                toast.success(res.message ?? 'Inventory detached');
+                setInventoryRefreshKey((k) => k + 1);
+              }
             }}
           >
             <FiTrash2 />

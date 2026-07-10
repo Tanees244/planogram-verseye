@@ -34,6 +34,8 @@ interface CatalogSkuRow {
   size?: string | null
   variant?: string | null
   imageUrl?: string | null
+  modelUrl?: string | null
+  modelStorageKey?: string | null
   width?: number | null
   height?: number | null
   depth?: number | null
@@ -79,7 +81,10 @@ export function ProductPalette() {
   const startProductPlacement = usePlanogramStore((s) => s.startProductPlacement)
   const cancelProductPlacement = usePlanogramStore((s) => s.cancelProductPlacement)
   const addProductError = usePlanogramStore((s) => s.addProductError)
+  const productDropHover = usePlanogramStore((s) => s.productDropHover)
+  const setProductDropHover = usePlanogramStore((s) => s.setProductDropHover)
   const selectedType = usePlanogramStore((s) => s.selectedType)
+  const setProductPaletteCollapsed = usePlanogramStore((s) => s.setProductPaletteCollapsed)
 
   const [collapsed, setCollapsed] = useState(false)
   const [search, setSearch] = useState('')
@@ -90,22 +95,23 @@ export function ProductPalette() {
 
   useEffect(() => {
     try {
-      setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === '1')
+      const stored = window.localStorage.getItem(COLLAPSE_KEY) === '1'
+      setCollapsed(stored)
+      setProductPaletteCollapsed(stored)
     } catch {
       /* ignore */
     }
-  }, [])
+  }, [setProductPaletteCollapsed])
 
   const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev
-      try {
-        window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
-      } catch {
-        /* ignore */
-      }
-      return next
-    })
+    const next = !collapsed
+    setCollapsed(next)
+    setProductPaletteCollapsed(next)
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
   }
 
   const fetchSkus = useCallback(async (term: string) => {
@@ -132,6 +138,8 @@ export function ProductPalette() {
           size: s.size ?? null,
           variant: s.variant ?? null,
           imageUrl: s.imageUrl ?? null,
+          modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+          modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
           width: s.width ?? null,
           height: s.height ?? null,
           depth: s.depth ?? null,
@@ -226,9 +234,17 @@ export function ProductPalette() {
             <div className="min-w-0">
               <p className="font-semibold text-white truncate">{pendingProduct.name}</p>
               <p className="text-gray-300 mt-0.5">
-                {selectedType === 'bin'
-                  ? 'Bin selected — click bin again or drop to attach'
-                  : 'Click a bin in 3D, or drag onto a bin'}
+                {productDropHover
+                  ? productDropHover.fits
+                    ? 'Release to attach to highlighted bin'
+                    : (productDropHover.reason ?? 'Product will not fit in this bin')
+                  : selectedType === 'bin'
+                    ? 'Bin selected — click bin again or drop to attach'
+                    : 'Drag onto a bin in 3D (green = fits, red = no space)'}
+              </p>
+              <p className="text-gray-500 mt-1 text-[10px]">
+                Facing {(pendingProduct.width * 100).toFixed(0)}×{(pendingProduct.depth * 100).toFixed(0)}×
+                {(pendingProduct.height * 100).toFixed(0)} cm
               </p>
             </div>
             <button
@@ -277,7 +293,10 @@ export function ProductPalette() {
                 key={sku.id}
                 draggable={Boolean(selectedStoreId)}
                 onDragStart={(e) => onDragStart(sku, e)}
-                onDragEnd={() => setDraggingId(null)}
+                onDragEnd={() => {
+                  setDraggingId(null)
+                  setProductDropHover(null)
+                }}
                 onClick={() => {
                   if (!selectedStoreId) return
                   startProductPlacement(skuToPending(sku))

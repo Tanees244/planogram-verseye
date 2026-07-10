@@ -62,9 +62,7 @@ export function resolveSectionSize(
   const width =
     section.width > 0
       ? section.width
-      : kind === 'header'
-        ? outerWidth + 0.04
-        : outerWidth
+      : outerWidth
   const depth =
     section.depth > 0
       ? section.depth
@@ -72,6 +70,24 @@ export function resolveSectionSize(
         ? outerDepth * 0.28 + section.protrusion
         : outerDepth + section.protrusion
   return { width, depth }
+}
+
+/** Treat width/depth that match outer or inner envelope as 0 (auto full span). */
+export function normalizeSectionSpans(cfg: CustomRackConfig): CustomRackConfig {
+  const innerW = Math.max(0.1, cfg.outerWidth - cfg.wallThickness * 2)
+  const innerD = Math.max(0.1, cfg.outerDepth - cfg.wallThickness * 2)
+  const normSpan = (value: number, outer: number, inner: number) => {
+    if (value <= 0) return 0
+    if (Math.abs(value - outer) < 0.05) return 0
+    if (Math.abs(value - inner) < 0.05) return 0
+    return value
+  }
+  const norm = (section: CustomRackSection): CustomRackSection => ({
+    ...section,
+    width: normSpan(section.width, cfg.outerWidth, innerW),
+    depth: normSpan(section.depth, cfg.outerDepth, innerD),
+  })
+  return { ...cfg, header: norm(cfg.header), footer: norm(cfg.footer) }
 }
 
 function scaleSection(section: CustomRackSection, factor: number): CustomRackSection {
@@ -220,7 +236,7 @@ export function createBlankCustomRack(): CustomRackConfig {
     },
     footer: {
       enabled: true,
-      height: 0.08,
+      height: 0.12,
       width: 0,
       depth: 0,
       protrusion: 0,
