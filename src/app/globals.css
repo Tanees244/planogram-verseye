@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Do not redefine --font-poppins here; Next.js sets it via layout.tsx (next/font/google) */
+/* Do not redefine --font-poppins here; Next.js sets it via layout.tsx (next/font/local) */
 
 :root {
   --background: 0 0% 100%;

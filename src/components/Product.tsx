@@ -165,9 +165,10 @@ export function Product({ product, position, rowId }: ProductProps) {
     }
   })
 
-  const handleSelect = (e: { stopPropagation?: () => void; shiftKey?: boolean }) => {
-    e.stopPropagation?.()
-    if (e.shiftKey && rowId) {
+  const handleSelect = (e: unknown) => {
+    const event = e as { stopPropagation?: () => void; shiftKey?: boolean }
+    event.stopPropagation?.()
+    if (event.shiftKey && rowId) {
       setSelected(rowId, 'row')
       return
     }
