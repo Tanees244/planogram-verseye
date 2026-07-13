@@ -11,8 +11,8 @@ import type {
   RackPublishPreviewResult,
   RackPublishResult,
   RackPublishStorePreview,
-} from '@/types/rackReflow'
-import { fetchPublishPreview, fetchPublishRack } from '@/utils/rackReflowApi'
+} from '@/types/rackPublish'
+import { fetchPublishPreview, fetchPublishRack } from '@/utils/rackPublishApi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 
 interface StoreOption {

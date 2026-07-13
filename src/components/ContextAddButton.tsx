@@ -15,7 +15,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2 } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -31,7 +31,6 @@ import { RackPosmPanel } from '@/components/RackPosmPanel'
 import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
 import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
 import { RackPublishModal } from '@/components/RackPublishModal'
-import { RackReflowModal } from '@/components/RackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
 import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
@@ -41,6 +40,7 @@ import {
   GROCERY_SHELF_SPACING,
 } from '@/constants/dimensions'
 import { cn } from '@/lib/cn'
+import { usePlanogramExport } from '@/utils/planogramExport'
 export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
   const isSidebar = layout === 'sidebar';
   const {
@@ -88,7 +88,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [addingBin, setAddingBin] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [showReflowModal, setShowReflowModal] = useState(false);
+  const { exportRack } = usePlanogramExport();
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -344,18 +344,26 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <ActionBtn
               variant="secondary"
               fullWidth={isSidebar}
-              onClick={() => setShowReflowModal(true)}
-              title="Preview server reflow after resize"
-            >
-              <FiMaximize2 /> Reflow preview
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
               onClick={() => setShowPublishModal(true)}
               title="Clone rack to other stores"
             >
               <FiShare2 /> Publish to stores
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => rack && exportRack(rack, 'plm')}
+              title="Export rack as .plm (Planogram Layout Model)"
+            >
+              <FiDownload /> Export PLM
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => rack && exportRack(rack, 'psa')}
+              title="Export rack as .psa (JDA Space Planning compatible)"
+            >
+              <FiDownload /> Export PSA
             </ActionBtn>
             {isSidebar ? (
               <ActionBtn
@@ -456,11 +464,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               rack={rack}
               open={showPublishModal}
               onClose={() => setShowPublishModal(false)}
-            />
-            <RackReflowModal
-              rack={rack}
-              open={showReflowModal}
-              onClose={() => setShowReflowModal(false)}
             />
           </>
         )}

@@ -6,6 +6,7 @@ import { DayNightToggle } from '@/components/ui/DayNightToggle'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
+import { usePlanogramExport } from '@/utils/planogramExport'
 
 const OPEN_KEY = 'planogram.sceneTopBarOpen'
 
@@ -62,6 +63,7 @@ export function SceneTopBar({ className }: { className?: string }) {
   const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
   const saveStoreLayoutToServer = usePlanogramStore((s) => s.saveStoreLayoutToServer)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
+  const { exportStore } = usePlanogramExport()
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
@@ -171,6 +173,20 @@ export function SceneTopBar({ className }: { className?: string }) {
                     className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
                   >
                     Change store
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportStore('plm')}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export store PLM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportStore('psa')}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export store PSA
                   </button>
                 </div>
               )}

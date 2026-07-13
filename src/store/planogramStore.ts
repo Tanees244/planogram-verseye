@@ -16,6 +16,8 @@ import {
   snapRackToWall,
 } from "@/utils/rackPlacement";
 import { buildCreateRackPayload, buildUpdateRackPayload, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { boundsFromRacks, summarizeRacks } from "@/lib/planogram-formats/serialize";
+import { importPlanogramContent } from "@/lib/planogram-formats";
 import {
   applyCustomConfigWithCascade,
   binOccupiedFacingWidth,
@@ -314,7 +316,7 @@ export interface PlanogramState {
   /** Persist one rack's full nested layout (placement, shell, sides/rows/bins/products). */
   saveRackLayoutToServer: (
     rackId: string,
-    options?: { suppressLoading?: boolean; reflowSkus?: boolean },
+    options?: { suppressLoading?: boolean },
   ) => Promise<{ success: boolean; message?: string }>;
   /** Persist all server-backed racks in the current store layout. */
   saveStoreLayoutToServer: () => Promise<{
@@ -365,6 +367,17 @@ export interface PlanogramState {
     jsonData: any,
     onProgress?: (progress: number) => void,
   ) => Promise<void>;
+  /** Apply racks imported from .psa / .plm into the live editor. */
+  applyImportedPlanogram: (
+    racks: Rack[],
+    area?: { width: number; depth: number },
+  ) => void;
+  /** Parse and apply .psa / .plm planogram files (legacy JSON uses loadFromJSON). */
+  importPlanogramFromContent: (
+    content: string,
+    filename?: string,
+  ) => Promise<import('@/lib/planogram-formats').PlanogramImportResult>;
+  lastImportReport: import('@/lib/planogram-formats').ImportReport | null;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -522,6 +535,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   importSummary: null,
   isImporting: false,
   importProgress: 0,
+  lastImportReport: null,
   addProductError: null,
   addRackError: null,
   layoutCascadeExceptions: [],
@@ -1671,7 +1685,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const payload = buildUpdateRackPayload(rack, { reflowSkus: options?.reflowSkus });
+      const payload = buildUpdateRackPayload(rack);
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,
@@ -2845,5 +2859,35 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       isImporting: false,
       importProgress: 100,
     });
+  },
+  applyImportedPlanogram: (racks, area) => {
+    const bounds = area ?? boundsFromRacks(racks);
+    const summary = summarizeRacks(racks);
+    set({
+      area: {
+        width: bounds.width,
+        depth: bounds.depth,
+        racks,
+      },
+      importSummary: {
+        totalRacks: summary.racks,
+        totalAisles: 0,
+        totalRows: summary.rows,
+        totalBins: summary.bins,
+        totalProducts: summary.products,
+      },
+      selectedId: racks[0]?.id ?? null,
+      selectedType: racks[0] ? 'rack' : null,
+      isImporting: false,
+      importProgress: 100,
+    });
+  },
+  importPlanogramFromContent: async (content, filename) => {
+    const result = importPlanogramContent(content, filename);
+    set({ lastImportReport: result.report });
+    if (result.success && result.racks.length > 0) {
+      get().applyImportedPlanogram(result.racks, result.area);
+    }
+    return result;
   },
 }));

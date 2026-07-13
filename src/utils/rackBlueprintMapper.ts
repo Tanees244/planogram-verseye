@@ -418,7 +418,6 @@ export function clampRowSpanToInner(rack: Rack, requested?: number | null): numb
 /** Builds the nested PUT /api/v1/layout/racks/{rackId} body from local store state. */
 export function buildUpdateRackPayload(
   rack: Rack,
-  options?: { reflowSkus?: boolean },
 ): Record<string, unknown> {
   const serverRackId = rack.rackId || rack.id;
   const outer = resolveRackOuter(rack);
@@ -474,10 +473,6 @@ export function buildUpdateRackPayload(
     }
   } else if (rack.shell) {
     payload.shell = rack.shell;
-  }
-
-  if (options?.reflowSkus) {
-    payload.reflowSkus = true;
   }
 
   return payload;
