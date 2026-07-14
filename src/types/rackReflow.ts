@@ -1,5 +1,7 @@
 /** Rack reflow API types (layout backend). All dimensions in meters. */
 
+import type { HeaderFooterBand, RackShell } from '@/types/rackBlueprint'
+
 export interface ReflowOuterPatch {
   width?: number | null
   depth?: number | null
@@ -14,10 +16,10 @@ export interface ReflowShellPatch {
     right?: boolean
     frontGlass?: boolean
   } | null
-  header?: Record<string, unknown> | null
-  footer?: Record<string, unknown> | null
-  frame?: Record<string, unknown> | null
-  materials?: Record<string, unknown> | null
+  header?: HeaderFooterBand | null
+  footer?: HeaderFooterBand | null
+  frame?: RackShell['frame'] | null
+  materials?: RackShell['materials'] | null
   headerPosmItemId?: string | null
   footerPosmItemId?: string | null
   leftWallPosmItemId?: string | null
