@@ -316,7 +316,7 @@ export interface PlanogramState {
   /** Persist one rack's full nested layout (placement, shell, sides/rows/bins/products). */
   saveRackLayoutToServer: (
     rackId: string,
-    options?: { suppressLoading?: boolean },
+    options?: { suppressLoading?: boolean; reflowSkus?: boolean },
   ) => Promise<{ success: boolean; message?: string }>;
   /** Persist all server-backed racks in the current store layout. */
   saveStoreLayoutToServer: () => Promise<{
@@ -1685,7 +1685,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const payload = buildUpdateRackPayload(rack);
+      const payload = buildUpdateRackPayload(rack, { reflowSkus: options?.reflowSkus });
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,

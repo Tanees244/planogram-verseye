@@ -242,7 +242,7 @@ export function CustomRackBuilder() {
     }
     setSaving(true)
     try {
-      const res = await saveRackLayout(editingId)
+      const res = await saveRackLayout(editingId, { reflowSkus: true })
       if (!res.success) {
         window.alert(res.message ?? 'Failed to save rack structure to server')
         return

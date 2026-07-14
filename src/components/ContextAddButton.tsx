@@ -15,7 +15,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload, FiMaximize2, FiGitMerge } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -31,6 +31,8 @@ import { RackPosmPanel } from '@/components/RackPosmPanel'
 import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
 import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
 import { RackPublishModal } from '@/components/RackPublishModal'
+import { RackReflowModal } from '@/components/RackReflowModal'
+import { MultiRackReflowModal } from '@/components/MultiRackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
 import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
@@ -88,6 +90,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [addingBin, setAddingBin] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showReflowModal, setShowReflowModal] = useState(false);
+  const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
   const { exportRack } = usePlanogramExport();
 
   // Add Bin modal state
@@ -342,6 +346,22 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               Save layout
             </ActionBtn>
             <ActionBtn
+              variant="primary"
+              fullWidth={isSidebar}
+              onClick={() => setShowReflowModal(true)}
+              title="ApplyRackReflow — resize this rack (POST .../reflow)"
+            >
+              <FiMaximize2 /> Reflow preview
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => setShowMultiReflowModal(true)}
+              title="ApplyMultiRackReflow — map onto existing racks (POST .../reflow-to-racks)"
+            >
+              <FiGitMerge /> Reflow to racks
+            </ActionBtn>
+            <ActionBtn
               variant="secondary"
               fullWidth={isSidebar}
               onClick={() => setShowPublishModal(true)}
@@ -464,6 +484,16 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               rack={rack}
               open={showPublishModal}
               onClose={() => setShowPublishModal(false)}
+            />
+            <RackReflowModal
+              rack={rack}
+              open={showReflowModal}
+              onClose={() => setShowReflowModal(false)}
+            />
+            <MultiRackReflowModal
+              rack={rack}
+              open={showMultiReflowModal}
+              onClose={() => setShowMultiReflowModal(false)}
             />
           </>
         )}
