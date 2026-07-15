@@ -4,17 +4,20 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import { CustomRackMesh } from '@/components/fixtures/CustomRackMesh'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 
-/** Live preview in the main 3D scene while the custom rack builder is open. */
+/** Live preview in the main 3D scene while editing an existing custom rack.
+ *  New-rack builds preview inside the CustomRackBuilder modal instead. */
 export function CustomRackLivePreview() {
   const open = usePlanogramStore((s) => s.customRackBuilderOpen)
   const draft = usePlanogramStore((s) => s.customRackDraft)
   const editingId = usePlanogramStore((s) => s.editingCustomRackId)
   const racks = usePlanogramStore((s) => s.area.racks)
 
-  if (!open) return null
+  // New builds preview in the modal; only sync-edit existing racks on the floor.
+  if (!open || !editingId) return null
 
-  const editRack = editingId ? racks.find((r) => r.id === editingId) : null
-  const pos = editRack?.position ?? { x: 0, y: 0, z: 0 }
+  const editRack = racks.find((r) => r.id === editingId)
+  if (!editRack) return null
+  const pos = editRack.position
   const dims = computeCustomRackDimensions(draft)
   const groupY = dims.totalHeight / 2 + 0.02
 

@@ -110,7 +110,7 @@ export function FixturePalette() {
         <span className="flex flex-col min-w-0">
           <span className="text-sm font-semibold text-white leading-tight">Fixtures</span>
           <span className="text-[10px] text-gray-400 leading-tight">
-            {FIXTURE_TYPES.length} types · click to open
+            Custom builder
           </span>
         </span>
         <FiChevronRight size={16} className="text-gray-400 shrink-0 ml-1 group-hover:text-white transition-colors" />
@@ -122,34 +122,34 @@ export function FixturePalette() {
   }
 
   return (
-    <div className={cn(shell, 'relative w-full flex-1 min-h-0 flex flex-col overflow-hidden text-gray-100')}>
+    <div className={cn(shell, 'relative w-full shrink-0 flex flex-col overflow-hidden text-gray-100')}>
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/10 shrink-0 bg-black/30">
-        <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand text-white shrink-0">
-          <FiGrid size={16} />
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0 bg-black/30">
+        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0">
+          <FiGrid size={14} />
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Fixture Library</h2>
-          <p className="text-[10px] text-gray-400 truncate">Drag or click, then place on floor</p>
+          <p className="text-[10px] text-gray-400 truncate">Build custom · confirm to place</p>
         </div>
         <button
           type="button"
           onClick={toggleCollapsed}
-          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          className="shrink-0 p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           title="Hide panel"
         >
-          <FiChevronLeft size={16} />
+          <FiChevronLeft size={15} />
         </button>
       </div>
 
       {!selectedStoreId && (
-        <div className="mx-2.5 mt-2.5 px-2.5 py-2 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-100 text-[11px] leading-snug">
+        <div className="mx-2 mt-2 px-2 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-100 text-[11px] leading-snug">
           Select a store before placing fixtures
         </div>
       )}
 
       {isPlacingRack && placingFixtureType && (
-        <div className="mx-2.5 mt-2.5 px-2.5 py-2 rounded-lg bg-brand/20 border border-brand/35 text-[11px]">
+        <div className="mx-2 mt-2 px-2 py-1.5 rounded-lg bg-brand/20 border border-brand/35 text-[11px]">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="font-semibold text-white truncate">
@@ -172,31 +172,32 @@ export function FixturePalette() {
       )}
 
       {addRackError && (
-        <div className="mx-2.5 mt-2 px-2.5 py-1.5 rounded-lg bg-red-500/15 border border-red-500/25 text-red-200 text-[11px]">
+        <div className="mx-2 mt-1.5 px-2 py-1.5 rounded-lg bg-red-500/15 border border-red-500/25 text-red-200 text-[11px]">
           {addRackError}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
+      <div className="p-2">
         <button
           type="button"
           onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}
           disabled={!selectedStoreId}
           className={cn(
-            'w-full flex items-center gap-2.5 p-2.5 rounded-lg border transition-all text-left',
+            'w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left',
             'border-brand/40 bg-brand/20 hover:bg-brand/30',
             !selectedStoreId && 'opacity-45 cursor-not-allowed',
           )}
         >
-          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-brand text-white shrink-0">
-            <FiSliders size={15} />
+          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0">
+            <FiSliders size={14} />
           </span>
           <div className="min-w-0">
             <span className="text-xs font-semibold text-white block">Build Custom Rack</span>
-            <span className="text-[10px] text-gray-400">Header · footer · walls · live preview</span>
+            <span className="text-[10px] text-gray-400">Configure in modal · confirm to place</span>
           </div>
         </button>
 
+        {/* Preset fixture library — temporarily disabled
         <div className="flex items-center gap-2 px-1 py-0.5">
           <div className="flex-1 h-px bg-white/10" />
           <span className="text-[9px] text-gray-500 uppercase tracking-wider">Presets</span>
@@ -247,6 +248,7 @@ export function FixturePalette() {
             </div>
           )
         })}
+        */}
       </div>
     </div>
   )

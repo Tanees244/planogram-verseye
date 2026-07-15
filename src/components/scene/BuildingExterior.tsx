@@ -16,6 +16,10 @@ interface BuildingExteriorProps {
 /** Almarai logo on entrance sign — /public/store-logo.png */
 function StoreSign({ position }: { position: [number, number, number] }) {
   const [src, setSrc] = useState('/store-logo.png')
+  const builderOpen = usePlanogramStore((s) => s.customRackBuilderOpen)
+
+  // Drei Html defaults to z-index ~16M and punches through CSS modals.
+  if (builderOpen) return null
 
   return (
     <Html
@@ -24,6 +28,7 @@ function StoreSign({ position }: { position: [number, number, number] }) {
       position={position}
       center
       distanceFactor={4.5 * WAREHOUSE_SCALE}
+      zIndexRange={[30, 0]}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
       <img
