@@ -44,6 +44,14 @@ export function RowDividerPosmPanel({
       setSaveError('Rack not found for this row')
       return
     }
+    if (
+      row.dividerPosmItemId &&
+      posmItemId &&
+      posmItemId !== row.dividerPosmItemId
+    ) {
+      setSaveError('Only 1 POSM is allowed per row. Clear the existing POSM first (select None).')
+      return
+    }
     setBusy(true)
     setSaveError(null)
     try {
@@ -97,10 +105,21 @@ export function RowDividerPosmPanel({
       <PosmItemSelect
         label="Divider POSM"
         value={posmItemId}
-        onChange={setPosmItemId}
+        onChange={(id) => {
+          setSaveError(null)
+          if (row.dividerPosmItemId && id && id !== row.dividerPosmItemId) {
+            setSaveError('Only 1 POSM is allowed per row. Clear the existing POSM first (select None).')
+          }
+          setPosmItemId(id)
+        }}
         items={items}
         loading={loading}
         dark={dark}
+        hint={
+          row.dividerPosmItemId
+            ? 'To replace POSM, select None, save, then assign a new item.'
+            : undefined
+        }
       />
 
       <Btn variant="primary" disabled={busy || loading} onClick={handleSave} className="w-full">

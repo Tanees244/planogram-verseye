@@ -7,6 +7,7 @@ import {
   type CustomRackConfig,
 } from '@/components/fixtures/customRackTypes'
 import { safeDim } from '@/utils/safeDimensions'
+import { ensureRowAnchors, rowCenterOffsetsFromFloor } from '@/utils/rowStack'
 
 /** Positions planogram rows (shelves) inside a hollow custom rack cavity. */
 export function CustomRackSlotLayer({
@@ -27,21 +28,16 @@ export function CustomRackSlotLayer({
   const side = rack.sides[0]
   if (!side || side.rows.length === 0) return null
 
-  let stackY = bodyFloorY
-  const placements: { y: number; row: (typeof side.rows)[0] }[] = []
-  side.rows.forEach((row) => {
-    const h = safeDim(row.height, 1.5)
-    placements.push({ y: stackY + h / 2, row })
-    stackY += h
-  })
+  const rows = ensureRowAnchors(side.rows)
+  const centers = rowCenterOffsetsFromFloor(rows)
 
   return (
     <group>
-      {placements.map(({ y, row }) => (
+      {rows.map((row, i) => (
         <Row
           key={row.id}
           row={row}
-          position={[0, y, cavityZ]}
+          position={[0, bodyFloorY + centers[i], cavityZ]}
           rackWidth={safeDim(row.width, innerW)}
           rackDepth={innerD * 0.95}
           hideBackWall

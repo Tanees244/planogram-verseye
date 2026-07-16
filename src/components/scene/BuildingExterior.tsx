@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, Suspense } from 'react'
-import { Html } from '@react-three/drei'
+import { useState, Suspense, useEffect } from 'react'
+import { useLoader } from '@react-three/fiber'
+import { SRGBColorSpace, TextureLoader, type Texture } from 'three'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { SCENE_THEMES } from '@/constants/sceneTheme'
 import { WAREHOUSE_SCALE, BUILDING_HEIGHT } from '@/constants/warehouse'
@@ -13,41 +14,23 @@ interface BuildingExteriorProps {
   depth: number
 }
 
-/** Almarai logo on entrance sign — /public/store-logo.png */
+/** Almarai logo on entrance sign — mesh texture (no Html; avoids UI z-index punch-through). */
 function StoreSign({ position }: { position: [number, number, number] }) {
-  const [src, setSrc] = useState('/store-logo.png')
-  const builderOpen = usePlanogramStore((s) => s.customRackBuilderOpen)
+  const texture = useLoader(TextureLoader, '/store-logo.png') as Texture
+  useEffect(() => {
+    texture.colorSpace = SRGBColorSpace
+    texture.needsUpdate = true
+  }, [texture])
 
-  // Drei Html defaults to z-index ~16M and punches through CSS modals.
-  if (builderOpen) return null
+  const S = WAREHOUSE_SCALE
+  const signW = 6.2 * S
+  const signH = 3.4 * S
 
   return (
-    <Html
-      transform
-      occlude
-      position={position}
-      center
-      distanceFactor={4.5 * WAREHOUSE_SCALE}
-      zIndexRange={[30, 0]}
-      style={{ pointerEvents: 'none', userSelect: 'none' }}
-    >
-      <img
-        src={src}
-        alt="Almarai"
-        onError={() => setSrc('/store-logo.svg')}
-        style={{
-          width: 280,
-          height: 'auto',
-          maxHeight: 200,
-          objectFit: 'contain',
-          background: '#ffffff',
-          padding: '10px 14px',
-          borderRadius: 6,
-          display: 'block',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-        }}
-      />
-    </Html>
+    <mesh position={position} raycast={() => null}>
+      <planeGeometry args={[signW, signH]} />
+      <meshBasicMaterial map={texture} toneMapped={false} />
+    </mesh>
   )
 }
 

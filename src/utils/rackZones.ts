@@ -1,6 +1,7 @@
 import type { Rack, RackSide, Row } from '@/store/planogramStore'
 import type { RackSurfacePosm, ZoneFootprint, ZoneVolume } from '@/types/rackBlueprint'
 import { resolveRackInner, resolveRackOuter } from '@/utils/rackBlueprintMapper'
+import { resolveUsableRowStackHeight, sumRowHeights } from '@/utils/rowStack'
 
 export function normalizeRackPosm(raw: unknown): RackSurfacePosm | null {
   if (!raw || typeof raw !== 'object') return null
@@ -106,8 +107,8 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
     })
   }
 
-  const rowStack = side.rows.reduce((sum, r) => sum + (Number(r.height) || 0), 0)
-  const usableH = Math.max(0, outer.height - headerH - footerH)
+  const rowStack = sumRowHeights(side.rows)
+  const usableH = resolveUsableRowStackHeight(rack)
   if (rowStack > usableH + 0.001) {
     issues.push({
       message: `Σ row heights (${rowStack.toFixed(2)} m) exceeds usable stack (${usableH.toFixed(2)} m)`,

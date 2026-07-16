@@ -8,6 +8,7 @@ import { Edges } from "@react-three/drei";
 import { Bin as BinType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
+import { ProductPlacementPreview } from "./ProductPlacementPreview";
 import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
 import { safeDim } from "@/utils/safeDimensions";
 
@@ -20,6 +21,22 @@ interface BinProps {
   binWidth: number;
 }
 
+function facingFitScale(
+  productW: number,
+  productH: number,
+  productD: number,
+  binW: number,
+  binH: number,
+  binD: number,
+) {
+  return Math.min(
+    binH / Math.max(productH, 0.001),
+    binD / Math.max(productD, 0.001),
+    binW / Math.max(productW, 0.001),
+    1,
+  )
+}
+
 export function Bin({
   bin,
   rowId,
@@ -30,19 +47,30 @@ export function Bin({
 }: BinProps) {
   const meshRef = useRef<Mesh>(null);
   const [hovered, setHovered] = useState(false);
-  const { selectedId, setSelected, isPlacingProduct, placeProductOnBin, productDropHover, pendingProductParams } =
-    usePlanogramStore();
+  const {
+    selectedId,
+    setSelected,
+    isPlacingProduct,
+    placeProductOnBin,
+    productDropHover,
+    pendingProductParams,
+    setProductDropHover,
+    canProductFitInBin,
+    attachFacingPreview,
+  } = usePlanogramStore();
 
   const isSelected = selectedId === bin.id;
   const placing = isPlacingProduct;
   const dropHover = productDropHover?.binId === bin.id;
   const dropFits = productDropHover?.fits ?? true;
+  const showPlacementPreview =
+    Boolean(pendingProductParams) && placing && (dropHover || hovered);
+  const attachPreview =
+    attachFacingPreview?.binId === bin.id ? attachFacingPreview : null;
 
   useFrame(() => {
     if (meshRef.current) {
-      meshRef.current.scale.setScalar(
-        isSelected || (placing && hovered) || dropHover ? 1.05 : 1,
-      );
+      meshRef.current.scale.setScalar(isSelected || dropHover || (placing && hovered) ? 1.03 : 1)
     }
   });
 
@@ -54,47 +82,117 @@ export function Bin({
 
   const facings = expandProductsByQuantity(bin.products);
 
-  const defaultProductHeight = safeDim(facings[0]?.height, 0.35);
-  const defaultProductWidth = safeDim(facings[0]?.width, 0.35);
-  const defaultProductDepth = safeDim(facings[0]?.depth, 0.35);
-
-  // Scale to fit bin height/depth only — never stretch facings sideways to fill the shelf.
-  const fitScale =
-    facings.length > 0
-      ? Math.min(
-          actualBinHeight / defaultProductHeight,
-          actualBinDepth / defaultProductDepth,
-        )
-      : 1;
-
-  // Lay out facings along bin width (X) at true facing size × fitScale
-  let xOffset = -actualBinWidth / 2 + wallThick;
-  const productPositions: [number, number, number][] = [];
-  facings.forEach((product) => {
-    const facingWidth = (product.width ?? defaultProductWidth) * fitScale;
-    const px = xOffset + facingWidth / 2;
-    productPositions.push([px, 0, 0]);
-    xOffset += facingWidth;
-  });
-
-  const previewQty = 1;
-  const previewFacingWidth = pendingProductParams
-    ? safeDim(pendingProductParams.width, defaultProductWidth) * fitScale
-    : defaultProductWidth * fitScale;
-  const previewFacingDepth = pendingProductParams
-    ? safeDim(pendingProductParams.depth, defaultProductDepth) * fitScale
-    : defaultProductDepth * fitScale;
-  const previewFacingHeight = pendingProductParams
-    ? safeDim(pendingProductParams.height, defaultProductHeight) * fitScale
-    : defaultProductHeight * fitScale;
-  const previewStartX = xOffset;
-  const previewSlots: [number, number, number][] = [];
-  if (dropHover && pendingProductParams) {
-    let px = previewStartX;
-    for (let i = 0; i < previewQty; i++) {
-      previewSlots.push([px + previewFacingWidth / 2, 0, 0]);
-      px += previewFacingWidth;
+  // Lay out facings along bin width (X); sit on shelf floor (Y); flush to shopper-facing front (−Z)
+  const shelfY = -actualBinHeight / 2 + lipHeight
+  const frontInset = 0.01
+  let xOffset = -actualBinWidth / 2 + wallThick
+  const productPositions: [number, number, number][] = []
+  const scaledFacings = facings.map((product) => {
+    const pw = safeDim(product.width, 0.08)
+    const ph = safeDim(product.height, 0.27)
+    const pd = safeDim(product.depth, 0.08)
+    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
+    const facingWidth = pw * fitScale
+    const facingHeight = ph * fitScale
+    const facingDepth = pd * fitScale
+    const px = xOffset + facingWidth / 2
+    const pz = -actualBinDepth / 2 + facingDepth / 2 + frontInset
+    productPositions.push([px, shelfY + facingHeight / 2, pz])
+    xOffset += facingWidth
+    return {
+      ...product,
+      width: facingWidth,
+      height: facingHeight,
+      depth: facingDepth,
     }
+  })
+
+  let previewSlots: {
+    pos: [number, number, number]
+    w: number
+    h: number
+    d: number
+    fits: boolean
+    modelUrl?: string | null
+    modelStorageKey?: string | null
+    color?: string
+  }[] = []
+
+  if (showPlacementPreview && pendingProductParams) {
+    const pw = safeDim(pendingProductParams.width, 0.08)
+    const ph = safeDim(pendingProductParams.height, 0.27)
+    const pd = safeDim(pendingProductParams.depth, 0.08)
+    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
+    const w = pw * fitScale
+    const h = ph * fitScale
+    const d = pd * fitScale
+    previewSlots.push({
+      pos: [
+        xOffset + w / 2,
+        shelfY + h / 2,
+        -actualBinDepth / 2 + d / 2 + frontInset,
+      ],
+      w,
+      h,
+      d,
+      fits: dropFits,
+      modelUrl: pendingProductParams.modelUrl,
+      modelStorageKey: pendingProductParams.modelStorageKey,
+      color: pendingProductParams.color ?? "#10b981",
+    })
+  } else if (attachPreview && attachPreview.quantity > 0) {
+    const pw = safeDim(attachPreview.width, 0.08)
+    const ph = safeDim(attachPreview.height, 0.27)
+    const pd = safeDim(attachPreview.depth, 0.08)
+    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
+    const w = pw * fitScale
+    const h = ph * fitScale
+    const d = pd * fitScale
+    const maxSlots = Math.max(
+      1,
+      Math.floor((actualBinWidth - wallThick * 2) / Math.max(w, 0.001)),
+    )
+    const count = Math.min(attachPreview.quantity, maxSlots + 4, 40)
+    let px = xOffset
+    for (let i = 0; i < count; i++) {
+      previewSlots.push({
+        pos: [
+          px + w / 2,
+          shelfY + h / 2,
+          -actualBinDepth / 2 + d / 2 + frontInset,
+        ],
+        w,
+        h,
+        d,
+        fits: attachPreview.fits && i < maxSlots,
+        modelUrl: attachPreview.modelUrl,
+        modelStorageKey: attachPreview.modelStorageKey,
+        color: attachPreview.color ?? "#2C5282",
+      })
+      px += w
+    }
+  }
+
+  const updatePlacementHover = (active: boolean) => {
+    if (!placing || !pendingProductParams) {
+      if (!active) setProductDropHover(null)
+      return
+    }
+    if (!active) {
+      if (productDropHover?.binId === bin.id) setProductDropHover(null)
+      return
+    }
+    const fit = canProductFitInBin(bin.id, {
+      width: pendingProductParams.width,
+      depth: pendingProductParams.depth,
+      height: pendingProductParams.height,
+      quantity: 1,
+    })
+    setProductDropHover({
+      binId: bin.id,
+      fits: fit.fits,
+      reason: fit.reason,
+    })
   }
 
   const handleBinClick = async (e: any) => {
@@ -114,10 +212,10 @@ export function Bin({
   };
 
   return (
-    <group position={position} userData={{ id: bin.id }}>
+    <group position={position} userData={{ id: bin.id, type: 'bin' }}>
       {/* Base – box covering the row segment, sits on shelf */}
       <mesh
-        userData={{ id: bin.id }}
+        userData={{ id: bin.id, type: 'bin' }}
         ref={meshRef}
         onClick={handleBinClick}
         onPointerDown={(e) => {
@@ -127,10 +225,12 @@ export function Bin({
           e.stopPropagation();
           setHovered(true);
           document.body.style.cursor = placing ? "copy" : "pointer";
+          updatePlacementHover(true);
         }}
         onPointerOut={() => {
           setHovered(false);
           document.body.style.cursor = "default";
+          updatePlacementHover(false);
         }}
       >
         <boxGeometry args={[actualBinWidth, actualBinHeight, actualBinDepth]} />
@@ -141,7 +241,7 @@ export function Bin({
           transparent
           opacity={isSelected || (placing && hovered) || dropHover ? 0.7 : 0.5}
           emissive={
-            dropHover
+            dropHover || (placing && hovered)
               ? dropFits
                 ? "#059669"
                 : "#dc2626"
@@ -157,17 +257,15 @@ export function Bin({
           scale={1}
           threshold={15}
           color={
-            dropHover
+            dropHover || (placing && hovered)
               ? dropFits
                 ? "#10b981"
                 : "#ef4444"
               : isSelected
                 ? "#2C5282"
-                : placing && hovered
-                  ? "#10b981"
-                  : hovered
-                    ? "#2C5282"
-                    : "#2c3e50"
+                : hovered
+                  ? "#2C5282"
+                  : "#2c3e50"
           }
           lineWidth={isSelected || (placing && hovered) || dropHover ? 3 : 2}
         />
@@ -186,37 +284,27 @@ export function Bin({
         />
         <meshStandardMaterial color="#FFFFFF" metalness={0.4} roughness={0.5} />
       </mesh>
-      {dropHover &&
-        pendingProductParams &&
-        previewSlots.map((pos, index) => (
-          <mesh key={`drop-preview-${index}`} position={pos} raycast={() => null}>
-            <boxGeometry
-              args={[previewFacingWidth, previewFacingHeight, previewFacingDepth]}
-            />
-            <meshStandardMaterial
-              color={dropFits ? "#10b981" : "#ef4444"}
-              transparent
-              opacity={0.35}
-              depthWrite={false}
-            />
-          </mesh>
-        ))}
-      {facings.map((product, index) => {
-        const scaledProduct = {
-          ...product,
-          width: (product.width ?? defaultProductWidth) * fitScale,
-          height: (product.height ?? defaultProductHeight) * fitScale,
-          depth: (product.depth ?? defaultProductDepth) * fitScale,
-        };
-        return (
-          <Product
-            key={`${bin.id}-${index}-${product.id}`}
-            product={scaledProduct}
-            rowId={rowId}
-            position={productPositions[index] ?? [0, 0, 0]}
-          />
-        );
-      })}
+      {previewSlots.map((slot, index) => (
+        <ProductPlacementPreview
+          key={`preview-facing-${index}`}
+          position={slot.pos}
+          width={slot.w}
+          height={slot.h}
+          depth={slot.d}
+          fits={slot.fits}
+          color={slot.color ?? "#10b981"}
+          modelUrl={slot.modelUrl}
+          modelStorageKey={slot.modelStorageKey}
+        />
+      ))}
+      {scaledFacings.map((product, index) => (
+        <Product
+          key={`${bin.id}-${index}-${product.id}`}
+          product={product}
+          rowId={rowId}
+          position={productPositions[index] ?? [0, 0, 0]}
+        />
+      ))}
     </group>
   );
 }

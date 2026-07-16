@@ -62,10 +62,12 @@ function skuToPending(sku: CatalogSkuRow): PendingProductParams {
     size: sku.size ?? null,
     variant: sku.variant ?? null,
     imageUrl: sku.imageUrl ?? null,
+    modelUrl: sku.modelUrl ?? null,
+    modelStorageKey: sku.modelStorageKey ?? null,
     width: safeDim(sku.width, DEFAULT_PRODUCT_WIDTH),
     height: safeDim(sku.height, DEFAULT_PRODUCT_HEIGHT),
     depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
-    color: '#2C5282',
+    color: '#10b981',
   }
 }
 
@@ -210,7 +212,7 @@ export function ProductPalette() {
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Product Library</h2>
-          <p className="text-[10px] text-gray-400 truncate">Drag or click, then drop on a bin</p>
+          <p className="text-[10px] text-gray-400 truncate">Drag or click, then hover a bin to preview</p>
         </div>
         <button
           type="button"
@@ -236,11 +238,9 @@ export function ProductPalette() {
               <p className="text-gray-300 mt-0.5">
                 {productDropHover
                   ? productDropHover.fits
-                    ? 'Release to attach to highlighted bin'
+                    ? 'Preview on shelf — click or release to attach'
                     : (productDropHover.reason ?? 'Product will not fit in this bin')
-                  : selectedType === 'bin'
-                    ? 'Bin selected — click bin again or drop to attach'
-                    : 'Drag onto a bin in 3D (green = fits, red = no space)'}
+                  : 'Hover a bin to preview size on the shelf, then click to place'}
               </p>
               <p className="text-gray-500 mt-1 text-[10px]">
                 Facing {(pendingProduct.width * 100).toFixed(0)}×{(pendingProduct.depth * 100).toFixed(0)}×

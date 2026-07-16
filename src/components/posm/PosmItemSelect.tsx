@@ -41,13 +41,19 @@ export function PosmItemSelect({
         className={cn(
           'w-full rounded-lg border px-2.5 py-2 text-xs focus:outline-none focus:ring-2',
           dark
-            ? 'bg-white/5 border-white/15 text-white focus:ring-brand/40'
+            ? 'bg-gray-900 border-white/15 text-white focus:ring-brand/40 [color-scheme:dark]'
             : 'bg-white border-gray-200 text-gray-900 focus:ring-brand/30',
         )}
       >
-        <option value="">{loading ? 'Loading…' : 'None'}</option>
+        <option value="" className={dark ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}>
+          {loading ? 'Loading…' : 'None'}
+        </option>
         {items.map((p) => (
-          <option key={p.id} value={p.id}>
+          <option
+            key={p.id}
+            value={p.id}
+            className={dark ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}
+          >
             {p.name} ({p.posmType})
           </option>
         ))}

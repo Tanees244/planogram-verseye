@@ -21,7 +21,7 @@ import {
 import { usePlanogramStore } from '@/store/planogramStore'
 import {
   FIXTURE_LIBRARY,
-  FIXTURE_TYPES,
+  FIXTURE_PRESET_TYPES,
   type FixtureType,
 } from '@/components/fixtures/types'
 import { cn } from '@/lib/cn'
@@ -45,7 +45,7 @@ const COLLAPSE_KEY = 'planogram.fixturePaletteCollapsed'
 
 const shell = 'rounded-xl shadow-lg backdrop-blur-sm bg-black/70 border border-white/10'
 
-export function FixturePalette() {
+export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean }) {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const isPlacingRack = usePlanogramStore((s) => s.isPlacingRack)
   const placingFixtureType = usePlanogramStore((s) => s.placingFixtureType)
@@ -110,7 +110,7 @@ export function FixturePalette() {
         <span className="flex flex-col min-w-0">
           <span className="text-sm font-semibold text-white leading-tight">Fixtures</span>
           <span className="text-[10px] text-gray-400 leading-tight">
-            Custom builder
+            Custom · Gondola · Freezer · Peg
           </span>
         </span>
         <FiChevronRight size={16} className="text-gray-400 shrink-0 ml-1 group-hover:text-white transition-colors" />
@@ -122,7 +122,13 @@ export function FixturePalette() {
   }
 
   return (
-    <div className={cn(shell, 'relative w-full shrink-0 flex flex-col overflow-hidden text-gray-100')}>
+    <div
+      className={cn(
+        shell,
+        'relative w-full flex flex-col overflow-hidden text-gray-100',
+        fillHeight ? 'flex-1 min-h-0 h-full' : 'shrink-0',
+      )}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0 bg-black/30">
         <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0">
@@ -130,7 +136,7 @@ export function FixturePalette() {
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Fixture Library</h2>
-          <p className="text-[10px] text-gray-400 truncate">Build custom · confirm to place</p>
+          <p className="text-[10px] text-gray-400 truncate">Presets · custom builder</p>
         </div>
         <button
           type="button"
@@ -177,7 +183,12 @@ export function FixturePalette() {
         </div>
       )}
 
-      <div className="p-2">
+      <div
+        className={cn(
+          'p-2 space-y-1.5 overflow-y-auto scrollbar-thin min-h-0',
+          fillHeight && 'flex-1',
+        )}
+      >
         <button
           type="button"
           onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}
@@ -197,14 +208,13 @@ export function FixturePalette() {
           </div>
         </button>
 
-        {/* Preset fixture library — temporarily disabled
         <div className="flex items-center gap-2 px-1 py-0.5">
           <div className="flex-1 h-px bg-white/10" />
           <span className="text-[9px] text-gray-500 uppercase tracking-wider">Presets</span>
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
-        {FIXTURE_TYPES.filter((t) => t !== 'CUSTOM').map((type) => {
+        {FIXTURE_PRESET_TYPES.map((type) => {
           const def = FIXTURE_LIBRARY[type]
           const Icon = FIXTURE_ICONS[type]
           const active = placingFixtureType === type
@@ -221,20 +231,21 @@ export function FixturePalette() {
                 startFixturePlacement(type)
               }}
               className={cn(
-                'flex items-center gap-2.5 p-2.5 rounded-lg border cursor-grab active:cursor-grabbing transition-all',
+                'flex items-center gap-2 p-2 rounded-lg border cursor-grab active:cursor-grabbing transition-all',
                 'border-transparent hover:bg-white/10 hover:border-white/10',
                 active && 'bg-brand/25 border-brand/40',
                 isDragging && 'opacity-50',
                 !selectedStoreId && 'opacity-45 cursor-not-allowed',
               )}
+              title={def.description}
             >
               <div
                 className={cn(
-                  'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center',
+                  'shrink-0 w-7 h-7 rounded-lg flex items-center justify-center',
                   active ? 'bg-brand text-white' : 'bg-white/10 text-gray-300',
                 )}
               >
-                <Icon size={15} />
+                <Icon size={14} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
@@ -242,13 +253,13 @@ export function FixturePalette() {
                   <FiMove size={10} className="text-gray-500 shrink-0 opacity-60" />
                 </div>
                 <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-                  {def.defaultWidth}×{def.defaultDepth}m
+                  {def.defaultWidth}×{def.defaultDepth}×{def.defaultHeight} m
+                  {def.defaultSided === 'two' ? ' · 2-sided' : ''} · shelves ready
                 </p>
               </div>
             </div>
           )
         })}
-        */}
       </div>
     </div>
   )

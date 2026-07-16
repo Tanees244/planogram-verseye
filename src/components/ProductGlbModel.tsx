@@ -2,7 +2,7 @@
 
 import { useGLTF } from '@react-three/drei'
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import type { Group, Mesh } from 'three'
+import type { Group, Mesh, MeshStandardMaterial } from 'three'
 import { fitObjectToBox } from '@/utils/fitGlbToBox'
 
 interface ProductGlbModelProps {
@@ -16,6 +16,20 @@ interface ProductGlbModelProps {
   onSelect: (e: unknown) => void
   onPointerOver: (e: unknown) => void
   onPointerOut: () => void
+}
+
+function setEmissive(root: Group, selected: boolean, hovered: boolean) {
+  root.traverse((child) => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of mats) {
+      const m = mat as MeshStandardMaterial
+      if (!m || !('emissive' in m)) continue
+      m.emissive?.set?.(selected || hovered ? '#ffffff' : '#000000')
+      m.emissiveIntensity = selected ? 0.25 : hovered ? 0.35 : 0
+    }
+  })
 }
 
 function GlbMesh({
@@ -37,10 +51,15 @@ function GlbMesh({
     const clone = scene.clone(true)
     clone.traverse((child) => {
       const mesh = child as Mesh
-      if (mesh.isMesh) {
-        mesh.castShadow = true
-        mesh.receiveShadow = true
-        mesh.userData = { ...mesh.userData, id: productId, type: 'product' }
+      if (!mesh.isMesh) return
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      mesh.raycast = () => null
+      mesh.userData = { ...mesh.userData, id: productId, type: 'product' }
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((m) => m.clone())
+      } else if (mesh.material) {
+        mesh.material = mesh.material.clone()
       }
     })
     fitObjectToBox(clone, width, height, depth)
@@ -54,17 +73,24 @@ function GlbMesh({
     g.add(model)
   }, [model])
 
-  const scale = isSelected ? 1.1 : hovered ? 1.05 : 1
+  useLayoutEffect(() => {
+    setEmissive(model, isSelected, hovered)
+  }, [model, isSelected, hovered])
 
   return (
-    <group
-      ref={groupRef}
-      scale={[scale, scale, scale]}
-      userData={{ id: productId, type: 'product' }}
-      onClick={onSelect}
-      onPointerOver={onPointerOver}
-      onPointerOut={onPointerOut}
-    />
+    <group userData={{ id: productId, type: 'product' }}>
+      {/* Stable hit box — never scales, prevents hover flicker */}
+      <mesh
+        userData={{ id: productId, type: 'product' }}
+        onClick={onSelect}
+        onPointerOver={onPointerOver}
+        onPointerOut={onPointerOut}
+      >
+        <boxGeometry args={[width, height, depth]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <group ref={groupRef} />
+    </group>
   )
 }
 

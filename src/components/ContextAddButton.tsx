@@ -233,10 +233,14 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
         <div
           className={cn(
             'flex flex-col gap-2',
-            isSidebar ? 'w-full' : 'items-start',
+            isSidebar ? 'w-full min-h-full' : 'items-start',
           )}
         >
-          <ActionBar label="Rack selected" layout={layout}>
+          <ActionBar
+            label="Rack selected"
+            layout={layout}
+            className={isSidebar ? 'flex-1 min-h-0' : undefined}
+          >
             {isCustom && (
               <ActionBtn
                 variant="secondary"
@@ -511,8 +515,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     const row = rack?.sides
       .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedId))
       ?.rows.find((r: Row) => r.id === selectedId);
-    const rowExtent1 = rack ? rack.width * 0.85 : undefined;
-    const rowExtent2 = rack ? rack.depth * 0.9 : undefined;
+    const rowExtent1 = undefined;
+    const rowExtent2 = undefined;
     const rowHeightForBin = row?.height;
     const rowMaxWidth =
       rack?.customConfig

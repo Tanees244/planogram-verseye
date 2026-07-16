@@ -157,6 +157,83 @@ export const PRODUCT_SIZE_PRESETS: ProductSizePreset[] = [
 /** Sample GLB shipped in /public/models for local demos. */
 export const DEMO_PRODUCT_GLB = '/models/tapal_green_tea_box.glb'
 
+export interface DemoProductModel {
+  id: string
+  label: string
+  url: string
+  /** Suggested catalog dims in meters (W × D × H). */
+  width: number
+  depth: number
+  height: number
+  /** Prefill create-SKU name when empty. */
+  suggestedName?: string
+  suggestedCode?: string
+}
+
+/** Local demo .glb options shown while creating a SKU. */
+export const DEMO_PRODUCT_MODELS: DemoProductModel[] = [
+  {
+    id: 'tapal-tea',
+    label: 'Tapal tea box',
+    url: '/models/tapal_green_tea_box.glb',
+    width: 0.12,
+    depth: 0.08,
+    height: 0.05,
+    suggestedName: 'Tapal Green Tea',
+    suggestedCode: 'TAPAL-TEA-01',
+  },
+  {
+    id: 'almarai-milk-a',
+    label: 'Almarai milk A',
+    url: '/models/almarai_milk_bottle_a.glb',
+    width: 0.08,
+    depth: 0.08,
+    height: 0.27,
+    suggestedName: 'Almarai Fresh Milk 1 L',
+    suggestedCode: 'ALM-MILK-01',
+  },
+  {
+    id: 'almarai-milk-b',
+    label: 'Almarai milk B',
+    url: '/models/almarai_milk_bottle_b.glb',
+    width: 0.08,
+    depth: 0.08,
+    height: 0.27,
+    suggestedName: 'Almarai Fresh Milk 1 L',
+    suggestedCode: 'ALM-MILK-02',
+  },
+  {
+    id: 'almarai-milk-c',
+    label: 'Almarai milk C',
+    url: '/models/almarai_milk_bottle_c.glb',
+    width: 0.09,
+    depth: 0.09,
+    height: 0.28,
+    suggestedName: 'Almarai Fresh Milk',
+    suggestedCode: 'ALM-MILK-03',
+  },
+  {
+    id: 'almarai-yoghurt',
+    label: 'Almarai yoghurt',
+    url: '/models/almarai_yoghurt.glb',
+    width: 0.09,
+    depth: 0.09,
+    height: 0.12,
+    suggestedName: 'Almarai Yoghurt',
+    suggestedCode: 'ALM-YOG-01',
+  },
+  {
+    id: 'lusine-bread',
+    label: "L'usine sliced bread",
+    url: '/models/lusine_sliced_bread.glb',
+    width: 0.24,
+    depth: 0.12,
+    height: 0.12,
+    suggestedName: "L'usine Sliced Bread",
+    suggestedCode: 'LUS-BRD-01',
+  },
+]
+
 
 export function presetToFormStrings(preset: ProductSizePreset): {
   width: string

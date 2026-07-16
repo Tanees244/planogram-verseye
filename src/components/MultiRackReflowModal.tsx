@@ -317,7 +317,7 @@ export function MultiRackReflowModal({
       open={open}
       onClose={onClose}
       title="Apply multi-rack reflow"
-      subtitle={`Source: ${rack.rackCode} — POST /racks/{id}/reflow-to-racks`}
+      subtitle={`Source: ${rack.rackCode}`}
       maxWidth="3xl"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">

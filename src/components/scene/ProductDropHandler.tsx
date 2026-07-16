@@ -10,7 +10,12 @@ function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | nul
   for (const hit of intersects) {
     let obj: THREE.Object3D | null = hit.object
     while (obj) {
+      if (obj.userData?.type === 'product') {
+        obj = obj.parent
+        continue
+      }
       const id = obj.userData?.id
+      const isBin = obj.userData?.type === 'bin'
       if (typeof id === 'string' && id.length > 0) {
         const state = usePlanogramStore.getState()
         for (const rack of state.area.racks) {
@@ -20,6 +25,8 @@ function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | nul
             }
           }
         }
+        // id matched nothing as bin — keep walking unless it was typed as bin
+        if (isBin) return null
       }
       obj = obj.parent
     }

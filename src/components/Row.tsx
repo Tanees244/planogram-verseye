@@ -41,7 +41,7 @@ export function Row({
 
   useFrame(() => {
     if (meshRef.current) {
-      meshRef.current.scale.setScalar(isSelected ? 1.05 : 1);
+      meshRef.current.scale.setScalar(isSelected ? 1.03 : 1);
     }
   });
 
@@ -159,32 +159,37 @@ export function Row({
         </mesh>
       )}
 
-      {/* Bins inside the row – centered vertically, fill row height */}
-      {row.bins.map((bin, index) => {
-        const n = Math.max(row.bins.length, 1);
-        // Calculate bin width: split row width equally among bins
-        const calculatedBinWidth = safeRackWidth / n;
-        const binWidth = Math.min(
-          safeDim(bin.width, calculatedBinWidth),
-          calculatedBinWidth * 0.95,
-        );
-        const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95);
-        const binHeightUse = safeDim(bin.height, rowHeight - 0.15);
-        const xOffset = -safeRackWidth / 2 + calculatedBinWidth * (index + 0.5);
-        // Center bin vertically in the row (row group is at position, bin at y=0 is centered in row)
-        const binY = 0;
-        return (
-          <Bin
-            key={bin.id}
-            bin={bin}
-            rowId={row.id}
-            position={[xOffset, binY, z]}
-            binHeight={binHeightUse}
-            binDepth={binDepth}
-            binWidth={binWidth}
-          />
-        );
-      })}
+      {/* Bins inside the row – laid out left-to-right by bin width */}
+      {(() => {
+        let xCursor = -safeRackWidth / 2
+        const maxBinH = Math.max(0.08, rowHeight - 0.08)
+        return row.bins.map((bin) => {
+          const n = Math.max(row.bins.length, 1)
+          const fallbackWidth = safeRackWidth / n
+          const slotWidth = safeDim(bin.width, fallbackWidth)
+          const binWidth = Math.min(slotWidth, fallbackWidth * 0.95)
+          const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95)
+          // API sometimes stores shelf-board thickness as bin.height — use row
+          // cavity for layout so products aren't crushed to a few centimeters.
+          const rawBinH = safeDim(bin.height, maxBinH)
+          const binHeightUse =
+            rawBinH < maxBinH * 0.35 ? maxBinH : Math.min(rawBinH, maxBinH)
+          const xOffset = xCursor + slotWidth / 2
+          xCursor += slotWidth
+          const binY = -rowHeight / 2 + binHeightUse / 2 + 0.03
+          return (
+            <Bin
+              key={bin.id}
+              bin={bin}
+              rowId={row.id}
+              position={[xOffset, binY, z]}
+              binHeight={binHeightUse}
+              binDepth={binDepth}
+              binWidth={binWidth}
+            />
+          )
+        })
+      })()}
 
       <RowDividerPosmMesh
         posm={row.dividerPosm}

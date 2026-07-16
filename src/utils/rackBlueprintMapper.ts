@@ -1,6 +1,7 @@
 import type { CustomRackConfig } from '@/components/fixtures/customRackTypes';
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes';
 import type { FixtureType } from '@/components/fixtures/types';
+import { FIXTURE_LIBRARY } from '@/components/fixtures/types';
 import type { Bin, Product, Quadrant, Rack, RackRotation, Row } from '@/store/planogramStore';
 import type {
   Dimensions3,
@@ -221,6 +222,12 @@ export function buildCreateRackPayload(options: {
       depth: cfg.outerDepth,
       height: cfg.outerHeight,
     };
+    const dims = computeCustomRackDimensions(cfg);
+    const inner = {
+      width: dims.innerWidth,
+      depth: dims.innerDepth,
+      height: dims.innerHeight,
+    };
     return {
       storeId,
       rackCode,
@@ -228,6 +235,7 @@ export function buildCreateRackPayload(options: {
       fixtureType: 'CUSTOM',
       isDoubleSided,
       outer,
+      inner,
       shell: customConfigToShell(cfg),
       placement,
       width: outer.width,
@@ -239,11 +247,17 @@ export function buildCreateRackPayload(options: {
   return {
     storeId,
     rackCode,
+    blueprintName: options.blueprintName ?? rackCode,
     fixtureType: fixtureType ?? 'GONDOLA',
     isDoubleSided,
     width,
     depth,
-    height: options.outerHeight ?? depth,
+    height: options.outerHeight ?? FIXTURE_LIBRARY[fixtureType]?.defaultHeight ?? depth,
+    outer: {
+      width,
+      depth,
+      height: options.outerHeight ?? FIXTURE_LIBRARY[fixtureType]?.defaultHeight ?? depth,
+    },
     placement,
     positionX: placement.position?.x ?? 0,
     positionY: placement.position?.y ?? 0,
@@ -411,6 +425,21 @@ export function clampRowSpanToInner(rack: Rack, requested?: number | null): numb
   const inner = resolveRackInner(rack);
   // Tiny epsilon so floating point doesn't trip "exceeds available space"
   const max = Math.max(0.1, inner.width - 0.001);
+  if (requested == null || !Number.isFinite(requested) || requested <= 0) return max;
+  return Math.min(requested, max);
+}
+
+/** Max bin depth allowed by API = rack inner cavity depth. */
+export function clampBinDepthToInner(rack: Rack, requested?: number | null): number {
+  const inner = resolveRackInner(rack);
+  const max = Math.max(0.05, inner.depth - 0.001);
+  if (requested == null || !Number.isFinite(requested) || requested <= 0) return max;
+  return Math.min(requested, max);
+}
+
+/** Max bin height allowed by API ≈ row height (with small clearance). */
+export function clampBinHeightToRow(rowHeight: number, requested?: number | null): number {
+  const max = Math.max(0.05, rowHeight - 0.05);
   if (requested == null || !Number.isFinite(requested) || requested <= 0) return max;
   return Math.min(requested, max);
 }

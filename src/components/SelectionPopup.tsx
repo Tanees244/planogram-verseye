@@ -88,7 +88,7 @@ export function SelectionPopup() {
   if (!position || !data || !selectedId || selectedType === 'area' || selectedType === 'rack' || selectedType === 'bin' || selectedType === 'row') return null
 
   return (
-    <Html position={position} center style={{ pointerEvents: 'none' }}>
+    <Html position={position} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
       <div style={{
         backgroundColor: 'rgba(0, 0, 0, 0.85)',
         color: 'white',

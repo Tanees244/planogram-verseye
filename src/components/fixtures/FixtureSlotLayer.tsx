@@ -3,6 +3,7 @@
 
 import type { Rack } from '@/store/planogramStore'
 import { Row } from '@/components/Row'
+import { ensureRowAnchors, rowCenterOffsetsFromFloor } from '@/utils/rowStack'
 
 interface FixtureSlotLayerProps {
   rack: Rack
@@ -33,12 +34,9 @@ export function FixtureSlotLayer({ rack, rackHeight, isDoubleSided }: FixtureSlo
         const rowDepth = isDoubleSided ? rack.depth * 0.5 : rack.depth * 0.9
         const shelfOffsetZ = isDoubleSided ? -rowDepth / 2 : 0
 
-        let currentY = baseTopY
-        const rowPositions: number[] = []
-        side.rows.forEach((row) => {
-          rowPositions.push(currentY + row.height / 2)
-          currentY += row.height
-        })
+        const rows = ensureRowAnchors(side.rows)
+        const centers = rowCenterOffsetsFromFloor(rows)
+        const rowPositions = centers.map((c) => baseTopY + c)
 
         return (
           <group
@@ -46,14 +44,14 @@ export function FixtureSlotLayer({ rack, rackHeight, isDoubleSided }: FixtureSlo
             position={[sideX, 0, 0]}
             rotation={[0, sideRotationY, 0]}
           >
-            {side.rows.map((row, rowIndex) => (
+            {rows.map((row, rowIndex) => (
               <Row
                 key={row.id}
                 row={row}
                 position={[0, rowPositions[rowIndex], 0]}
                 rackWidth={rowWidth}
                 rackDepth={rowDepth}
-                showBottomBorder={rowIndex < side.rows.length - 1}
+                showBottomBorder={rowIndex < rows.length - 1}
                 openBothSides={isDoubleSided}
                 shelfOffsetZ={shelfOffsetZ}
               />

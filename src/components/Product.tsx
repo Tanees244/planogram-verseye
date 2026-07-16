@@ -160,8 +160,9 @@ export function Product({ product, position, rowId }: ProductProps) {
   }, [texture])
 
   useFrame(() => {
+    // Selection pulse only — hover scale causes pointer flicker
     if (!useGlb && meshRef.current) {
-      meshRef.current.scale.setScalar(isSelected ? 1.1 : hovered ? 1.05 : 1)
+      meshRef.current.scale.setScalar(isSelected ? 1.06 : 1)
     }
   })
 

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { resolveEntityId, resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import type { FixtureType } from "@/components/fixtures/types";
+import { FIXTURE_LIBRARY } from "@/components/fixtures/types";
 import type { CustomRackConfig } from "@/components/fixtures/customRackTypes";
 import type { Dimensions3, RackPlacement, RackShell, RackSurfacePosm, ZoneFootprint, ZoneVolume } from "@/types/rackBlueprint";
 import {
@@ -15,7 +16,9 @@ import {
   isRackInsideFloor,
   snapRackToWall,
 } from "@/utils/rackPlacement";
-import { buildCreateRackPayload, buildUpdateRackPayload, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { buildCreateRackPayload, buildUpdateRackPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { canAddRowToSide, innerFromCustomConfig, nextRowYStart, reanchorSideRows } from "@/utils/rowStack";
+import { getFixtureSeedLayout } from "@/utils/fixtureSeed";
 import { boundsFromRacks, summarizeRacks } from "@/lib/planogram-formats/serialize";
 import { importPlanogramContent } from "@/lib/planogram-formats";
 import {
@@ -76,6 +79,19 @@ export interface PendingProductParams {
   width: number;
   height: number;
   depth: number;
+  color?: string;
+}
+
+/** Live ghost facings while Attach Product modal quantity/dims change. */
+export interface AttachFacingPreview {
+  binId: string;
+  width: number;
+  height: number;
+  depth: number;
+  quantity: number;
+  fits: boolean;
+  modelUrl?: string | null;
+  modelStorageKey?: string | null;
   color?: string;
 }
 
@@ -156,6 +172,8 @@ export type Quadrant = "NW" | "NE" | "SW" | "SE";
 export interface PendingRackParams {
   width: number;
   depth: number;
+  /** Outer height (m) — required for backend outer.height on create. */
+  height?: number;
   plankType: string;
   sided?: RackSided;
   rackCode?: string;
@@ -197,6 +215,9 @@ export interface PlanogramState {
   setProductDropHover: (
     hover: { binId: string; fits: boolean; reason?: string } | null,
   ) => void;
+  /** Live facing ghosts while Attach Product modal edits quantity / dims. */
+  attachFacingPreview: AttachFacingPreview | null;
+  setAttachFacingPreview: (preview: AttachFacingPreview | null) => void;
   startProductPlacement: (product: PendingProductParams) => void;
   cancelProductPlacement: () => void;
   placeProductOnBin: (
@@ -263,11 +284,13 @@ export interface PlanogramState {
   dimensions?: {
     width: number;
     depth: number;
+    height?: number;
     plankType: string;
     sided?: RackSided;
     rackCode?: string;
     fixtureType?: FixtureType;
     customConfig?: CustomRackConfig;
+    globalLocationId?: string;
   },
     globalLocationId?: string,
     options?: { snapToWall?: boolean; rotationY?: number },
@@ -277,6 +300,7 @@ export interface PlanogramState {
     rackId: string,
     height?: number,
     note?: string,
+    options?: { quiet?: boolean },
   ) => Promise<{ success: boolean; message: string }>;
   updateRowHeight: (
     rowId: string,
@@ -293,7 +317,12 @@ export interface PlanogramState {
     rowHeight?: number,
     binName?: string,
     binDims?: { width?: number; depth?: number; height?: number },
+    options?: { quiet?: boolean },
   ) => Promise<{ success: boolean; message: string; binId?: string }>;
+  /** After placing GONDOLA / FREEZER / PEGBOARD — create rows+bins via backend. */
+  seedPresetFixtureShelves: (
+    rackId: string,
+  ) => Promise<{ success: boolean; message?: string }>;
   addBin: (
     rowId: string,
     rowExtent1?: number,
@@ -468,6 +497,7 @@ const createRack = (
   dimensions?: {
     width: number;
     depth: number;
+    height?: number;
     plankType: string;
     sided?: RackSided;
     rackCode?: string;
@@ -488,15 +518,23 @@ const createRack = (
       ]
       : [{ id: generateId(), sideId: "Side1", sideCode: `${rackCode}-S1`, rows: [] }];
   const rackPosition = position || { x: 0, y: 0, z: 0 };
+  const width = dimensions?.width ?? DEFAULT_RACK_WIDTH;
+  const depth = dimensions?.depth ?? DEFAULT_RACK_DEPTH;
+  const outerH =
+    dimensions?.height ??
+    dimensions?.customConfig?.outerHeight ??
+    FIXTURE_LIBRARY[fixtureType]?.defaultHeight ??
+    2;
   return {
     id: generateId(),
     rackId: generateId(),
     rackCode,
-    width: dimensions?.width ?? DEFAULT_RACK_WIDTH,
-    depth: dimensions?.depth ?? DEFAULT_RACK_DEPTH,
-    height: dimensions?.plankType ?? "standard",
+    width,
+    depth,
+    height: String(outerH),
     fixtureType,
     customConfig: dimensions?.customConfig,
+    outer: { width, depth, height: outerH },
     position: rackPosition,
     rotation: { x: 0, y: 0, z: 0 },
     sides,
@@ -528,6 +566,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   isPlacingProduct: false,
   pendingProductParams: null,
   productDropHover: null,
+  attachFacingPreview: null,
   customRackBuilderOpen: false,
   customRackDraft: createBlankCustomRack(),
   editingCustomRackId: null,
@@ -601,6 +640,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       placingFixtureType: null,
     }),
   setProductDropHover: (hover) => set({ productDropHover: hover }),
+  setAttachFacingPreview: (preview) => set({ attachFacingPreview: preview }),
   startProductPlacement: (product) => {
     set({
       isPlacingProduct: true,
@@ -804,6 +844,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
 
     const width = finalDims?.width ?? DEFAULT_RACK_WIDTH;
     const depth = finalDims?.depth ?? 20;
+    const fixtureType = finalDims?.fixtureType ?? 'GONDOLA';
+    const outerHeight =
+      finalDims?.customConfig?.outerHeight ??
+      finalDims?.height ??
+      FIXTURE_LIBRARY[fixtureType]?.defaultHeight ??
+      2;
     const pos = position ?? { x: 0, y: 0, z: 0 };
 
     let placeX = pos.x;
@@ -888,11 +934,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         storeId: globalLocationId || finalDims?.globalLocationId || state.selectedStoreId || '',
         rackCode: finalDims?.rackCode || `RACK-${Date.now()}`,
         blueprintName: finalDims?.rackCode,
-        fixtureType: finalDims?.fixtureType ?? 'GONDOLA',
+        fixtureType,
         isDoubleSided: (finalDims?.sided || 'one') === 'two',
         width,
         depth,
-        outerHeight: finalDims?.customConfig?.outerHeight ?? depth,
+        outerHeight,
         customConfig: finalDims?.customConfig,
         placement,
       });
@@ -932,6 +978,16 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             depth: finalDims.customConfig.outerDepth,
             height: finalDims.customConfig.outerHeight,
           };
+          const inner = innerFromCustomConfig(rack);
+          if (inner) rack.inner = inner;
+        } else if (fixtureType !== 'CUSTOM') {
+          rack.outer = { width, depth, height: outerHeight };
+          const wallT = 0.08;
+          rack.inner = {
+            width: Math.max(0.1, width - wallT * 2),
+            depth: Math.max(0.1, depth - wallT * 2),
+            height: Math.max(0.1, outerHeight - 0.1),
+          };
         }
         try {
           const returned = data.data ?? {};
@@ -962,6 +1018,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             rack.shell = returned.shell as RackShell;
             rack.outer = returned.outer as Dimensions3;
           }
+          if (returned.outer && rack.fixtureType !== 'CUSTOM') {
+            rack.outer = returned.outer as Dimensions3;
+          }
+          if (returned.inner && rack.fixtureType !== 'CUSTOM') {
+            rack.inner = returned.inner as Dimensions3;
+          }
         } catch (e) {
           // non-fatal: if response shape differs, fall back to local ids
           console.warn('[planogram] Unexpected add-rack response shape', e, data);
@@ -977,7 +1039,27 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           placingFixtureType: null,
           isAddingRack: false,
           addRackError: null,
+          selectedId: rack.id,
+          selectedType: 'rack' as const,
         }));
+
+        // Preset fixtures: create functional rows + bins on the backend
+        if (fixtureType !== 'CUSTOM' && getFixtureSeedLayout(fixtureType)) {
+          const seed = await get().seedPresetFixtureShelves(rack.id);
+          if (!seed.success) {
+            return {
+              success: true,
+              message:
+                (data.message || 'Rack added') +
+                ` — shelves not fully created: ${seed.message ?? 'unknown error'}`,
+            };
+          }
+          return {
+            success: true,
+            message: data.message || 'Rack added with shelves and bins',
+          };
+        }
+
         return { success: true, message: data.message || "Rack added successfully" };
       } else {
         set({ isAddingRack: false, addRackError: data.message || "Failed to add rack" });
@@ -1023,7 +1105,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         },
       };
     }),
-  addRowToServer: async (rackId, height = 1.5, note) => {
+  addRowToServer: async (rackId, height = 1.5, note, options) => {
+    const quiet = options?.quiet === true;
     const state = get();
     const rack = state.area.racks.find((r) => r.id === rackId);
     if (!rack) return { success: false, message: 'Rack not found' };
@@ -1054,8 +1137,16 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       }
 
       try {
+        const check = canAddRowToSide(rack, side, height);
+        if (!check.ok) {
+          sideResults.push({ success: false, message: check.message ?? 'Row does not fit', sideIndex: i });
+          continue;
+        }
+
         // API validates span against inner.width (outer − walls), not outer/rack.width
         const rowWidth = clampRowSpanToInner(rack);
+        const yStart = nextRowYStart(side);
+        const yEnd = yStart + height;
         const res = await fetch('/api/racks/add-row-by-side', {
           method: 'POST',
           headers,
@@ -1066,6 +1157,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             span: rowWidth,
             width: rowWidth,
             sided: rack.sides.length === 2 ? 'two' : 'one',
+            yStart,
+            yEnd,
           }),
         });
         const data = await res.json();
@@ -1090,7 +1183,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const failedMessages = [
       ...new Set(sideResults.filter((s) => !s.success).map((s) => s.message)),
     ];
-    if (failedMessages.length > 0) {
+    if (failedMessages.length > 0 && !quiet) {
       toastApiError(failedMessages.join('; '));
     }
 
@@ -1110,7 +1203,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           const newRow = createRow(height, r.sides.length === 2 ? 'two' : 'one');
           if (result.returnedId) newRow.id = result.returnedId;
           if (result.rowWidth != null) newRow.width = result.rowWidth;
-          return { ...side, rows: [...side.rows, newRow] };
+          const yStart = nextRowYStart(side);
+          newRow.yStart = yStart;
+          newRow.yEnd = yStart + height;
+          return { ...side, rows: reanchorSideRows([...side.rows, newRow]) };
         });
         return { ...r, sides: newSides };
       });
@@ -1143,12 +1239,13 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         ...state.area,
         racks: state.area.racks.map((rack) => ({
           ...rack,
-          sides: rack.sides.map((side) => ({
-            ...side,
-            rows: side.rows.map((row) => {
-              if (row.id !== rowId) return row;
-              const nextH = h ?? row.height;
-              const maxBinH = Math.max(0.05, nextH - 0.15);
+          sides: rack.sides.map((side) => {
+            const hasRow = side.rows.some((row) => row.id === rowId)
+            if (!hasRow) return side
+            const rows = side.rows.map((row) => {
+              if (row.id !== rowId) return row
+              const nextH = h ?? row.height
+              const maxBinH = Math.max(0.05, nextH - 0.15)
               return {
                 ...row,
                 ...(h != null ? { height: nextH } : {}),
@@ -1157,9 +1254,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                   ...bin,
                   height: Math.min(bin.height, maxBinH),
                 })),
-              };
-            }),
-          })),
+              }
+            })
+            return { ...side, rows: h != null ? reanchorSideRows(rows) : rows }
+          }),
         })),
       },
     }));
@@ -1206,7 +1304,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     rowHeight?: number,
     binName?: string,
     binDims?: { width?: number; depth?: number; height?: number },
+    options?: { quiet?: boolean },
   ) => {
+    const quiet = options?.quiet === true;
+    void quiet;
     const rackRowId = resolveEntityId(rowId);
     if (!rackRowId) {
       return { success: false, message: 'Invalid row id' };
@@ -1233,7 +1334,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
 
     const existingCount = foundRow.bins.length;
     const rowSpan = foundRow.width ?? clampRowSpanToInner(foundRack);
-    // Backend requires width/height/depth > 0 (Scalar CreateBin)
+    // Backend requires width/height/depth > 0 and depth ≤ inner.depth
     const n = existingCount + 1;
     let binWidth =
       binDims?.width && binDims.width > 0
@@ -1241,21 +1342,27 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         : rowExtent1 != null && rowExtent1 > 0
           ? rowExtent1 / n
           : Math.max(0.1, rowSpan / n);
-    let binDepth =
+    let binDepth = clampBinDepthToInner(
+      foundRack,
       binDims?.depth && binDims.depth > 0
         ? binDims.depth
         : rowExtent2 != null && rowExtent2 > 0
           ? rowExtent2
-          : Math.max(0.1, (foundRack.inner?.depth ?? foundRack.depth * 0.9) || DEFAULT_BIN_DEPTH);
-    let binHeight =
-      binDims?.height && binDims.height > 0
-        ? binDims.height
-        : Math.max(0.05, (rowHeight ?? foundRow.height) - 0.05);
+          : null,
+    );
+    let binHeight = clampBinHeightToRow(
+      rowHeight ?? foundRow.height,
+      binDims?.height && binDims.height > 0 ? binDims.height : null,
+    );
 
     // Clamp so sum of bin widths cannot exceed row span
     const usedWidth = foundRow.bins.reduce((sum, b) => sum + (b.width || 0), 0);
     const remaining = Math.max(0.1, rowSpan - usedWidth - 0.001);
     binWidth = Math.min(binWidth, remaining);
+    // Round to 3 decimals to avoid float payloads like 0.9900000000000001
+    binWidth = Math.round(binWidth * 1000) / 1000;
+    binDepth = Math.round(binDepth * 1000) / 1000;
+    binHeight = Math.round(binHeight * 1000) / 1000;
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
@@ -1336,6 +1443,81 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     } catch (err) {
       return { success: false, message: 'Network or server error' };
     }
+  },
+  seedPresetFixtureShelves: async (rackId) => {
+    const rack = get().area.racks.find((r) => r.id === rackId || r.rackId === rackId);
+    if (!rack) return { success: false, message: 'Rack not found' };
+    const fixtureType = rack.fixtureType ?? 'GONDOLA';
+    const layout = getFixtureSeedLayout(fixtureType);
+    if (!layout) return { success: true, message: 'No seed layout for this fixture' };
+
+    let rowsOk = 0;
+    let binsOk = 0;
+    const errors: string[] = [];
+
+    for (let rowIdx = 0; rowIdx < layout.rows.length; rowIdx++) {
+      const spec = layout.rows[rowIdx];
+      const beforeCounts = get()
+        .area.racks.find((r) => r.id === rackId || r.rackId === rackId)
+        ?.sides.map((s) => s.rows.length) ?? [];
+
+      const rowRes = await get().addRowToServer(rackId, spec.height, undefined, { quiet: true });
+      if (!rowRes.success) {
+        errors.push(`Row ${rowIdx + 1}: ${rowRes.message}`);
+        break;
+      }
+      rowsOk += 1;
+
+      const fresh = get().area.racks.find((r) => r.id === rackId || r.rackId === rackId);
+      if (!fresh) {
+        errors.push('Rack disappeared while seeding');
+        break;
+      }
+
+      const newRows: Row[] = [];
+      fresh.sides.forEach((side, sideIdx) => {
+        const prev = beforeCounts[sideIdx] ?? 0;
+        if (side.rows.length > prev) {
+          newRows.push(...side.rows.slice(prev));
+        }
+      });
+
+      for (const row of newRows) {
+        const rowSpan = row.width ?? clampRowSpanToInner(fresh);
+        const binW = Math.max(0.1, (rowSpan - 0.001) / spec.bins);
+        const binD = clampBinDepthToInner(fresh);
+        const binH = clampBinHeightToRow(spec.height);
+        for (let b = 0; b < spec.bins; b++) {
+          const label = `${spec.binLabel ?? 'Bin'} ${rowIdx + 1}-${b + 1}`;
+          const binRes = await get().addBinToServer(
+            row.id,
+            undefined,
+            undefined,
+            spec.height,
+            label,
+            { width: binW, depth: binD, height: binH },
+            { quiet: true },
+          );
+          if (binRes.success) binsOk += 1;
+          else errors.push(`${label}: ${binRes.message}`);
+        }
+      }
+    }
+
+    if (rowsOk === 0) {
+      return {
+        success: false,
+        message: errors[0] ?? 'Could not create shelves',
+      };
+    }
+
+    return {
+      success: errors.length === 0,
+      message:
+        errors.length === 0
+          ? `Created ${rowsOk} shelf level(s) and ${binsOk} bin(s)`
+          : `Partial: ${rowsOk} rows, ${binsOk} bins. ${errors[0]}`,
+    };
   },
   addBin: (
     rowId: string,
@@ -1437,14 +1619,17 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
     if (!bin) return { fits: false, reason: "Bin not found" };
     const qty = Math.max(1, Math.floor(Number(product.quantity) || 1));
+    // Treat suspiciously short bin.height as shelf thickness — use a usable cavity for fit.
+    const fitHeight =
+      bin.height > 0 && bin.height < 0.12 ? Math.max(bin.height, 0.35) : bin.height;
     if (
       product.width > bin.width ||
       product.depth > bin.depth ||
-      product.height > bin.height
+      product.height > fitHeight
     ) {
       return {
         fits: false,
-        reason: `Product (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) exceeds bin (${(bin.width * 100).toFixed(0)}×${(bin.depth * 100).toFixed(0)}×${(bin.height * 100).toFixed(0)} cm)`,
+        reason: `Product (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) exceeds bin (${(bin.width * 100).toFixed(0)}×${(bin.depth * 100).toFixed(0)}×${(fitHeight * 100).toFixed(0)} cm)`,
       };
     }
     // bin.width ≥ Σ (product.width × quantity)

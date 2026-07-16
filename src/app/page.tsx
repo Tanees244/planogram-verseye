@@ -164,9 +164,13 @@ export default function Home() {
     deleteProduct,
   } = usePlanogramStore()
 
-  const fixturePaletteCollapsed = usePlanogramStore((s) => s.fixturePaletteCollapsed)
   const productPaletteCollapsed = usePlanogramStore((s) => s.productPaletteCollapsed)
-  const anyPaletteOpen = !fixturePaletteCollapsed || !productPaletteCollapsed
+  const productLibraryOpen = !productPaletteCollapsed
+  const contextPanelActive =
+    selectedType === 'rack' ||
+    selectedType === 'row' ||
+    selectedType === 'bin' ||
+    selectedType === 'product'
 
   const [showAddRackModal, setShowAddRackModal] = useState(false)
   const [showAddRowModal, setShowAddRowModal] = useState(false)
@@ -256,23 +260,43 @@ export default function Home() {
   // Render Advanced View (3D)
   return (
     <div className="w-screen h-screen relative">
-      {/* View mode + fixture library + context actions (left column) */}
+      {/* View mode + fixture library + products + context (left column) */}
       <div className="absolute top-4 left-4 bottom-4 z-[100] flex flex-col gap-2 items-stretch w-[272px] min-h-0">
         <ViewModeToggle mode="advanced" onChange={setViewMode} dark />
         <div className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+          {/* Fixtures expand when Products is collapsed and nothing is selected */}
           <div
             className={cn(
-              'flex flex-col gap-2 min-h-0 overflow-hidden',
-              anyPaletteOpen ? 'flex-1 basis-0' : 'shrink-0',
+              'min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin flex flex-col',
+              !productLibraryOpen && !contextPanelActive
+                ? 'flex-1 basis-0'
+                : productLibraryOpen && !contextPanelActive
+                  ? 'shrink-0 max-h-[min(42vh,340px)]'
+                  : 'shrink-0 max-h-[min(32vh,260px)]',
             )}
           >
-            <FixturePalette />
+            <FixturePalette fillHeight={!productLibraryOpen && !contextPanelActive} />
+          </div>
+
+          {/* Products: fill leftover when open; chip when collapsed */}
+          <div
+            className={cn(
+              'min-h-0 flex flex-col',
+              productLibraryOpen
+                ? contextPanelActive
+                  ? 'flex-1 basis-0 min-h-[140px]'
+                  : 'flex-1 basis-0'
+                : 'shrink-0',
+            )}
+          >
             <ProductPalette />
           </div>
+
+          {/* Rack/row/bin actions */}
           <div
             className={cn(
               'min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin',
-              anyPaletteOpen ? 'shrink-0 max-h-[min(28vh,280px)]' : 'flex-1 basis-0',
+              contextPanelActive ? 'flex-1 basis-0 min-h-[160px]' : 'shrink-0',
             )}
           >
             <ContextAddButton layout="sidebar" />

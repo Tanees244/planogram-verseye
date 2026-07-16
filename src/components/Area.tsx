@@ -167,7 +167,7 @@ export function Area() {
       {/* Placement mode */}
       {isPlacingRack && (
         <>
-          <Html position={[0, 2, 0]} center>
+          <Html position={[0, 2, 0]} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
             <div style={{
               background: 'rgba(44, 82, 130, 0.9)',
               color: 'white',
@@ -188,7 +188,7 @@ export function Area() {
       {/* Edit rack position: click floor to move selected rack */}
       {editingRackId && (
         <>
-          <Html position={[0, 1.5, 0]} center>
+          <Html position={[0, 1.5, 0]} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
             <div style={{
               background: 'rgba(245, 158, 11, 0.9)',
               color: 'white',

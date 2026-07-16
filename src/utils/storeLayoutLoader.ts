@@ -22,6 +22,8 @@ import {
   resolveRackDimensions,
   shellToCustomConfig,
 } from '@/utils/rackBlueprintMapper'
+import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
+import { ensureRowAnchors } from '@/utils/rowStack'
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
@@ -234,6 +236,8 @@ export function normalizeRack(rawInput: any): Rack {
           bins,
         }
       })
+      // Collapse duplicate/zero yStart anchors so shelves stack correctly in 3D
+      const anchoredRows = ensureRowAnchors(rows)
       return {
         id: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
         sideId: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
@@ -243,7 +247,7 @@ export function normalizeRack(rawInput: any): Rack {
         outer: normalizeZoneFootprint(s.outer),
         header: normalizeZoneVolume(s.header),
         footer: normalizeZoneVolume(s.footer),
-        rows,
+        rows: anchoredRows,
       }
     },
   )
@@ -261,7 +265,14 @@ export function normalizeRack(rawInput: any): Rack {
     placement: placement ?? undefined,
     outer: outer ?? undefined,
     shell: shell ?? undefined,
-    inner: inner ?? undefined,
+    inner:
+      inner ??
+      (customConfig
+        ? (() => {
+            const d = computeCustomRackDimensions(customConfig)
+            return { width: d.innerWidth, depth: d.innerDepth, height: d.innerHeight }
+          })()
+        : undefined),
     position: {
       x: safePosition(placement?.position?.x, 0),
       y: safePosition(placement?.position?.y, 0),

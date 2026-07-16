@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiSearch, FiPlus, FiImage, FiX, FiBox } from 'react-icons/fi'
 import { Modal } from '@/components/ui/Modal'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
+import { SkuModelPreview } from '@/components/SkuModelPreview'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { safeDim } from '@/utils/safeDimensions'
 import { uploadCatalogFile, buildSkuAttachments } from '@/utils/catalogUpload'
@@ -13,8 +14,7 @@ import {
   DEFAULT_PRODUCT_DEPTH,
   DEFAULT_PRODUCT_HEIGHT,
   DEFAULT_PRODUCT_WIDTH,
-  DEMO_PRODUCT_GLB,
-  presetToFormStrings,
+  DEMO_PRODUCT_MODELS,
 } from '@/constants/dimensions'
 import {
   fetchBinInventory,
@@ -23,7 +23,8 @@ import {
   remainingBinFacings,
   type BinInventoryData,
 } from '@/utils/binInventoryApi'
-import { ProductSizePresetPicker } from '@/components/ProductSizePresetPicker'
+import { FacingShelfPreview } from '@/components/FacingShelfPreview'
+import { usePlanogramStore } from '@/store/planogramStore'
 
 interface AttachProductToBinModalProps {
   isOpen: boolean
@@ -131,7 +132,19 @@ export default function AttachProductToBinModal({
   const [uploadingImage, setUploadingImage] = useState(false)
   const [modelFile, setModelFile] = useState<File | null>(null)
   const [localModelUrl, setLocalModelUrl] = useState<string | null>(null)
+  const [modelObjectUrl, setModelObjectUrl] = useState<string | null>(null)
+  const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null)
   const [uploadingModel, setUploadingModel] = useState(false)
+  const setAttachFacingPreview = usePlanogramStore((s) => s.setAttachFacingPreview)
+
+  const previewModelUrl = useMemo(
+    () => localModelUrl ?? modelObjectUrl,
+    [localModelUrl, modelObjectUrl],
+  )
+
+  const previewWidth = parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
+  const previewDepth = parseFloat(createForm.depth) || DEFAULT_PRODUCT_DEPTH
+  const previewHeight = parseFloat(createForm.height) || DEFAULT_PRODUCT_HEIGHT
 
   const loadInventory = useCallback(async () => {
     if (!binId) return
@@ -214,6 +227,11 @@ export default function AttachProductToBinModal({
     })
     setModelFile(null)
     setLocalModelUrl(null)
+    setSelectedDemoId(null)
+    setModelObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     void fetchCategories()
     void loadInventory()
   }, [isOpen, fetchCategories, loadInventory, inventoryRefreshKey])
@@ -255,6 +273,18 @@ export default function AttachProductToBinModal({
       ? parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
       : 0
 
+  const facingHeightM = selectedSku
+    ? parseFloat(overrideDims.height) || safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)
+    : mode === 'create'
+      ? parseFloat(createForm.height) || DEFAULT_PRODUCT_HEIGHT
+      : 0
+
+  const facingDepthM = selectedSku
+    ? parseFloat(overrideDims.depth) || safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)
+    : mode === 'create'
+      ? parseFloat(createForm.depth) || DEFAULT_PRODUCT_DEPTH
+      : 0
+
   const binWidthM = inventory?.width ?? 0
   const apiRemaining = remainingBinFacings(inventory)
   const shelfMaxTotal =
@@ -273,6 +303,50 @@ export default function AttachProductToBinModal({
     quantityOk && binWidthM > 0 && facingWidthM > 0
       ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedFacings)
       : null
+
+  // Push live facing ghosts to the selected bin in the 3D scene
+  useEffect(() => {
+    if (!isOpen || !binId || !(facingWidthM > 0 && facingHeightM > 0 && facingDepthM > 0)) {
+      setAttachFacingPreview(null)
+      return
+    }
+    const qty = quantityOk ? parsedQuantity : 0
+    if (qty < 1) {
+      setAttachFacingPreview(null)
+      return
+    }
+    const fits = !capacityError && (maxAttachQty == null || qty <= maxAttachQty)
+    setAttachFacingPreview({
+      binId,
+      width: facingWidthM,
+      height: facingHeightM,
+      depth: facingDepthM,
+      quantity: qty,
+      fits,
+      modelUrl:
+        mode === 'create'
+          ? previewModelUrl
+          : (selectedSku?.modelUrl ?? null),
+      modelStorageKey: mode === 'create' ? null : (selectedSku?.modelStorageKey ?? null),
+      color: fits ? '#2C5282' : '#ef4444',
+    })
+    return () => setAttachFacingPreview(null)
+  }, [
+    isOpen,
+    binId,
+    facingWidthM,
+    facingHeightM,
+    facingDepthM,
+    parsedQuantity,
+    quantityOk,
+    capacityError,
+    maxAttachQty,
+    mode,
+    previewModelUrl,
+    selectedSku?.modelUrl,
+    selectedSku?.modelStorageKey,
+    setAttachFacingPreview,
+  ])
 
   const validateAttachQuantity = (skuId: string): string | null => {
     if (!quantityOk) return 'Quantity (facings) must be at least 1'
@@ -345,8 +419,30 @@ export default function AttachProductToBinModal({
   }
 
   const clearModel = () => {
+    const demoId = selectedDemoId
     setModelFile(null)
     setLocalModelUrl(null)
+    setSelectedDemoId(null)
+    if (modelObjectUrl) {
+      URL.revokeObjectURL(modelObjectUrl)
+      setModelObjectUrl(null)
+    }
+    setCreateForm((prev) => {
+      const demo = demoId
+        ? DEMO_PRODUCT_MODELS.find((d) => d.id === demoId)
+        : null
+      return {
+        ...prev,
+        width: String(DEFAULT_PRODUCT_WIDTH),
+        depth: String(DEFAULT_PRODUCT_DEPTH),
+        height: String(DEFAULT_PRODUCT_HEIGHT),
+        // Clear autofilled demo name/code when they still match the selected demo
+        name:
+          demo?.suggestedName && prev.name.trim() === demo.suggestedName ? '' : prev.name,
+        code:
+          demo?.suggestedCode && prev.code.trim() === demo.suggestedCode ? '' : prev.code,
+      }
+    })
   }
 
   const handleCreateAndAttach = async (e?: React.FormEvent) => {
@@ -651,31 +747,21 @@ export default function AttachProductToBinModal({
           />
         </FormField>
 
+        {inventory && inventory.width > 0 && facingWidthM > 0 && facingHeightM > 0 && (
+          <FacingShelfPreview
+            binWidthM={inventory.width}
+            binHeightM={Math.max(inventory.height, 0.1)}
+            facingWidthM={facingWidthM}
+            facingHeightM={facingHeightM}
+            quantity={quantityOk ? parsedQuantity : 0}
+            usedFacings={usedFacings}
+            label="Live facing preview"
+          />
+        )}
+
         {mode === 'browse' ? (
           <div className="space-y-3">
-            <FormField label="Product (SKU)" required>
-              <select
-                value={selectedSkuId ?? ''}
-                onChange={(e) => setSelectedSkuId(e.target.value || null)}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2C5282]/30"
-                disabled={loadingSkus || skus.length === 0}
-              >
-                <option value="">
-                  {loadingSkus ? 'Loading catalog…' : 'Select a product…'}
-                </option>
-                {skus.map((sku) => (
-                  <option key={sku.id} value={sku.id}>
-                    {sku.name}
-                    {sku.code ? ` (${sku.code})` : ''}
-                    {sku.width == null || sku.height == null || sku.depth == null
-                      ? ' — no dims'
-                      : ''}
-                  </option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField label="Search SKUs">
+            <FormField label="Search & select SKU" required>
               <div className="relative">
                 <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                 <Input
@@ -749,14 +835,11 @@ export default function AttachProductToBinModal({
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 space-y-2">
                 <p className="text-xs text-amber-900 font-medium">
                   {selectedNeedsDims
-                    ? 'This SKU has no dimensions. Enter W × D × H (meters) — required before attach.'
-                    : 'Confirm dimensions (meters) used for attach:'}
+                    ? 'This SKU has no dimensions. Enter W × D × H in meters (e.g. 0.12 = 12 cm).'
+                    : 'Confirm dimensions in meters (e.g. 0.12 = 12 cm):'}
                 </p>
-                <ProductSizePresetPicker
-                  onSelect={(preset) => setOverrideDims(presetToFormStrings(preset))}
-                />
                 <div className="grid grid-cols-3 gap-2">
-                  <FormField label="Width">
+                  <FormField label="Width (m)">
                     <Input
                       type="number"
                       inputMode="decimal"
@@ -768,7 +851,7 @@ export default function AttachProductToBinModal({
                       }
                     />
                   </FormField>
-                  <FormField label="Depth">
+                  <FormField label="Depth (m)">
                     <Input
                       type="number"
                       inputMode="decimal"
@@ -780,7 +863,7 @@ export default function AttachProductToBinModal({
                       }
                     />
                   </FormField>
-                  <FormField label="Height">
+                  <FormField label="Height (m)">
                     <Input
                       type="number"
                       inputMode="decimal"
@@ -831,12 +914,6 @@ export default function AttachProductToBinModal({
               </select>
             </FormField>
 
-            <ProductSizePresetPicker
-              onSelect={(preset) =>
-                setCreateForm((prev) => ({ ...prev, ...presetToFormStrings(preset) }))
-              }
-            />
-
             <FormField label="Product image">
               {imagePreview ? (
                 <div className="flex items-center gap-3">
@@ -883,18 +960,24 @@ export default function AttachProductToBinModal({
 
             <FormField label="3D model (.glb)">
               {modelFile || localModelUrl ? (
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-lg border border-gray-200 bg-[#2C5282]/5 flex items-center justify-center text-[#2C5282]">
-                    <FiBox size={22} />
-                  </div>
-                  <div className="flex flex-col gap-1.5 min-w-0">
-                    <p className="text-xs text-gray-600 truncate max-w-[200px]">
+                <div className="space-y-2">
+                  {previewModelUrl ? (
+                    <SkuModelPreview
+                      url={previewModelUrl}
+                      width={previewWidth}
+                      height={previewHeight}
+                      depth={previewDepth}
+                      className="h-44 w-full"
+                    />
+                  ) : null}
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-gray-600 truncate min-w-0">
                       {modelFile?.name ?? localModelUrl}
                     </p>
                     <button
                       type="button"
                       onClick={clearModel}
-                      className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
+                      className="inline-flex shrink-0 items-center gap-1 text-xs text-red-600 hover:text-red-700"
                     >
                       <FiX size={12} /> Remove
                     </button>
@@ -915,32 +998,56 @@ export default function AttachProductToBinModal({
                       onChange={(e) => {
                         const file = e.target.files?.[0] ?? null
                         setLocalModelUrl(null)
+                        setSelectedDemoId(null)
+                        if (modelObjectUrl) {
+                          URL.revokeObjectURL(modelObjectUrl)
+                          setModelObjectUrl(null)
+                        }
                         setModelFile(file)
+                        if (file) setModelObjectUrl(URL.createObjectURL(file))
                       }}
                     />
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModelFile(null)
-                      setLocalModelUrl(DEMO_PRODUCT_GLB)
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        width: '0.12',
-                        depth: '0.08',
-                        height: '0.05',
-                      }))
-                    }}
-                    className="w-full text-xs text-[#2C5282] hover:text-[#1a365d] py-1.5 rounded-lg border border-[#2C5282]/20 hover:bg-[#2C5282]/5 transition-colors"
-                  >
-                    Use sample Tapal tea box (local demo)
-                  </button>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                      Local demo models
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {DEMO_PRODUCT_MODELS.map((demo) => (
+                        <button
+                          key={demo.id}
+                          type="button"
+                          onClick={() => {
+                            setModelFile(null)
+                            if (modelObjectUrl) {
+                              URL.revokeObjectURL(modelObjectUrl)
+                              setModelObjectUrl(null)
+                            }
+                            setSelectedDemoId(demo.id)
+                            setLocalModelUrl(demo.url)
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              width: String(demo.width),
+                              depth: String(demo.depth),
+                              height: String(demo.height),
+                              name: prev.name.trim() ? prev.name : (demo.suggestedName ?? prev.name),
+                              code: prev.code.trim() ? prev.code : (demo.suggestedCode ?? prev.code),
+                            }))
+                          }}
+                          className="text-left text-[11px] text-[#2C5282] hover:text-[#1a365d] px-2 py-1.5 rounded-lg border border-[#2C5282]/20 hover:bg-[#2C5282]/5 transition-colors"
+                          title={`${demo.width}×${demo.depth}×${demo.height} m`}
+                        >
+                          {demo.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </FormField>
 
             <div className="grid grid-cols-3 gap-3">
-              <FormField label="Width (m)" required>
+              <FormField label="Width (m)" required hint="e.g. 0.12 = 12 cm">
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -951,7 +1058,7 @@ export default function AttachProductToBinModal({
                   onChange={(e) => setCreateForm({ ...createForm, width: e.target.value })}
                 />
               </FormField>
-              <FormField label="Depth (m)" required>
+              <FormField label="Depth (m)" required hint="e.g. 0.08 = 8 cm">
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -962,7 +1069,7 @@ export default function AttachProductToBinModal({
                   onChange={(e) => setCreateForm({ ...createForm, depth: e.target.value })}
                 />
               </FormField>
-              <FormField label="Height (m)" required>
+              <FormField label="Height (m)" required hint="e.g. 0.27 = 27 cm">
                 <Input
                   type="number"
                   inputMode="decimal"

@@ -14,6 +14,12 @@ export interface FixtureMetrics {
 export function computeFixtureMetrics(rack: Rack): FixtureMetrics {
   const fixtureType = resolveFixtureType(rack)
   const minHeight = FIXTURE_LIBRARY[fixtureType].minHeight
+  const outerH =
+    rack.outer?.height != null && Number(rack.outer.height) > 0
+      ? Number(rack.outer.height)
+      : rack.height != null && Number(rack.height) > 0
+        ? Number(rack.height)
+        : FIXTURE_LIBRARY[fixtureType].defaultHeight
 
   let rackHeight: number
   if (fixtureType === 'CUSTOM' && rack.customConfig) {
@@ -29,8 +35,8 @@ export function computeFixtureMetrics(rack: Rack): FixtureMetrics {
             0,
           )
         : 0
-    const contentHeight = maxRows > 0 ? totalRowHeight + 0.5 : minHeight
-    rackHeight = Math.max(contentHeight, minHeight)
+    const contentHeight = maxRows > 0 ? totalRowHeight + 0.5 : outerH
+    rackHeight = Math.max(contentHeight, minHeight, outerH)
   }
   const rackCenterY = rackHeight / 2
   const hasContent = rack.sides.some((side) => side.rows.length > 0)
