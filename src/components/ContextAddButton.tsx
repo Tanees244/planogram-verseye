@@ -253,6 +253,9 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <ActionBtn fullWidth={isSidebar} onClick={() => setShowRowModal(true)}>
               <span className="text-lg leading-none">+</span> Add Row
             </ActionBtn>
+            <ActionBtn fullWidth={isSidebar} onClick={() => setShowRackModal(true)}>
+              <span className="text-lg leading-none">+</span> Add Rack
+            </ActionBtn>
             <ActionBtn
               variant="secondary"
               fullWidth={isSidebar}
@@ -501,6 +504,25 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             />
           </>
         )}
+        <AddRackModal
+          open={showRackModal}
+          onClose={() => setShowRackModal(false)}
+          areaWidth={area.width}
+          areaDepth={area.depth}
+          form={rackForm}
+          onChange={setRackForm}
+          locations={locations}
+          locationsLoading={locationsLoading}
+          locationsError={locationsError}
+          selectedLocationId={selectedLocationId}
+          onLocationChange={setSelectedLocationId}
+          errors={{ ...rackErrors, location: locationValidationError }}
+          globalError={addRackError}
+          isSubmitting={isAddingRack}
+          onSubmit={() => void submitRack()}
+          onPlaceOnFloor={isSidebar ? placeRackOnFloor : undefined}
+          submitLabel="Save"
+        />
       </>
     );
   }
