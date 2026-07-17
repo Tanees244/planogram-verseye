@@ -68,7 +68,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     deleteRack,
     deleteRackFromServer,
     deleteRow,
-    deleteBin,
+    deleteBinFromServer,
     deleteProduct,
     addProduct,
     openCustomRackBuilder,
@@ -664,7 +664,14 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               <span className="text-lg leading-none">+</span> Attach Product
             </ActionBtn>
             {isSidebar ? (
-              <ActionBtn variant="danger" fullWidth onClick={() => deleteBin(selectedId)}>
+              <ActionBtn
+                variant="danger"
+                fullWidth
+                onClick={async () => {
+                  const res = await deleteBinFromServer(selectedId)
+                  if (!res.success) alert(res.message)
+                }}
+              >
                 <FiTrash2 /> Delete bin
               </ActionBtn>
             ) : (
@@ -672,7 +679,10 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
                 variant={"default"}
                 size={"sm"}
                 className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                onClick={() => deleteBin(selectedId)}
+                onClick={async () => {
+                  const res = await deleteBinFromServer(selectedId)
+                  if (!res.success) alert(res.message)
+                }}
               >
                 <FiTrash2 />
               </Button>

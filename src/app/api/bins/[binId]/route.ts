@@ -55,3 +55,20 @@ export async function PUT(
     body: patch,
   });
 }
+
+/** DELETE /api/bins/{binId} → DELETE /api/v1/layout/bins/{id} */
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ binId: string }> },
+) {
+  const { binId } = await context.params;
+  if (!binId || !UUID_RE.test(binId)) {
+    return NextResponse.json(
+      { isRequestSuccess: false, message: 'binId must be a valid UUID', statusCode: 400 },
+      { status: 400 },
+    );
+  }
+  return proxyLayout(req, `/api/v1/layout/bins/${encodeURIComponent(binId)}`, {
+    method: 'DELETE',
+  });
+}

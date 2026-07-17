@@ -392,6 +392,10 @@ export interface PlanogramState {
   deleteRackFromServer: (rackId: string) => Promise<{ success: boolean; message: string }>;
   deleteRow: (rowId: string) => void;
   deleteBin: (binId: string) => void;
+  deleteBinFromServer: (binId: string) => Promise<{ success: boolean; message: string }>;
+  deleteBlueprintFromServer: (
+    blueprintId: string,
+  ) => Promise<{ success: boolean; message: string }>;
   deleteProduct: (productId: string) => void;
   clearBinProductsLocally: (binId: string) => void;
   detachBinInventory: (binId: string) => Promise<{ success: boolean; message?: string }>;
@@ -2343,6 +2347,67 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       selectedId: null,
       selectedType: null,
     })),
+  deleteBinFromServer: async (binId) => {
+    const serverBinId = resolveEntityId(binId);
+    if (!serverBinId || !UUID_RE.test(serverBinId)) {
+      // Local-only bin — just drop from scene
+      get().deleteBin(binId);
+      return { success: true, message: 'Bin removed locally' };
+    }
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers.Authorization = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const res = await fetch(`/api/bins/${encodeURIComponent(serverBinId)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
+        return { success: false, message: data?.message || 'Failed to delete bin' };
+      }
+      get().deleteBin(binId);
+      return { success: true, message: data?.message || 'Bin deleted' };
+    } catch {
+      return { success: false, message: 'Network or server error' };
+    }
+  },
+  deleteBlueprintFromServer: async (blueprintId) => {
+    const id = resolveEntityId(blueprintId) || blueprintId;
+    if (!id || !UUID_RE.test(id)) {
+      return { success: false, message: 'Invalid blueprint id' };
+    }
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers.Authorization = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const res = await fetch(`/api/blueprints/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
+        return { success: false, message: data?.message || 'Failed to delete blueprint' };
+      }
+      return { success: true, message: data?.message || 'Blueprint deleted' };
+    } catch {
+      return { success: false, message: 'Network or server error' };
+    }
+  },
   deleteProduct: (productId) =>
     set((state) => ({
       area: {

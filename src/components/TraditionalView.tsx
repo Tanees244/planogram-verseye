@@ -50,7 +50,7 @@ export function TraditionalView() {
     deleteRack,
     deleteRackFromServer,
     deleteRow,
-    deleteBin,
+    deleteBinFromServer,
     deleteProduct,
     deleteProductFromServer,
     setPendingRackParams,
@@ -378,9 +378,10 @@ export function TraditionalView() {
                                         Product
                                       </button>
                                       <button
-                                        onClick={(e) => {
+                                        onClick={async (e) => {
                                           e.stopPropagation()
-                                          deleteBin(bin.id)
+                                          const res = await deleteBinFromServer(bin.id)
+                                          if (!res.success) alert(res.message)
                                         }}
                                         className="px-3 py-1.5 bg-[#e1e7ef] text-white rounded-lg text-xs font-medium hover:bg-white transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
                                       >
