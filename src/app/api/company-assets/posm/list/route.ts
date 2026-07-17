@@ -27,6 +27,10 @@ export async function GET(req: NextRequest) {
           assignedStoresLabel: p.assignedStoresLabel ?? '',
           conditionStandards: p.conditionStandards ?? '',
           status: p.status ?? 'Active',
+          imageStorageKey:
+            p.imageStorageKey ?? p.imageObjectKey ?? p.storageKey ?? null,
+          imageUrl:
+            p.imageUrl ?? p.thumbnailUrl ?? p.previewUrl ?? p.downloadUrl ?? null,
         })),
       };
     },

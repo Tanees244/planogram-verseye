@@ -21,6 +21,8 @@ import { PegboardFixture } from './procedural/PegboardFixture'
 import { CheckoutFixture } from './procedural/CheckoutFixture'
 import { PromotionalFixture } from './procedural/PromotionalFixture'
 import { CustomRackFixture } from './procedural/CustomRackFixture'
+import { RackShellPosmMarkers } from '@/components/RackShellPosmMarkers'
+import { createBlankCustomRack } from './customRackTypes'
 
 interface FixtureRendererProps {
   rack: Rack
@@ -95,6 +97,30 @@ export function FixtureRenderer({ rack }: FixtureRendererProps) {
         onPointerOver={onPointerOver}
         onPointerOut={onPointerOut}
       />
+
+      {/* Custom racks render POSM inside CustomRackFixture; presets get markers here. */}
+      {fixtureType !== 'CUSTOM' && rack.shell && (
+        <RackShellPosmMarkers
+          config={{
+            ...createBlankCustomRack(),
+            outerWidth: rackW,
+            outerDepth: rackD,
+            outerHeight: rackHeight,
+            header: {
+              ...createBlankCustomRack().header,
+              enabled: true,
+              height: Math.min(0.28, rackHeight * 0.12),
+            },
+            footer: {
+              ...createBlankCustomRack().footer,
+              enabled: true,
+              height: Math.min(0.18, rackHeight * 0.08),
+            },
+            walls: { back: true, left: true, right: true, frontGlass: false },
+          }}
+          shell={rack.shell}
+        />
+      )}
 
       {isSelected && (
         <mesh ref={meshRef} raycast={() => null}>

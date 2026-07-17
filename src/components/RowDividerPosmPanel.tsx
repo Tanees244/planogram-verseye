@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react'
 import type { Rack, Row } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { PosmItemSelect } from '@/components/posm/PosmItemSelect'
+import { CreatePosmForm } from '@/components/posm/CreatePosmForm'
 import { usePosmItems } from '@/components/posm/usePosmItems'
 import { Btn } from '@/components/ui/form'
 import { Spinner } from '@/components/Spinner'
 import { cn } from '@/lib/cn'
+import type { PosmItemListItem } from '@/types/rackBlueprint'
+import { resolvePosmImageUrl } from '@/utils/posmImageUrl'
 
 function findRackForRow(racks: Rack[], rowId: string): Rack | null {
   for (const rack of racks) {
@@ -28,40 +31,51 @@ export function RowDividerPosmPanel({
   const racks = usePlanogramStore((s) => s.area.racks)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const assignRow = usePlanogramStore((s) => s.assignRowDividerPosm)
-  const { items, loading, error } = usePosmItems(selectedStoreId)
+  const { items, loading, error, refetch } = usePosmItems(selectedStoreId)
 
   const rack = findRackForRow(racks, row.id)
   const [posmItemId, setPosmItemId] = useState(row.dividerPosmItemId ?? '')
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [localItems, setLocalItems] = useState<PosmItemListItem[]>([])
+
+  const allItems = [...localItems, ...items.filter((i) => !localItems.some((l) => l.id === i.id))]
 
   useEffect(() => {
     setPosmItemId(row.dividerPosmItemId ?? '')
   }, [row.id, row.dividerPosmItemId])
+
+  const handleCreated = (item: PosmItemListItem) => {
+    setLocalItems((prev) => [item, ...prev.filter((p) => p.id !== item.id)])
+    if (!row.dividerPosmItemId) setPosmItemId(item.id)
+    void refetch()
+  }
 
   const handleSave = async () => {
     if (!rack) {
       setSaveError('Rack not found for this row')
       return
     }
-    if (
-      row.dividerPosmItemId &&
-      posmItemId &&
-      posmItemId !== row.dividerPosmItemId
-    ) {
+    if (row.dividerPosmItemId && posmItemId && posmItemId !== row.dividerPosmItemId) {
       setSaveError('Only 1 POSM is allowed per row. Clear the existing POSM first (select None).')
       return
     }
     setBusy(true)
     setSaveError(null)
     try {
-      const selected = posmItemId ? items.find((p) => p.id === posmItemId) : null
+      const selected = posmItemId ? allItems.find((p) => p.id === posmItemId) : null
       const res = await assignRow(
         rack.id,
         row.id,
         posmItemId || null,
         selected
-          ? { id: selected.id, name: selected.name, posmType: selected.posmType }
+          ? {
+              id: selected.id,
+              name: selected.name,
+              posmType: selected.posmType,
+              imageUrl: selected.imageUrl,
+              imageStorageKey: selected.imageStorageKey,
+            }
           : null,
       )
       if (!res.success) setSaveError(res.message ?? 'Save failed')
@@ -71,6 +85,9 @@ export function RowDividerPosmPanel({
   }
 
   const assigned = row.dividerPosm
+  const previewUrl = resolvePosmImageUrl(
+    (allItems.find((p) => p.id === posmItemId) ?? assigned) || {},
+  )
 
   return (
     <div
@@ -85,16 +102,16 @@ export function RowDividerPosmPanel({
           dark ? 'text-gray-400' : 'text-gray-500',
         )}
       >
-        Row divider POSM
+        Row shelf talker (POSM)
       </p>
       {assigned ? (
         <p className="text-[11px] text-emerald-300/90">
           {assigned.name} · {assigned.posmType}
+          {assigned.imageUrl || assigned.imageStorageKey ? ' · has image' : ''}
         </p>
       ) : (
         <p className={cn('text-[11px]', dark ? 'text-gray-500' : 'text-gray-400')}>
-          Assign a POSM item on the shelf lip / divider. After save, a green tag appears on the
-          front lip in 3D (click it to re-select the row).
+          Create or pick a shelf talker with an image. It appears on the front lip of this row in 3D.
         </p>
       )}
 
@@ -102,17 +119,21 @@ export function RowDividerPosmPanel({
         <p className="text-[11px] text-red-400">{saveError || error}</p>
       )}
 
+      <CreatePosmForm storeId={selectedStoreId} dark={dark} onCreated={handleCreated} />
+
       <PosmItemSelect
-        label="Divider POSM"
+        label="Shelf talker POSM"
         value={posmItemId}
         onChange={(id) => {
           setSaveError(null)
           if (row.dividerPosmItemId && id && id !== row.dividerPosmItemId) {
-            setSaveError('Only 1 POSM is allowed per row. Clear the existing POSM first (select None).')
+            setSaveError(
+              'Only 1 POSM is allowed per row. Clear the existing POSM first (select None).',
+            )
           }
           setPosmItemId(id)
         }}
-        items={items}
+        items={allItems}
         loading={loading}
         dark={dark}
         hint={
@@ -122,11 +143,19 @@ export function RowDividerPosmPanel({
         }
       />
 
+      {previewUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={previewUrl}
+          alt="Shelf talker preview"
+          className="h-12 w-full object-contain rounded border border-white/10 bg-black/20"
+        />
+      )}
+
       <Btn variant="primary" disabled={busy || loading} onClick={handleSave} className="w-full">
         {busy && <Spinner />}
-        {busy ? 'Saving…' : 'Save divider POSM'}
+        {busy ? 'Saving…' : 'Save shelf talker'}
       </Btn>
     </div>
   )
 }
-

@@ -1,13 +1,15 @@
 'use client'
 
-import { Edges } from '@react-three/drei'
-import type { RackShell } from '@/types/rackBlueprint'
+import { Suspense, useMemo } from 'react'
+import { Edges, useTexture } from '@react-three/drei'
+import { DoubleSide, SRGBColorSpace, type Texture } from 'three'
+import type { RackShell, RackSurfacePosm } from '@/types/rackBlueprint'
 import {
   computeCustomRackDimensions,
   resolveSectionSize,
   type CustomRackConfig,
 } from '@/components/fixtures/customRackTypes'
-import type { RackSurfacePosm } from '@/types/rackBlueprint'
+import { resolvePosmImageUrl } from '@/utils/posmImageUrl'
 
 const POSM_TYPE_COLORS: Record<string, string> = {
   Standee: '#8e44ad',
@@ -15,26 +17,90 @@ const POSM_TYPE_COLORS: Record<string, string> = {
   Flyer: '#2980b9',
 }
 
-function PosmPlaque({
+function PosmColorPlaque({
   posm,
   position,
   size,
+  rotation,
 }: {
   posm: RackSurfacePosm
   position: [number, number, number]
   size: [number, number, number]
+  rotation?: [number, number, number]
 }) {
   const color = POSM_TYPE_COLORS[posm.posmType] ?? '#2C5282'
   return (
-    <mesh position={position} raycast={() => null}>
+    <mesh position={position} rotation={rotation} raycast={() => null}>
       <boxGeometry args={size} />
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} metalness={0.15} roughness={0.45} />
+      <meshStandardMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={0.45}
+        metalness={0.15}
+        roughness={0.45}
+      />
       <Edges color="#ffffff" threshold={15} lineWidth={1.5} />
     </mesh>
   )
 }
 
-/** Colored markers on rack shell surfaces when header/footer/wall POSM is assigned. */
+function PosmImagePlane({
+  url,
+  position,
+  size,
+  rotation,
+}: {
+  url: string
+  position: [number, number, number]
+  size: [number, number]
+  rotation?: [number, number, number]
+}) {
+  const texture = useTexture(url) as Texture
+  useMemo(() => {
+    texture.colorSpace = SRGBColorSpace
+    texture.needsUpdate = true
+  }, [texture])
+
+  return (
+    <mesh position={position} rotation={rotation} raycast={() => null}>
+      <planeGeometry args={size} />
+      <meshStandardMaterial
+        map={texture}
+        transparent
+        toneMapped={false}
+        side={DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
+  )
+}
+
+function PosmSurface({
+  posm,
+  position,
+  size,
+  rotation,
+}: {
+  posm: RackSurfacePosm
+  position: [number, number, number]
+  /** box size [w,h,d] used for color plaque fallback */
+  size: [number, number, number]
+  rotation?: [number, number, number]
+}) {
+  const imageUrl = resolvePosmImageUrl(posm)
+  if (!imageUrl) {
+    return <PosmColorPlaque posm={posm} position={position} size={size} rotation={rotation} />
+  }
+
+  const planeSize: [number, number] = [size[0], size[1]]
+  return (
+    <Suspense fallback={<PosmColorPlaque posm={posm} position={position} size={size} rotation={rotation} />}>
+      <PosmImagePlane url={imageUrl} position={position} size={planeSize} rotation={rotation} />
+    </Suspense>
+  )
+}
+
+/** POSM images (or colored plaques) on rack shell surfaces. */
 export function RackShellPosmMarkers({
   config,
   shell,
@@ -49,57 +115,68 @@ export function RackShellPosmMarkers({
   const headerSize = resolveSectionSize(config.header, w, d, 'header')
   const footerSize = resolveSectionSize(config.footer, w, d, 'footer')
   const bottomY = -dims.totalHeight / 2
-  const bodyTopY = bottomY + dims.footerH + dims.bodyH
+  const bodyBottomY = bottomY + dims.footerH
+  const bodyCenterY = bodyBottomY + dims.bodyH / 2
+  const bodyTopY = bodyBottomY + dims.bodyH
   const headerCenterY = bodyTopY + dims.headerH / 2
   const footerCenterY = bottomY + dims.footerH / 2
 
   const footerFullBase = footerSize.depth >= d * 0.85
   const footerZ = footerFullBase ? 0 : -d / 2 - config.footer.protrusion + footerSize.depth / 2
   const headerZ = -d / 2 - config.header.protrusion + headerSize.depth / 2
-  const frontZ = -d / 2 - 0.03
+
+  // Place wall art clearly OUTSIDE the opaque wall mesh (was buried inside thickness).
+  const wallClearance = Math.max(0.02, wt * 0.35)
+  const wallPlaneW = Math.max(0.2, d - wt * 2)
+  const wallPlaneH = Math.max(0.2, dims.bodyH * 0.88)
 
   const markers: React.ReactNode[] = []
 
   if (shell.headerPosm && config.header.enabled && dims.headerH > 0) {
     markers.push(
-      <PosmPlaque
+      <PosmSurface
         key="header"
         posm={shell.headerPosm}
         position={[0, headerCenterY, headerZ - headerSize.depth / 2 - 0.02]}
-        size={[Math.min(headerSize.width * 0.5, 0.5), dims.headerH * 0.55, 0.02]}
+        size={[Math.min(headerSize.width * 0.92, w * 0.92), dims.headerH * 0.88, 0.012]}
       />,
     )
   }
 
   if (shell.footerPosm && config.footer.enabled && dims.footerH > 0) {
     markers.push(
-      <PosmPlaque
+      <PosmSurface
         key="footer"
         posm={shell.footerPosm}
         position={[0, footerCenterY, footerZ - footerSize.depth / 2 - 0.02]}
-        size={[Math.min(footerSize.width * 0.5, 0.5), dims.footerH * 0.55, 0.02]}
+        size={[Math.min(footerSize.width * 0.92, w * 0.92), dims.footerH * 0.88, 0.012]}
       />,
     )
   }
 
-  if (shell.leftWallPosm && config.walls.left) {
+  // Show wall POSM whenever assigned — even if shell walls flag is off in config
+  if (shell.leftWallPosm) {
     markers.push(
-      <PosmPlaque
+      <PosmSurface
         key="left"
         posm={shell.leftWallPosm}
-        position={[-w / 2 + wt / 2 - 0.02, bottomY + dims.footerH + dims.bodyH / 2, frontZ]}
-        size={[0.02, dims.bodyH * 0.35, Math.min(d * 0.35, 0.45)]}
+        position={[-w / 2 - wallClearance, bodyCenterY, 0]}
+        size={[wallPlaneW, wallPlaneH, 0.012]}
+        // Face outward (−X) so the image is visible from the left side of the rack
+        rotation={[0, -Math.PI / 2, 0]}
       />,
     )
   }
 
-  if (shell.rightWallPosm && config.walls.right) {
+  if (shell.rightWallPosm) {
     markers.push(
-      <PosmPlaque
+      <PosmSurface
         key="right"
         posm={shell.rightWallPosm}
-        position={[w / 2 - wt / 2 + 0.02, bottomY + dims.footerH + dims.bodyH / 2, frontZ]}
-        size={[0.02, dims.bodyH * 0.35, Math.min(d * 0.35, 0.45)]}
+        position={[w / 2 + wallClearance, bodyCenterY, 0]}
+        size={[wallPlaneW, wallPlaneH, 0.012]}
+        // Face outward (+X)
+        rotation={[0, Math.PI / 2, 0]}
       />,
     )
   }

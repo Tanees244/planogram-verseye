@@ -62,6 +62,10 @@ export interface RackSurfacePosm {
 
   posmType: 'Standee' | 'ShelfTalker' | 'Flyer' | string;
 
+  imageUrl?: string | null;
+
+  imageStorageKey?: string | null;
+
 }
 
 
@@ -171,6 +175,10 @@ export interface PosmItemListItem {
   conditionStandards?: string;
 
   status: string;
+
+  imageUrl?: string | null;
+
+  imageStorageKey?: string | null;
 
 }
 

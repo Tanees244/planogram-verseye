@@ -36,7 +36,11 @@ export function usePosmItems(storeId: string | null) {
       setItems(
         (Array.isArray(list) ? list : []).filter(
           (p: PosmItemListItem) => p?.id && (p.status ?? 'Active') === 'Active',
-        ),
+        ).map((p: PosmItemListItem) => ({
+          ...p,
+          imageUrl: p.imageUrl ?? null,
+          imageStorageKey: p.imageStorageKey ?? null,
+        })),
       )
     } catch {
       setError('Could not load POSM catalog')

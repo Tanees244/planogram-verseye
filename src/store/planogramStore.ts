@@ -2506,6 +2506,22 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         return { id, name: 'POSM item', posmType: 'ShelfTalker' };
       };
 
+      const hydratePosm = (
+        fromApi: RackSurfacePosm | null | undefined,
+        id: string | null | undefined,
+        previous: RackSurfacePosm | null | undefined,
+      ): RackSurfacePosm | null => {
+        const base = fromApi ?? (id !== undefined ? posmFromCatalog(id) : previous) ?? null;
+        if (!base) return null;
+        const catalog = posmCatalog[base.id];
+        return {
+          ...base,
+          imageUrl: base.imageUrl ?? catalog?.imageUrl ?? previous?.imageUrl ?? null,
+          imageStorageKey:
+            base.imageStorageKey ?? catalog?.imageStorageKey ?? previous?.imageStorageKey ?? null,
+        };
+      };
+
       set((s) => ({
         area: {
           ...s.area,
@@ -2530,32 +2546,83 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                     payload.rightWallPosmItemId !== undefined
                       ? payload.rightWallPosmItemId
                       : r.shell.rightWallPosmItemId,
-                  headerPosm:
-                    responseShell.headerPosm ??
-                    (payload.headerPosmItemId !== undefined
-                      ? posmFromCatalog(payload.headerPosmItemId)
-                      : r.shell.headerPosm) ??
-                    null,
-                  footerPosm:
-                    responseShell.footerPosm ??
-                    (payload.footerPosmItemId !== undefined
-                      ? posmFromCatalog(payload.footerPosmItemId)
-                      : r.shell.footerPosm) ??
-                    null,
-                  leftWallPosm:
-                    responseShell.leftWallPosm ??
-                    (payload.leftWallPosmItemId !== undefined
-                      ? posmFromCatalog(payload.leftWallPosmItemId)
-                      : r.shell.leftWallPosm) ??
-                    null,
-                  rightWallPosm:
-                    responseShell.rightWallPosm ??
-                    (payload.rightWallPosmItemId !== undefined
-                      ? posmFromCatalog(payload.rightWallPosmItemId)
-                      : r.shell.rightWallPosm) ??
-                    null,
+                  headerPosm: hydratePosm(
+                    responseShell.headerPosm,
+                    payload.headerPosmItemId !== undefined
+                      ? payload.headerPosmItemId
+                      : r.shell.headerPosmItemId,
+                    r.shell.headerPosm,
+                  ),
+                  footerPosm: hydratePosm(
+                    responseShell.footerPosm,
+                    payload.footerPosmItemId !== undefined
+                      ? payload.footerPosmItemId
+                      : r.shell.footerPosmItemId,
+                    r.shell.footerPosm,
+                  ),
+                  leftWallPosm: hydratePosm(
+                    responseShell.leftWallPosm,
+                    payload.leftWallPosmItemId !== undefined
+                      ? payload.leftWallPosmItemId
+                      : r.shell.leftWallPosmItemId,
+                    r.shell.leftWallPosm,
+                  ),
+                  rightWallPosm: hydratePosm(
+                    responseShell.rightWallPosm,
+                    payload.rightWallPosmItemId !== undefined
+                      ? payload.rightWallPosmItemId
+                      : r.shell.rightWallPosmItemId,
+                    r.shell.rightWallPosm,
+                  ),
                 }
-              : r.shell;
+              : {
+                  wallThickness: 0.08,
+                  walls: { back: true, left: true, right: true, frontGlass: false },
+                  header: {
+                    enabled: true,
+                    width: null,
+                    depth: null,
+                    height: 0.25,
+                    protrusion: null,
+                    color: null,
+                    emissive: null,
+                  },
+                  footer: {
+                    enabled: true,
+                    width: null,
+                    depth: null,
+                    height: 0.16,
+                    protrusion: null,
+                    color: null,
+                    emissive: null,
+                  },
+                  frame: { cornerPosts: 4, topRail: true, innerFloor: true },
+                  materials: { accentColor: null, wallColor: null, postColor: null },
+                  headerPosmItemId: payload.headerPosmItemId ?? null,
+                  footerPosmItemId: payload.footerPosmItemId ?? null,
+                  leftWallPosmItemId: payload.leftWallPosmItemId ?? null,
+                  rightWallPosmItemId: payload.rightWallPosmItemId ?? null,
+                  headerPosm: hydratePosm(
+                    responseShell.headerPosm,
+                    payload.headerPosmItemId ?? null,
+                    null,
+                  ),
+                  footerPosm: hydratePosm(
+                    responseShell.footerPosm,
+                    payload.footerPosmItemId ?? null,
+                    null,
+                  ),
+                  leftWallPosm: hydratePosm(
+                    responseShell.leftWallPosm,
+                    payload.leftWallPosmItemId ?? null,
+                    null,
+                  ),
+                  rightWallPosm: hydratePosm(
+                    responseShell.rightWallPosm,
+                    payload.rightWallPosmItemId ?? null,
+                    null,
+                  ),
+                };
 
             let sides = r.sides;
             if (payload.rowPosmItems?.length) {
@@ -2571,7 +2638,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                   return {
                     ...row,
                     dividerPosmItemId: itemId,
-                    dividerPosm: itemId ? posmFromCatalog(itemId) : null,
+                    dividerPosm: itemId
+                      ? hydratePosm(null, itemId, row.dividerPosm)
+                      : null,
                   };
                 }),
               }));

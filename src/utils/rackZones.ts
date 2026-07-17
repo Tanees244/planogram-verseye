@@ -19,6 +19,14 @@ export function normalizeRackPosm(raw: unknown): RackSurfacePosm | null {
       (typeof d.programName === 'string' && d.programName) ||
       'POSM item',
     posmType,
+    imageUrl:
+      (typeof d.imageUrl === 'string' && d.imageUrl) ||
+      (typeof d.thumbnailUrl === 'string' && d.thumbnailUrl) ||
+      null,
+    imageStorageKey:
+      (typeof d.imageStorageKey === 'string' && d.imageStorageKey) ||
+      (typeof d.storageKey === 'string' && d.storageKey) ||
+      null,
   }
 }
 

@@ -238,6 +238,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             isSidebar ? 'w-full min-h-full' : 'items-start',
           )}
         >
+          {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
           <ActionBar
             label="Rack selected"
             layout={layout}
@@ -463,7 +464,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           )}
           {rack && <RackRowHeightsPanel rack={rack} onSelectRow={(id) => setSelected(id, 'row')} />}
           {rack && <RackSideZonesPanel rack={rack} dark={isSidebar} />}
-          {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
         </div>
 
         <AddRowModal
