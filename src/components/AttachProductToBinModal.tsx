@@ -20,7 +20,9 @@ import {
   fetchBinInventory,
   facingCapacityMessage,
   maxFacingsForShelf,
-  remainingBinFacings,
+  remainingFacingsForShelf,
+  resolveOccupiedFacingWidthM,
+  usedShelfWidthM,
   type BinInventoryData,
 } from '@/utils/binInventoryApi'
 import { FacingShelfPreview } from '@/components/FacingShelfPreview'
@@ -136,6 +138,7 @@ export default function AttachProductToBinModal({
   const [selectedDemoId, setSelectedDemoId] = useState<string | null>(null)
   const [uploadingModel, setUploadingModel] = useState(false)
   const setAttachFacingPreview = usePlanogramStore((s) => s.setAttachFacingPreview)
+  const racks = usePlanogramStore((s) => s.area.racks)
 
   const previewModelUrl = useMemo(
     () => localModelUrl ?? modelObjectUrl,
@@ -286,22 +289,32 @@ export default function AttachProductToBinModal({
       : 0
 
   const binWidthM = inventory?.width ?? 0
-  const apiRemaining = remainingBinFacings(inventory)
+  const occupiedFacingWidthM = resolveOccupiedFacingWidthM(inventory, racks, binId)
+  const stockFacingWidthM =
+    occupiedFacingWidthM && occupiedFacingWidthM > 0 ? occupiedFacingWidthM : facingWidthM
+  const capacityFacingWidthM = facingWidthM > 0 ? facingWidthM : stockFacingWidthM
+  // Width already occupied on shelf — use real facing width × qty, not API maxQuantity
+  const usedWidthM = usedShelfWidthM(inventory, {
+    facingWidthM: stockFacingWidthM,
+    racks,
+    binId,
+  })
   const shelfMaxTotal =
-    binWidthM > 0 && facingWidthM > 0 ? maxFacingsForShelf(binWidthM, facingWidthM) : null
-  const usedFacings = inventory?.sku?.quantity ?? 0
+    binWidthM > 0 && capacityFacingWidthM > 0
+      ? maxFacingsForShelf(binWidthM, capacityFacingWidthM)
+      : null
   const shelfRemaining =
-    shelfMaxTotal != null ? Math.max(0, shelfMaxTotal - usedFacings) : null
+    binWidthM > 0 && capacityFacingWidthM > 0
+      ? remainingFacingsForShelf(binWidthM, capacityFacingWidthM, usedWidthM)
+      : null
   const maxAttachQty =
-    apiRemaining != null
-      ? apiRemaining
-      : shelfRemaining != null && shelfRemaining > 0
-        ? shelfRemaining
-        : undefined
+    shelfRemaining != null && shelfRemaining >= 0
+      ? shelfRemaining
+      : undefined
 
   const capacityError =
     quantityOk && binWidthM > 0 && facingWidthM > 0
-      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedFacings)
+      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedWidthM)
       : null
 
   // Push live facing ghosts to the selected bin in the 3D scene
@@ -352,9 +365,6 @@ export default function AttachProductToBinModal({
     if (!quantityOk) return 'Quantity (facings) must be at least 1'
     if (inventory?.sku && inventory.sku.skuId !== skuId) {
       return `Bin already contains "${inventory.sku.skuName}". Detach it before attaching a different SKU.`
-    }
-    if (apiRemaining != null && parsedQuantity > apiRemaining) {
-      return `Only ${apiRemaining} more facing${apiRemaining === 1 ? '' : 's'} fit in this bin.`
     }
     if (capacityError) return capacityError
     return null
@@ -473,16 +483,11 @@ export default function AttachProductToBinModal({
       return
     }
     const createFacingW = parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
-    const createCapError = facingCapacityMessage(binWidthM, createFacingW, parsedQuantity, usedFacings)
+    const createCapError = facingCapacityMessage(binWidthM, createFacingW, parsedQuantity, usedWidthM)
     if (createCapError) {
       setError(createCapError)
       return
     }
-    if (apiRemaining != null && parsedQuantity > apiRemaining) {
-      setError(`Only ${apiRemaining} more facing${apiRemaining === 1 ? '' : 's'} fit in this bin.`)
-      return
-    }
-
     setSubmitting(true)
     setError(null)
     try {
@@ -680,8 +685,20 @@ export default function AttachProductToBinModal({
           ) : inventory?.sku ? (
             <p className="text-xs text-gray-700 mt-1 leading-snug">
               <span className="font-medium">{inventory.sku.skuName}</span> —{' '}
-              {inventory.sku.quantity} / {inventory.sku.maxQuantity} facings used
-              {apiRemaining != null ? ` · ${apiRemaining} available to add` : ''}
+              {capacityFacingWidthM > 0 && shelfMaxTotal != null && shelfRemaining != null ? (
+                <>
+                  {inventory.sku.quantity} facing{inventory.sku.quantity === 1 ? '' : 's'} already placed
+                  {' '}· {(usedWidthM * 100).toFixed(0)} cm occupied of {(binWidthM * 100).toFixed(0)} cm
+                  {' '}· <span className="font-medium">{shelfRemaining}</span> more can fit
+                  {' '}(<span className="font-medium">{shelfMaxTotal}</span> total at{' '}
+                  {(capacityFacingWidthM * 100).toFixed(0)} cm each)
+                </>
+              ) : (
+                <>
+                  {inventory.sku.quantity} facing{inventory.sku.quantity === 1 ? '' : 's'} placed.
+                  Select a SKU to calculate width-based capacity.
+                </>
+              )}
             </p>
           ) : inventory ? (
             <p className="text-xs text-gray-700 mt-1 leading-snug">
@@ -754,7 +771,7 @@ export default function AttachProductToBinModal({
             facingWidthM={facingWidthM}
             facingHeightM={facingHeightM}
             quantity={quantityOk ? parsedQuantity : 0}
-            usedFacings={usedFacings}
+            usedWidthM={usedWidthM}
             label="Live facing preview"
           />
         )}

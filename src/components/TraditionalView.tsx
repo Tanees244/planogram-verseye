@@ -503,6 +503,7 @@ export function TraditionalView() {
             width: w,
             depth: d,
             rackCode: rackForm.rackCode,
+            rackName: rackForm.rackName,
             plankType: rackForm.plankType,
             sided: rackForm.fixtureType === 'GONDOLA' ? rackForm.sided : 'one',
             fixtureType: rackForm.fixtureType,

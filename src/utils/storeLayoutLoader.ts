@@ -262,6 +262,8 @@ export function normalizeRack(rawInput: any): Rack {
     fixtureType,
     customConfig,
     blueprintName: raw.blueprintName ?? raw.blueprint_name ?? undefined,
+    publishedAt: raw.publishedAt ?? raw.published_at ?? null,
+    lastUpdated: raw.lastUpdated ?? raw.last_updated ?? raw.updatedAt ?? raw.updated_at ?? null,
     placement: placement ?? undefined,
     outer: outer ?? undefined,
     shell: shell ?? undefined,

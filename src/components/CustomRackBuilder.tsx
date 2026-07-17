@@ -267,6 +267,7 @@ export function CustomRackBuilder() {
   const reloadStoreLayout = usePlanogramStore((s) => s.reloadStoreLayout)
   const saveRackLayout = usePlanogramStore((s) => s.saveRackLayoutToServer)
   const [saving, setSaving] = useState(false)
+  const [rackName, setRackName] = useState('')
 
   const dims = useMemo(() => computeCustomRackDimensions(draft), [draft])
 
@@ -311,7 +312,8 @@ export function CustomRackBuilder() {
   }
 
   const handleConfirmPlace = () => {
-    place()
+    place(rackName)
+    setRackName('')
   }
 
   return (
@@ -353,6 +355,24 @@ export function CustomRackBuilder() {
         {/* Body: form + preview */}
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-0 overflow-hidden">
           <div className="overflow-y-auto p-4 space-y-3 border-b lg:border-b-0 lg:border-r border-white/10">
+            {!editingId && (
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
+                <label className="block">
+                  <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+                    Rack name
+                  </span>
+                  <input
+                    type="text"
+                    value={rackName}
+                    onChange={(e) => setRackName(e.target.value)}
+                    placeholder="e.g. Chilled Drinks Bay"
+                    maxLength={80}
+                    className="mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand"
+                  />
+                </label>
+              </div>
+            )}
+
             {/* Outer dimensions */}
             <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
               <div className="flex items-center justify-between gap-2">

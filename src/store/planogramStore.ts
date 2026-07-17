@@ -149,6 +149,10 @@ export interface Rack {
   fixtureType?: FixtureType;
   customConfig?: CustomRackConfig;
   blueprintName?: string | null;
+  /** Server-set on successful publish (ISO UTC). Never send from client. */
+  publishedAt?: string | null;
+  /** Server audit UpdatedAt (ISO UTC). Read-only. */
+  lastUpdated?: string | null;
   placement?: RackPlacement | null;
   outer?: Dimensions3 | null;
   shell?: RackShell | null;
@@ -177,6 +181,8 @@ export interface PendingRackParams {
   plankType: string;
   sided?: RackSided;
   rackCode?: string;
+  /** Display name — sent as blueprintName; defaults to rackCode. */
+  rackName?: string;
   globalLocationId?: string;
   fixtureType?: FixtureType;
   customConfig?: CustomRackConfig;
@@ -230,7 +236,10 @@ export interface PlanogramState {
   openCustomRackBuilder: (preset?: "END_CAP" | "REFRIGERATED" | "CUSTOM", rackId?: string) => void;
   closeCustomRackBuilder: () => void;
   setCustomRackDraft: (patch: Partial<CustomRackConfig> | ((prev: CustomRackConfig) => CustomRackConfig)) => void;
-  placeCustomRackFromBuilder: () => void;
+  placeCustomRackFromBuilder: (rackName?: string) => void;
+  /** Display name for the next rack placed (preset click / drag-drop). Sent as blueprintName. */
+  nextRackName: string;
+  setNextRackName: (name: string) => void;
   updateRackCustomConfig: (rackId: string, config: CustomRackConfig) => {
     exceptions?: CascadeException[];
   };
@@ -288,6 +297,7 @@ export interface PlanogramState {
     plankType: string;
     sided?: RackSided;
     rackCode?: string;
+    rackName?: string;
     fixtureType?: FixtureType;
     customConfig?: CustomRackConfig;
     globalLocationId?: string;
@@ -359,6 +369,11 @@ export interface PlanogramState {
   canProductFitInBin: (
     binId: string,
     product: { width: number; depth: number; height: number; quantity?: number },
+    /**
+     * When `quantity` is the TOTAL (merged) count for an existing SKU, pass its
+     * id here so its current facings aren't counted twice in used width.
+     */
+    excludeProductId?: string,
   ) => { fits: boolean; reason?: string };
   updateDimensions: (
     entityId: string,
@@ -570,6 +585,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   customRackBuilderOpen: false,
   customRackDraft: createBlankCustomRack(),
   editingCustomRackId: null,
+  nextRackName: "",
+  setNextRackName: (name) => set({ nextRackName: name }),
   renderTime: null,
   importSummary: null,
   isImporting: false,
@@ -739,7 +756,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           ? patch(s.customRackDraft)
           : { ...s.customRackDraft, ...patch },
     })),
-  placeCustomRackFromBuilder: () => {
+  placeCustomRackFromBuilder: (rackName) => {
     const state = get();
     if (!state.selectedStoreId) {
       set({ addRackError: "Select a store before placing fixtures." });
@@ -757,6 +774,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         fixtureType: "CUSTOM",
         customConfig: cloneCustomRackConfig(cfg),
         rackCode: `CUSTOM-${String(count).padStart(2, "0")}`,
+        rackName: rackName?.trim() || undefined,
         globalLocationId: state.selectedStoreId,
       },
       isPlacingRack: true,
@@ -930,10 +948,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         quadrant,
       };
 
+      const rackDisplayName =
+        finalDims?.rackName?.trim() || state.nextRackName?.trim() || undefined;
       const payload = buildCreateRackPayload({
         storeId: globalLocationId || finalDims?.globalLocationId || state.selectedStoreId || '',
         rackCode: finalDims?.rackCode || `RACK-${Date.now()}`,
-        blueprintName: finalDims?.rackCode,
+        blueprintName: rackDisplayName || finalDims?.rackCode,
         fixtureType,
         isDoubleSided: (finalDims?.sided || 'one') === 'two',
         width,
@@ -971,8 +991,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         if (finalDims?.fixtureType) rack.fixtureType = finalDims.fixtureType;
         if (finalDims?.customConfig) rack.customConfig = cloneCustomRackConfig(finalDims.customConfig);
         rack.placement = placement;
+        if (rackDisplayName || finalDims?.rackCode) {
+          rack.blueprintName = rackDisplayName || finalDims?.rackCode;
+        }
         if (finalDims?.customConfig) {
-          rack.blueprintName = finalDims.rackCode;
           rack.outer = {
             width: finalDims.customConfig.outerWidth,
             depth: finalDims.customConfig.outerDepth,
@@ -1039,6 +1061,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           placingFixtureType: null,
           isAddingRack: false,
           addRackError: null,
+          nextRackName: "",
           selectedId: rack.id,
           selectedType: 'rack' as const,
         }));
@@ -1601,7 +1624,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         },
       };
     }),
-  canProductFitInBin: (binId, product) => {
+  canProductFitInBin: (binId, product, excludeProductId) => {
     const state = get();
     let bin: Bin | null = null;
     for (const rack of state.area.racks) {
@@ -1632,17 +1655,23 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         reason: `Product (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) exceeds bin (${(bin.width * 100).toFixed(0)}×${(bin.depth * 100).toFixed(0)}×${(fitHeight * 100).toFixed(0)} cm)`,
       };
     }
-    // bin.width ≥ Σ (product.width × quantity)
-    const usedWidth = binOccupiedFacingWidth(bin.products);
+    // bin.width ≥ Σ (product.width × quantity).
+    // When `quantity` is the merged total for an existing SKU, drop that SKU's
+    // current facings from used width so they aren't counted twice.
+    const otherProducts = excludeProductId
+      ? bin.products.filter((p) => resolveEntityId(p.id) !== resolveEntityId(excludeProductId) && p.id !== excludeProductId)
+      : bin.products;
+    const usedWidth = binOccupiedFacingWidth(otherProducts);
     const need = productFacingWidth({ width: product.width, quantity: qty });
-    if (usedWidth + need > bin.width + 0.001) {
-      const maxNew = Math.max(0, Math.floor((bin.width - usedWidth) / product.width + 1e-9));
-      const maxTotal = Math.max(0, Math.floor(bin.width / product.width + 1e-9));
+    const free = bin.width - usedWidth;
+    if (need > free + 0.001) {
+      const maxNew = Math.max(0, Math.floor(free / product.width + 1e-6));
+      const maxTotal = Math.max(0, Math.floor(bin.width / product.width + 1e-6));
       return {
         fits: false,
         reason:
           maxNew > 0
-            ? `${qty} facing${qty === 1 ? '' : 's'} need ${(need * 100).toFixed(0)} cm of shelf width (${(product.width * 100).toFixed(0)} cm each) but only ${(bin.width * 100).toFixed(0)} cm is available (used ${(usedWidth * 100).toFixed(0)} cm). Max ${maxNew} more facing${maxNew === 1 ? '' : 's'} (bin fits ${maxTotal} total).`
+            ? `${qty} facing${qty === 1 ? '' : 's'} need ${(need * 100).toFixed(0)} cm of shelf width (${(product.width * 100).toFixed(0)} cm each) but only ${(free * 100).toFixed(0)} cm is free (used ${(usedWidth * 100).toFixed(0)} cm of ${(bin.width * 100).toFixed(0)} cm). Max ${maxNew} more facing${maxNew === 1 ? '' : 's'} (bin fits ${maxTotal} total).`
             : `Product facing (${(product.width * 100).toFixed(0)} cm) is too wide or bin shelf (${(bin.width * 100).toFixed(0)} cm) is full.`,
       };
     }
@@ -1665,12 +1694,17 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       }
     }
     const mergedQty = existingQty > 0 ? existingQty + (product.quantity ?? 1) : (product.quantity ?? 1);
-    const check = get().canProductFitInBin(binId, {
-      width: product.width,
-      depth: product.depth,
-      height: product.height,
-      quantity: mergedQty,
-    });
+    const check = get().canProductFitInBin(
+      binId,
+      {
+        width: product.width,
+        depth: product.depth,
+        height: product.height,
+        quantity: mergedQty,
+      },
+      // Merged qty already includes existing facings — don't double-count them.
+      product.id,
+    );
     if (!check.fits) {
       set({ addProductError: check.reason ?? "Product does not fit" });
       return { success: false, reason: check.reason };
@@ -2216,14 +2250,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const res = await fetch('/api/racks/removeRacks', {
-        method: 'POST',
+      const serverRackId = rack.rackId || rack.id;
+      const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
+        method: 'DELETE',
         headers,
-        body: JSON.stringify({ rackId: rack.rackId || rack.id }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
-      if (data && data.isRequestSuccess) {
+      if (res.ok && data?.isRequestSuccess !== false && data?.success !== false) {
         set((s) => ({
           area: {
             ...s.area,

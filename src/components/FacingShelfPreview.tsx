@@ -9,7 +9,7 @@ export function FacingShelfPreview({
   facingWidthM,
   facingHeightM,
   quantity,
-  usedFacings = 0,
+  usedWidthM = 0,
   className,
   label = 'Live facing preview',
 }: {
@@ -18,8 +18,8 @@ export function FacingShelfPreview({
   facingWidthM: number
   facingHeightM: number
   quantity: number
-  /** Already-occupied facings of the same SKU (shown muted). */
-  usedFacings?: number
+  /** Shelf width (m) already occupied by existing stock (shown muted). */
+  usedWidthM?: number
   className?: string
   label?: string
 }) {
@@ -28,13 +28,14 @@ export function FacingShelfPreview({
   }
 
   const qty = Math.max(0, Math.floor(quantity) || 0)
-  const used = Math.max(0, Math.floor(usedFacings) || 0)
-  const maxFit = Math.max(1, Math.floor(binWidthM / facingWidthM + 1e-9))
-  const overflow = used + qty > maxFit
-  const showUsed = Math.min(used, maxFit)
-  const showNew = Math.min(qty, Math.max(0, maxFit - showUsed), 48)
-  const overflowCount = Math.max(0, used + qty - maxFit)
+  const usedW = Math.max(0, Math.min(usedWidthM, binWidthM))
+  const freeWidthM = Math.max(0, binWidthM - usedW)
+  const maxFit = Math.floor(freeWidthM / facingWidthM + 1e-6)
+  const overflow = qty > maxFit
+  const showNew = Math.min(qty, Math.max(0, maxFit), 48)
+  const overflowCount = Math.max(0, qty - maxFit)
 
+  const usedPct = Math.min(100, (usedW / binWidthM) * 100)
   const wPct = Math.min(100, (facingWidthM / binWidthM) * 100)
   const hPct = Math.min(100, (facingHeightM / binHeightM) * 100)
 
@@ -48,7 +49,6 @@ export function FacingShelfPreview({
             overflow ? 'text-red-600' : 'text-[#2C5282]',
           )}
         >
-          {used > 0 ? `${used} + ` : ''}
           {qty} facing{qty === 1 ? '' : 's'}
           {overflow ? ` · +${overflowCount} won’t fit` : ` · max ${maxFit}`}
         </p>
@@ -59,14 +59,13 @@ export function FacingShelfPreview({
         <div className="absolute inset-x-2 bottom-2 top-2 rounded-sm bg-gray-100/80 border border-gray-200" />
         {/* Facings left → right */}
         <div className="absolute inset-x-2 bottom-2 top-2 flex items-end gap-0.5 overflow-hidden">
-          {Array.from({ length: showUsed }, (_, i) => (
+          {usedPct > 0.5 && (
             <div
-              key={`used-${i}`}
-              className="shrink-0 rounded-sm bg-gray-400/70 border border-gray-500/40"
-              style={{ width: `${wPct}%`, height: `${Math.max(10, hPct)}%` }}
-              title="Existing facing"
+              className="shrink-0 self-stretch rounded-sm bg-gray-400/60 border border-gray-500/40"
+              style={{ width: `${usedPct}%` }}
+              title="Occupied by existing stock"
             />
-          ))}
+          )}
           {Array.from({ length: showNew }, (_, i) => (
             <div
               key={`new-${i}`}
@@ -77,7 +76,7 @@ export function FacingShelfPreview({
                   : 'bg-[#2C5282]/90 border-[#2C5282]',
               )}
               style={{ width: `${wPct}%`, height: `${Math.max(10, hPct)}%` }}
-              title={`Facing ${showUsed + i + 1}`}
+              title={`Facing ${i + 1}`}
             />
           ))}
         </div>
@@ -86,7 +85,9 @@ export function FacingShelfPreview({
       <p className="text-[10px] text-gray-500 leading-snug">
         Each block is one facing (
         {(facingWidthM * 100).toFixed(0)}×{(facingHeightM * 100).toFixed(0)} cm) on a{' '}
-        {(binWidthM * 100).toFixed(0)} cm shelf. Changes update instantly.
+        {(binWidthM * 100).toFixed(0)} cm shelf
+        {usedW > 0.0005 ? ` (${(usedW * 100).toFixed(0)} cm occupied)` : ''}. Changes update
+        instantly.
       </p>
     </div>
   )

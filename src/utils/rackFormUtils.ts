@@ -26,6 +26,7 @@ export const defaultRackForm = (): RackFormState => ({
   width: String(DEFAULT_RACK_WIDTH),
   depth: String(DEFAULT_RACK_DEPTH),
   rackCode: '',
+  rackName: '',
   plankType: 'standard',
   sided: 'two',
   fixtureType: 'GONDOLA' as FixtureType,

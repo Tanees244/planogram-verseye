@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiBox, FiRefreshCw, FiTrash2 } from 'react-icons/fi'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
 import {
+  computeShelfCapacity,
   fetchBinInventory,
-  remainingBinFacings,
+  resolveOccupiedFacingWidthM,
+  usedShelfWidthM,
   type BinInventoryData,
 } from '@/utils/binInventoryApi'
 import { toastApiError } from '@/utils/apiMessages'
@@ -29,6 +31,7 @@ export function BinInventoryPanel({
   onInventoryChange,
   className,
 }: BinInventoryPanelProps) {
+  const racks = usePlanogramStore((s) => s.area.racks)
   const setSelected = usePlanogramStore((s) => s.setSelected)
   const detachBinInventory = usePlanogramStore((s) => s.detachBinInventory)
   const selectedId = usePlanogramStore((s) => s.selectedId)
@@ -56,8 +59,29 @@ export function BinInventoryPanel({
     void load()
   }, [load, refreshKey])
 
+  const occupiedFacingWidthM = useMemo(
+    () => resolveOccupiedFacingWidthM(inventory, racks, binId),
+    [inventory, racks, binId],
+  )
+
+  const shelfCapacity = useMemo(() => {
+    if (!inventory?.sku || !(inventory.width > 0) || !(occupiedFacingWidthM && occupiedFacingWidthM > 0)) {
+      return null
+    }
+    const used = usedShelfWidthM(inventory, {
+      facingWidthM: occupiedFacingWidthM,
+      racks,
+      binId,
+    })
+    return computeShelfCapacity(
+      inventory.width,
+      occupiedFacingWidthM,
+      inventory.sku.quantity,
+      used,
+    )
+  }, [inventory, occupiedFacingWidthM, racks, binId])
+
   const handleDetach = async () => {
-    if (!window.confirm('Remove all inventory from this bin?')) return
     setDetaching(true)
     const res = await detachBinInventory(binId)
     setDetaching(false)
@@ -74,15 +98,11 @@ export function BinInventoryPanel({
     ? 'bg-black/70 border-white/10 text-gray-100'
     : 'bg-white border-gray-200 text-gray-800'
 
-  const remaining = remainingBinFacings(inventory)
   const occupied = Boolean(inventory?.sku)
-  const usagePct =
-    inventory?.sku && inventory.sku.maxQuantity > 0
-      ? Math.min(100, (inventory.sku.quantity / inventory.sku.maxQuantity) * 100)
-      : 0
+  const usagePct = shelfCapacity?.usagePct ?? 0
   const usageLabel =
-    inventory?.sku && inventory.sku.maxQuantity > 0
-      ? `${((inventory.sku.quantity / inventory.sku.maxQuantity) * 100).toFixed(1)}% shelf used`
+    shelfCapacity != null
+      ? `${shelfCapacity.usagePct.toFixed(1)}% shelf used`
       : ''
 
   const skuSelected =
@@ -159,9 +179,20 @@ export function BinInventoryPanel({
                 <p className={cn('text-sm font-semibold truncate', dark ? 'text-white' : 'text-gray-900')}>
                   {inventory.sku.skuName}
                 </p>
-                <p className={cn('text-[11px] mt-0.5', dark ? 'text-gray-400' : 'text-gray-500')}>
-                  {inventory.sku.quantity} / {inventory.sku.maxQuantity} facings
-                  {remaining != null ? ` · ${remaining} available` : ''}
+                <p className={cn('text-[11px] mt-0.5 leading-snug', dark ? 'text-gray-400' : 'text-gray-500')}>
+                  {shelfCapacity ? (
+                    <>
+                      {shelfCapacity.placedFacings} / {shelfCapacity.maxTotalFacings} facings
+                      {' '}· {shelfCapacity.remainingFacings} more can fit
+                      {' '}· {(shelfCapacity.facingWidthM * 100).toFixed(0)} cm each on{' '}
+                      {(shelfCapacity.binWidthM * 100).toFixed(0)} cm shelf
+                    </>
+                  ) : (
+                    <>
+                      {inventory.sku.quantity} facing{inventory.sku.quantity === 1 ? '' : 's'} placed
+                      {' '}· dimensions loading…
+                    </>
+                  )}
                   {usageLabel ? ` · ${usageLabel}` : ''}
                 </p>
               </div>

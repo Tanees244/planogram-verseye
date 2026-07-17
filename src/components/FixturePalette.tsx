@@ -55,6 +55,8 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const addRackError = usePlanogramStore((s) => s.addRackError)
   const setFixturePaletteCollapsed = usePlanogramStore((s) => s.setFixturePaletteCollapsed)
+  const nextRackName = usePlanogramStore((s) => s.nextRackName)
+  const setNextRackName = usePlanogramStore((s) => s.setNextRackName)
 
   const [dragging, setDragging] = useState<FixtureType | null>(null)
   const [collapsed, setCollapsed] = useState(false)
@@ -189,6 +191,28 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
           fillHeight && 'flex-1',
         )}
       >
+        <label className="block">
+          <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+            Rack name
+          </span>
+          <input
+            type="text"
+            value={nextRackName}
+            onChange={(e) => setNextRackName(e.target.value)}
+            disabled={!selectedStoreId}
+            placeholder="e.g. Beverages Wall A"
+            maxLength={80}
+            className={cn(
+              'mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white',
+              'placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand',
+              !selectedStoreId && 'opacity-45 cursor-not-allowed',
+            )}
+          />
+          <span className="text-[9px] text-gray-500 block mt-0.5">
+            Applied to the next rack you place (click or drag)
+          </span>
+        </label>
+
         <button
           type="button"
           onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}

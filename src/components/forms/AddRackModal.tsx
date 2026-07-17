@@ -9,6 +9,7 @@ export interface RackFormState {
   width: string
   depth: string
   rackCode: string
+  rackName: string
   plankType: string
   sided: 'one' | 'two'
   fixtureType: FixtureType
@@ -106,6 +107,18 @@ export function AddRackModal({
               value={form.rackCode}
               error={!!errors.rackCode}
               onChange={(e) => set({ rackCode: e.target.value })}
+            />
+          </FormField>
+
+          <FormField
+            label="Rack Name"
+            hint="Display name — defaults to rack code"
+            className="sm:col-span-2"
+          >
+            <Input
+              placeholder="e.g. Dairy end cap"
+              value={form.rackName}
+              onChange={(e) => set({ rackName: e.target.value })}
             />
           </FormField>
 

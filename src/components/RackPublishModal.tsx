@@ -192,6 +192,12 @@ export function RackPublishModal({
       }
       setPublishResult(res.data)
       setStep('results')
+      // Pick up server-set publishedAt / lastUpdated on source + targets
+      try {
+        await usePlanogramStore.getState().reloadStoreLayout()
+      } catch {
+        /* non-fatal — results already shown */
+      }
     } finally {
       setBusy(false)
     }
