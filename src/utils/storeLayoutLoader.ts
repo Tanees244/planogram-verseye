@@ -74,27 +74,78 @@ function asArray(value: any): any[] {
 }
 
 export function normalizeSkus(skus: any[]): any[] {
-  return asArray(skus).map((p: any) => ({
-    id: p.skuId ?? p.id ?? p.productId ?? generateId(),
-    inventoryId: p.binInventoryId ?? p.inventoryId ?? p.id ?? undefined,
-    name: p.skuName ?? p.name ?? p.productName ?? p.title ?? 'Product',
-    color: p.color ?? `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
-    width: safeDim(p.width, DEFAULT_PRODUCT_WIDTH),
-    height: safeDim(p.height, DEFAULT_PRODUCT_HEIGHT),
-    depth: safeDim(p.depth, DEFAULT_PRODUCT_DEPTH),
-    quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
-    brandName: p.brandName ?? undefined,
-    categoryName: p.categoryName ?? undefined,
-    imageUrl: p.imageUrl ?? p.image ?? undefined,
-    imageStorageKey: p.imageStorageKey ?? undefined,
-    modelUrl: p.modelUrl ?? p.glbUrl ?? p.model3dUrl ?? undefined,
-    modelStorageKey: p.modelStorageKey ?? p.glbStorageKey ?? undefined,
-  }))
+  return asArray(skus).map((p: any) => {
+    const attachments = asArray(p.attachments)
+    const imageFromAttachments = attachments.find(
+      (a: any) => a && a.is3D !== true && (a.storageKey || a.objectKey || a.url),
+    )
+    const modelFromAttachments = attachments.find(
+      (a: any) =>
+        a &&
+        (a.is3D === true ||
+          String(a.storageKey ?? a.objectKey ?? '').toLowerCase().endsWith('.glb') ||
+          String(a.url ?? '').toLowerCase().includes('.glb')),
+    )
+
+    return {
+      id: p.skuId ?? p.id ?? p.productId ?? generateId(),
+      inventoryId: p.binInventoryId ?? p.inventoryId ?? p.id ?? undefined,
+      name: p.skuName ?? p.name ?? p.productName ?? p.title ?? 'Product',
+      color: p.color ?? `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
+      width: safeDim(p.width, DEFAULT_PRODUCT_WIDTH),
+      height: safeDim(p.height, DEFAULT_PRODUCT_HEIGHT),
+      depth: safeDim(p.depth, DEFAULT_PRODUCT_DEPTH),
+      quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
+      brandName: p.brandName ?? undefined,
+      categoryName: p.categoryName ?? undefined,
+      imageUrl: p.imageUrl ?? p.image ?? imageFromAttachments?.url ?? undefined,
+      imageStorageKey:
+        p.imageStorageKey ??
+        imageFromAttachments?.storageKey ??
+        imageFromAttachments?.objectKey ??
+        undefined,
+      modelUrl: p.modelUrl ?? p.glbUrl ?? p.model3dUrl ?? modelFromAttachments?.url ?? undefined,
+      modelStorageKey:
+        p.modelStorageKey ??
+        p.glbStorageKey ??
+        modelFromAttachments?.storageKey ??
+        modelFromAttachments?.objectKey ??
+        undefined,
+    }
+  })
 }
 
 function normalizeBinProducts(raw: any) {
   const productsRaw = raw.products ?? raw.skus ?? raw.inventory
-  if (productsRaw) return normalizeSkus(asArray(productsRaw))
+  if (productsRaw) {
+    const list = asArray(productsRaw)
+    // Layout often returns thin `products[]` plus a richer `sku` with attachments
+    if (raw.sku && list.length > 0) {
+      const sku = raw.sku
+      const skuId = String(sku.skuId ?? sku.id ?? '')
+      return normalizeSkus(
+        list.map((p: any) => {
+          const pid = String(p.skuId ?? p.id ?? '')
+          if (skuId && pid && skuId !== pid) return p
+          return {
+            ...p,
+            imageUrl: p.imageUrl ?? sku.imageUrl ?? null,
+            imageStorageKey: p.imageStorageKey ?? sku.imageStorageKey ?? null,
+            modelUrl: p.modelUrl ?? sku.modelUrl ?? sku.glbUrl ?? null,
+            modelStorageKey: p.modelStorageKey ?? sku.modelStorageKey ?? null,
+            attachments:
+              Array.isArray(p.attachments) && p.attachments.length > 0
+                ? p.attachments
+                : sku.attachments ?? [],
+            brandName: p.brandName ?? sku.brandName,
+            categoryName: p.categoryName ?? sku.categoryName,
+            quantity: p.quantity ?? sku.quantity,
+          }
+        }),
+      )
+    }
+    return normalizeSkus(list)
+  }
   if (raw.sku) return normalizeSkus([raw.sku])
   return []
 }
@@ -247,6 +298,17 @@ export function normalizeRack(rawInput: any): Rack {
         outer: normalizeZoneFootprint(s.outer),
         header: normalizeZoneVolume(s.header),
         footer: normalizeZoneVolume(s.footer),
+        dimensions:
+          s.dimensions && typeof s.dimensions === 'object'
+            ? {
+                usableWidth:
+                  s.dimensions.usableWidth != null ? Number(s.dimensions.usableWidth) : null,
+                usableDepth:
+                  s.dimensions.usableDepth != null ? Number(s.dimensions.usableDepth) : null,
+                usableHeight:
+                  s.dimensions.usableHeight != null ? Number(s.dimensions.usableHeight) : null,
+              }
+            : null,
         rows: anchoredRows,
       }
     },

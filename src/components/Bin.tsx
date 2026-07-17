@@ -10,6 +10,7 @@ import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
 import { ProductPlacementPreview } from "./ProductPlacementPreview";
 import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
+import { packFacingsInBin, packMixedFacingsInBin } from "@/utils/facingPack";
 import { safeDim } from "@/utils/safeDimensions";
 
 interface BinProps {
@@ -19,22 +20,6 @@ interface BinProps {
   binHeight: number;
   binDepth: number;
   binWidth: number;
-}
-
-function facingFitScale(
-  productW: number,
-  productH: number,
-  productD: number,
-  binW: number,
-  binH: number,
-  binD: number,
-) {
-  return Math.min(
-    binH / Math.max(productH, 0.001),
-    binD / Math.max(productD, 0.001),
-    binW / Math.max(productW, 0.001),
-    1,
-  )
 }
 
 export function Bin({
@@ -82,30 +67,37 @@ export function Bin({
 
   const facings = expandProductsByQuantity(bin.products);
 
-  // Lay out facings along bin width (X); sit on shelf floor (Y); flush to shopper-facing front (−Z)
-  const shelfY = -actualBinHeight / 2 + lipHeight
-  const frontInset = 0.01
-  let xOffset = -actualBinWidth / 2 + wallThick
-  const productPositions: [number, number, number][] = []
-  const scaledFacings = facings.map((product) => {
-    const pw = safeDim(product.width, 0.08)
-    const ph = safeDim(product.height, 0.27)
-    const pd = safeDim(product.depth, 0.08)
-    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
-    const facingWidth = pw * fitScale
-    const facingHeight = ph * fitScale
-    const facingDepth = pd * fitScale
-    const px = xOffset + facingWidth / 2
-    const pz = -actualBinDepth / 2 + facingDepth / 2 + frontInset
-    productPositions.push([px, shelfY + facingHeight / 2, pz])
-    xOffset += facingWidth
-    return {
-      ...product,
-      width: facingWidth,
-      height: facingHeight,
-      depth: facingDepth,
-    }
+  // Pack left→right (X), then front→back (Z depth). Scale down if needed to stay in bin.
+  const mixed = packMixedFacingsInBin({
+    binWidth: actualBinWidth,
+    binHeight: actualBinHeight,
+    binDepth: actualBinDepth,
+    facings: facings.map((product, i) => ({
+      id: `${product.id}-${i}`,
+      width: safeDim(product.width, 0.08),
+      height: safeDim(product.height, 0.27),
+      depth: safeDim(product.depth, 0.08),
+    })),
+    wallThick,
+    lipHeight,
   })
+
+  const productPositions: [number, number, number][] = mixed.positions.map((p) => [
+    p.x,
+    p.y,
+    p.z,
+  ])
+  const scaledFacings = mixed.positions.map((p, i) => ({
+    ...facings[i],
+    width: p.width,
+    height: p.height,
+    depth: p.depth,
+  }))
+
+  const occupiedFacings = bin.products.reduce(
+    (sum, p) => sum + Math.max(1, Math.floor(Number(p.quantity) || 1)),
+    0,
+  )
 
   let previewSlots: {
     pos: [number, number, number]
@@ -119,57 +111,59 @@ export function Bin({
   }[] = []
 
   if (showPlacementPreview && pendingProductParams) {
-    const pw = safeDim(pendingProductParams.width, 0.08)
-    const ph = safeDim(pendingProductParams.height, 0.27)
-    const pd = safeDim(pendingProductParams.depth, 0.08)
-    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
-    const w = pw * fitScale
-    const h = ph * fitScale
-    const d = pd * fitScale
-    previewSlots.push({
-      pos: [
-        xOffset + w / 2,
-        shelfY + h / 2,
-        -actualBinDepth / 2 + d / 2 + frontInset,
-      ],
-      w,
-      h,
-      d,
-      fits: dropFits,
-      modelUrl: pendingProductParams.modelUrl,
-      modelStorageKey: pendingProductParams.modelStorageKey,
-      color: pendingProductParams.color ?? "#10b981",
+    const pack = packFacingsInBin({
+      binWidth: actualBinWidth,
+      binHeight: actualBinHeight,
+      binDepth: actualBinDepth,
+      facing: {
+        width: safeDim(pendingProductParams.width, 0.08),
+        height: safeDim(pendingProductParams.height, 0.27),
+        depth: safeDim(pendingProductParams.depth, 0.08),
+      },
+      quantity: 1,
+      occupiedFacings,
+      wallThick,
+      lipHeight,
     })
-  } else if (attachPreview && attachPreview.quantity > 0) {
-    const pw = safeDim(attachPreview.width, 0.08)
-    const ph = safeDim(attachPreview.height, 0.27)
-    const pd = safeDim(attachPreview.depth, 0.08)
-    const fitScale = facingFitScale(pw, ph, pd, actualBinWidth, actualBinHeight, actualBinDepth)
-    const w = pw * fitScale
-    const h = ph * fitScale
-    const d = pd * fitScale
-    const maxSlots = Math.max(
-      1,
-      Math.floor((actualBinWidth - wallThick * 2) / Math.max(w, 0.001)),
-    )
-    const count = Math.min(attachPreview.quantity, maxSlots + 4, 40)
-    let px = xOffset
-    for (let i = 0; i < count; i++) {
+    const slot = pack.slots[0]
+    if (slot) {
       previewSlots.push({
-        pos: [
-          px + w / 2,
-          shelfY + h / 2,
-          -actualBinDepth / 2 + d / 2 + frontInset,
-        ],
-        w,
-        h,
-        d,
-        fits: attachPreview.fits && i < maxSlots,
+        pos: [slot.x, slot.y, slot.z],
+        w: slot.width,
+        h: slot.height,
+        d: slot.depth,
+        fits: dropFits && !slot.overflow,
+        modelUrl: pendingProductParams.modelUrl,
+        modelStorageKey: pendingProductParams.modelStorageKey,
+        color: pendingProductParams.color ?? "#10b981",
+      })
+    }
+  } else if (attachPreview && attachPreview.quantity > 0) {
+    const pack = packFacingsInBin({
+      binWidth: actualBinWidth,
+      binHeight: actualBinHeight,
+      binDepth: actualBinDepth,
+      facing: {
+        width: safeDim(attachPreview.width, 0.08),
+        height: safeDim(attachPreview.height, 0.27),
+        depth: safeDim(attachPreview.depth, 0.08),
+      },
+      quantity: attachPreview.quantity,
+      occupiedFacings,
+      wallThick,
+      lipHeight,
+    })
+    for (const slot of pack.slots) {
+      previewSlots.push({
+        pos: [slot.x, slot.y, slot.z],
+        w: slot.width,
+        h: slot.height,
+        d: slot.depth,
+        fits: attachPreview.fits && !slot.overflow,
         modelUrl: attachPreview.modelUrl,
         modelStorageKey: attachPreview.modelStorageKey,
         color: attachPreview.color ?? "#2C5282",
       })
-      px += w
     }
   }
 

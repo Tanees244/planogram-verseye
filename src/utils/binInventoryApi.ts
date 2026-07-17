@@ -1,6 +1,7 @@
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { extractApiErrorMessage } from '@/utils/apiMessages'
 import { binOccupiedFacingWidth } from '@/utils/layoutCascade'
+import { maxFacingsInBinVolume } from '@/utils/facingPack'
 import { resolveEntityId, resolveProductFacingId } from '@/utils/storeLayoutLoader'
 import type { Rack } from '@/store/planogramStore'
 
@@ -15,13 +16,20 @@ export interface BinInventorySku {
 
 export interface ShelfCapacityInfo {
   binWidthM: number
+  binDepthM?: number
+  binHeightM?: number
   facingWidthM: number
+  facingDepthM?: number
+  facingHeightM?: number
   placedFacings: number
   usedWidthM: number
   freeWidthM: number
   maxTotalFacings: number
   remainingFacings: number
   usagePct: number
+  cols?: number
+  depthRows?: number
+  stackLayers?: number
 }
 
 export interface BinInventoryData {
@@ -82,6 +90,45 @@ export function maxFacingsForShelf(binWidthM: number, facingWidthM: number): num
   if (!(binWidthM > 0) || !(facingWidthM > 0)) return 0
   // 1e-6 tolerance so an exact-fit facing (e.g. 85 cm on an 85 cm shelf) counts as 1
   return Math.max(0, Math.floor(binWidthM / facingWidthM + 1e-6))
+}
+
+/** Max facings in W×D×H (stacking). Falls back when depth/height missing. */
+export function maxFacingsForShelfFootprint(
+  binWidthM: number,
+  binDepthM: number | null | undefined,
+  facingWidthM: number,
+  facingDepthM?: number | null,
+  options?: {
+    binHeightM?: number | null
+    facingHeightM?: number | null
+  },
+): number {
+  if (!(binWidthM > 0) || !(facingWidthM > 0)) return 0
+  const binH = options?.binHeightM
+  const faceH = options?.facingHeightM
+  if (
+    binDepthM &&
+    binDepthM > 0 &&
+    facingDepthM &&
+    facingDepthM > 0 &&
+    binH &&
+    binH > 0 &&
+    faceH &&
+    faceH > 0
+  ) {
+    return maxFacingsInBinVolume(
+      binWidthM,
+      binDepthM,
+      binH,
+      facingWidthM,
+      facingDepthM,
+      faceH,
+    )
+  }
+  if (binDepthM && binDepthM > 0 && facingDepthM && facingDepthM > 0) {
+    return maxFacingsInBinVolume(binWidthM, binDepthM, 1, facingWidthM, facingDepthM, 1)
+  }
+  return maxFacingsForShelf(binWidthM, facingWidthM)
 }
 
 /** Find a bin in the loaded store layout. */
@@ -152,12 +199,18 @@ export function usedShelfWidthM(
   return 0
 }
 
-/** Width-based shelf capacity for one SKU facing size. */
+/** Shelf capacity for one SKU facing size. Pass depth + height for W×D×H stacking. */
 export function computeShelfCapacity(
   binWidthM: number,
   facingWidthM: number,
   placedFacings: number,
   usedWidthM?: number,
+  options?: {
+    binDepthM?: number
+    facingDepthM?: number
+    binHeightM?: number
+    facingHeightM?: number
+  },
 ): ShelfCapacityInfo | null {
   if (!(binWidthM > 0) || !(facingWidthM > 0)) return null
   const placed = Math.max(0, Math.floor(placedFacings))
@@ -166,27 +219,78 @@ export function computeShelfCapacity(
       ? Math.min(binWidthM, Math.max(0, usedWidthM))
       : Math.min(binWidthM, placed * facingWidthM)
   const freeWidthM = Math.max(0, binWidthM - used)
-  const maxTotalFacings = maxFacingsForShelf(binWidthM, facingWidthM)
-  const remainingFacings = remainingFacingsForShelf(binWidthM, facingWidthM, used)
-  const usagePct = Math.min(100, (used / binWidthM) * 100)
+  const binDepthM = options?.binDepthM
+  const facingDepthM = options?.facingDepthM
+  const binHeightM = options?.binHeightM
+  const facingHeightM = options?.facingHeightM
+  const maxTotalFacings = maxFacingsForShelfFootprint(
+    binWidthM,
+    binDepthM,
+    facingWidthM,
+    facingDepthM,
+    { binHeightM, facingHeightM },
+  )
+  const remainingFacings = Math.max(0, maxTotalFacings - placed)
+  const usagePct =
+    maxTotalFacings > 0
+      ? Math.min(100, (placed / maxTotalFacings) * 100)
+      : Math.min(100, (used / binWidthM) * 100)
+  const cols =
+    facingWidthM > 0 ? Math.max(0, Math.floor(binWidthM / facingWidthM + 1e-6)) : undefined
+  const depthRows =
+    binDepthM && facingDepthM && facingDepthM > 0
+      ? Math.max(0, Math.floor(binDepthM / facingDepthM + 1e-6))
+      : undefined
+  const stackLayers =
+    binHeightM && facingHeightM && facingHeightM > 0
+      ? Math.max(0, Math.floor(binHeightM / facingHeightM + 1e-6))
+      : undefined
   return {
     binWidthM,
+    binDepthM,
+    binHeightM,
     facingWidthM,
+    facingDepthM: facingDepthM ?? undefined,
+    facingHeightM: facingHeightM ?? undefined,
     placedFacings: placed,
     usedWidthM: used,
     freeWidthM,
     maxTotalFacings,
     remainingFacings,
     usagePct,
+    cols,
+    depthRows,
+    stackLayers,
   }
 }
 
-/** Max NEW facings of the given width that fit in the remaining shelf space. */
+/** Max NEW facings of the given size that fit in the remaining shelf space. */
 export function remainingFacingsForShelf(
   binWidthM: number,
   facingWidthM: number,
   usedWidthM = 0,
+  options?: {
+    binDepthM?: number
+    facingDepthM?: number
+    binHeightM?: number
+    facingHeightM?: number
+    placedFacings?: number
+  },
 ): number {
+  if (options?.binDepthM && options?.facingDepthM) {
+    const max = maxFacingsForShelfFootprint(
+      binWidthM,
+      options.binDepthM,
+      facingWidthM,
+      options.facingDepthM,
+      {
+        binHeightM: options.binHeightM,
+        facingHeightM: options.facingHeightM,
+      },
+    )
+    const placed = Math.max(0, Math.floor(options.placedFacings ?? 0))
+    return Math.max(0, max - placed)
+  }
   return maxFacingsForShelf(Math.max(0, binWidthM - usedWidthM), facingWidthM)
 }
 
@@ -195,10 +299,28 @@ export function facingCapacityMessage(
   facingWidthM: number,
   quantity: number,
   usedWidthM = 0,
+  options?: {
+    binDepthM?: number
+    facingDepthM?: number
+    binHeightM?: number
+    facingHeightM?: number
+    placedFacings?: number
+  },
 ): string | null {
   if (!(binWidthM > 0) || !(facingWidthM > 0) || quantity < 1) return null
-  const remaining = remainingFacingsForShelf(binWidthM, facingWidthM, usedWidthM)
+  const remaining = remainingFacingsForShelf(binWidthM, facingWidthM, usedWidthM, options)
   if (quantity <= remaining) return null
+  if (options?.binDepthM && options?.facingDepthM) {
+    const cols = Math.max(0, Math.floor(binWidthM / facingWidthM + 1e-6))
+    const depthRows = Math.max(0, Math.floor(options.binDepthM / options.facingDepthM + 1e-6))
+    const stacks =
+      options.binHeightM && options.facingHeightM && options.facingHeightM > 0
+        ? Math.max(0, Math.floor(options.binHeightM / options.facingHeightM + 1e-6))
+        : 1
+    const max = cols * depthRows * stacks
+    const stackNote = stacks > 1 ? ` × ${stacks} stacked` : ''
+    return `${quantity} facing${quantity === 1 ? '' : 's'} exceed bin capacity (${(facingWidthM * 100).toFixed(0)}×${(options.facingDepthM * 100).toFixed(0)}×${((options.facingHeightM ?? 0) * 100).toFixed(0)} cm · ${cols} across × ${depthRows} deep${stackNote} = ${max} max). Only ${remaining} more can fit.`
+  }
   const needCm = (facingWidthM * quantity * 100).toFixed(0)
   const binCm = (binWidthM * 100).toFixed(0)
   const facingCm = (facingWidthM * 100).toFixed(0)

@@ -35,9 +35,11 @@ export function Row({
   hideBackWall = false,
 }: RowProps) {
   const meshRef = useRef<Mesh>(null);
-  const { selectedId, setSelected } = usePlanogramStore();
+  const { selectedId, setSelected, pendingBinPreview } = usePlanogramStore();
 
   const isSelected = selectedId === row.id;
+  const binPreview =
+    pendingBinPreview?.rowId === row.id ? pendingBinPreview : null;
 
   useFrame(() => {
     if (meshRef.current) {
@@ -163,11 +165,11 @@ export function Row({
       {(() => {
         let xCursor = -safeRackWidth / 2
         const maxBinH = Math.max(0.08, rowHeight - 0.08)
-        return row.bins.map((bin) => {
+        const existing = row.bins.map((bin) => {
           const n = Math.max(row.bins.length, 1)
           const fallbackWidth = safeRackWidth / n
           const slotWidth = safeDim(bin.width, fallbackWidth)
-          const binWidth = Math.min(slotWidth, fallbackWidth * 0.95)
+          const binWidth = Math.min(slotWidth, safeRackWidth) // keep bins inside row span after reflow
           const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95)
           // API sometimes stores shelf-board thickness as bin.height — use row
           // cavity for layout so products aren't crushed to a few centimeters.
@@ -189,6 +191,44 @@ export function Row({
             />
           )
         })
+
+        // Ghost bin while Add Bin modal is open
+        let ghost = null
+        if (binPreview) {
+          const maxBinH = Math.max(0.08, rowHeight - 0.08)
+          const previewW = Math.min(
+            safeDim(binPreview.width, safeRackWidth * 0.25),
+            Math.max(0.05, safeRackWidth - (xCursor + safeRackWidth / 2) + 0.001),
+            safeRackWidth,
+          )
+          const previewD = Math.min(safeDim(binPreview.depth, safeRackDepth * 0.9), safeRackDepth * 0.95)
+          const rawH = safeDim(binPreview.height, maxBinH)
+          const previewH = rawH < maxBinH * 0.35 ? maxBinH : Math.min(rawH, maxBinH)
+          const gx = xCursor + previewW / 2
+          const gy = -rowHeight / 2 + previewH / 2 + 0.03
+          const overflows = gx + previewW / 2 > safeRackWidth / 2 + 0.002
+          ghost = (
+            <group position={[gx, gy, z]} raycast={() => null}>
+              <mesh>
+                <boxGeometry args={[previewW, previewH, previewD]} />
+                <meshStandardMaterial
+                  color={overflows ? "#ef4444" : "#2C5282"}
+                  transparent
+                  opacity={0.35}
+                  depthWrite={false}
+                />
+                <Edges color={overflows ? "#b91c1c" : "#1e3a5f"} />
+              </mesh>
+            </group>
+          )
+        }
+
+        return (
+          <>
+            {existing}
+            {ghost}
+          </>
+        )
       })()}
 
       <RowDividerPosmMesh

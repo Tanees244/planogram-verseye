@@ -28,6 +28,7 @@ import {
   productFacingWidth,
   type CascadeException,
 } from "@/utils/layoutCascade";
+import { maxFacingsInBinVolume } from "@/utils/facingPack";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
 import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
 import type { SceneTheme } from "@/constants/sceneTheme";
@@ -95,6 +96,14 @@ export interface AttachFacingPreview {
   color?: string;
 }
 
+/** Ghost bin on the selected row while Add Bin modal is open. */
+export interface PendingBinPreview {
+  rowId: string;
+  width: number;
+  depth: number;
+  height: number;
+}
+
 export interface Bin {
   id: string;
   width: number;
@@ -130,6 +139,12 @@ export interface RackSide {
   outer?: ZoneFootprint | null;
   header?: ZoneVolume | null;
   footer?: ZoneVolume | null;
+  /** API side cavity metrics when present. */
+  dimensions?: {
+    usableWidth?: number | null;
+    usableDepth?: number | null;
+    usableHeight?: number | null;
+  } | null;
   rows: Row[];
 }
 
@@ -224,6 +239,9 @@ export interface PlanogramState {
   /** Live facing ghosts while Attach Product modal edits quantity / dims. */
   attachFacingPreview: AttachFacingPreview | null;
   setAttachFacingPreview: (preview: AttachFacingPreview | null) => void;
+  /** Ghost bin on row while Add Bin modal edits dimensions. */
+  pendingBinPreview: PendingBinPreview | null;
+  setPendingBinPreview: (preview: PendingBinPreview | null) => void;
   startProductPlacement: (product: PendingProductParams) => void;
   cancelProductPlacement: () => void;
   placeProductOnBin: (
@@ -586,6 +604,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   pendingProductParams: null,
   productDropHover: null,
   attachFacingPreview: null,
+  pendingBinPreview: null,
   customRackBuilderOpen: false,
   customRackDraft: createBlankCustomRack(),
   editingCustomRackId: null,
@@ -662,6 +681,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }),
   setProductDropHover: (hover) => set({ productDropHover: hover }),
   setAttachFacingPreview: (preview) => set({ attachFacingPreview: preview }),
+  setPendingBinPreview: (preview) => set({ pendingBinPreview: preview }),
   startProductPlacement: (product) => {
     set({
       isPlacingProduct: true,
@@ -1659,24 +1679,39 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         reason: `Product (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) exceeds bin (${(bin.width * 100).toFixed(0)}×${(bin.depth * 100).toFixed(0)}×${(fitHeight * 100).toFixed(0)} cm)`,
       };
     }
-    // bin.width ≥ Σ (product.width × quantity).
+    // Pack left→right then front→back (width × depth footprint).
     // When `quantity` is the merged total for an existing SKU, drop that SKU's
-    // current facings from used width so they aren't counted twice.
+    // current facings so they aren't counted twice.
     const otherProducts = excludeProductId
       ? bin.products.filter((p) => resolveEntityId(p.id) !== resolveEntityId(excludeProductId) && p.id !== excludeProductId)
       : bin.products;
-    const usedWidth = binOccupiedFacingWidth(otherProducts);
-    const need = productFacingWidth({ width: product.width, quantity: qty });
-    const free = bin.width - usedWidth;
-    if (need > free + 0.001) {
-      const maxNew = Math.max(0, Math.floor(free / product.width + 1e-6));
-      const maxTotal = Math.max(0, Math.floor(bin.width / product.width + 1e-6));
+    const usedFacings = otherProducts.reduce(
+      (sum, p) => sum + Math.max(1, Math.floor(Number(p.quantity) || 1)),
+      0,
+    );
+    const maxTotal = maxFacingsInBinVolume(
+      bin.width,
+      bin.depth,
+      fitHeight,
+      product.width,
+      product.depth,
+      product.height,
+    );
+    const cols = Math.max(0, Math.floor(bin.width / product.width + 1e-6));
+    const depthRows = Math.max(0, Math.floor(bin.depth / product.depth + 1e-6));
+    const stackLayers = Math.max(0, Math.floor(fitHeight / product.height + 1e-6));
+    const maxNew = Math.max(0, maxTotal - usedFacings);
+    if (qty > maxNew) {
+      const mergedHint = Boolean(excludeProductId);
+      const gridLabel = `${cols} across × ${depthRows} deep × ${stackLayers} stacked`;
       return {
         fits: false,
         reason:
           maxNew > 0
-            ? `${qty} facing${qty === 1 ? '' : 's'} need ${(need * 100).toFixed(0)} cm of shelf width (${(product.width * 100).toFixed(0)} cm each) but only ${(free * 100).toFixed(0)} cm is free (used ${(usedWidth * 100).toFixed(0)} cm of ${(bin.width * 100).toFixed(0)} cm). Max ${maxNew} more facing${maxNew === 1 ? '' : 's'} (bin fits ${maxTotal} total).`
-            : `Product facing (${(product.width * 100).toFixed(0)} cm) is too wide or bin shelf (${(bin.width * 100).toFixed(0)} cm) is full.`,
+            ? mergedHint
+              ? `${qty} facing${qty === 1 ? "" : "s"} exceed bin capacity (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm · ${gridLabel} = ${maxTotal} max).`
+              : `${qty} facing${qty === 1 ? "" : "s"} exceed remaining capacity (${gridLabel}). Only ${maxNew} more can fit.`
+            : `Product facing (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) does not fit remaining shelf space.`,
       };
     }
     return { fits: true };
@@ -1845,6 +1880,17 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     if (!local.success) {
       return { success: false, message: local.reason ?? 'Failed to attach product locally' };
     }
+
+    // Refresh from server so bin/product placement matches canonical layout
+    // (avoids products sitting too low until a manual reload).
+    if (canAttachInventory) {
+      try {
+        await get().reloadStoreLayout();
+      } catch {
+        /* non-fatal — local add already succeeded */
+      }
+    }
+
     return {
       success: true,
       message: canAttachInventory

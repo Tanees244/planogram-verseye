@@ -19,13 +19,14 @@ import {
 import {
   fetchBinInventory,
   facingCapacityMessage,
-  maxFacingsForShelf,
+  maxFacingsForShelfFootprint,
   remainingFacingsForShelf,
   resolveOccupiedFacingWidthM,
   usedShelfWidthM,
   type BinInventoryData,
 } from '@/utils/binInventoryApi'
 import { FacingShelfPreview } from '@/components/FacingShelfPreview'
+import { FacingBin3DPreview } from '@/components/FacingBin3DPreview'
 import { usePlanogramStore } from '@/store/planogramStore'
 
 interface AttachProductToBinModalProps {
@@ -289,23 +290,43 @@ export default function AttachProductToBinModal({
       : 0
 
   const binWidthM = inventory?.width ?? 0
+  const binDepthM = inventory?.depth ?? 0
+  const binHeightM = inventory?.height ?? 0
   const occupiedFacingWidthM = resolveOccupiedFacingWidthM(inventory, racks, binId)
   const stockFacingWidthM =
     occupiedFacingWidthM && occupiedFacingWidthM > 0 ? occupiedFacingWidthM : facingWidthM
   const capacityFacingWidthM = facingWidthM > 0 ? facingWidthM : stockFacingWidthM
+  const capacityFacingDepthM = facingDepthM > 0 ? facingDepthM : capacityFacingWidthM
+  const capacityFacingHeightM = facingHeightM > 0 ? facingHeightM : capacityFacingWidthM
   // Width already occupied on shelf — use real facing width × qty, not API maxQuantity
   const usedWidthM = usedShelfWidthM(inventory, {
     facingWidthM: stockFacingWidthM,
     racks,
     binId,
   })
+  const placedFacings = inventory?.sku?.quantity ?? 0
   const shelfMaxTotal =
     binWidthM > 0 && capacityFacingWidthM > 0
-      ? maxFacingsForShelf(binWidthM, capacityFacingWidthM)
+      ? maxFacingsForShelfFootprint(
+          binWidthM,
+          binDepthM > 0 ? binDepthM : null,
+          capacityFacingWidthM,
+          capacityFacingDepthM,
+          {
+            binHeightM: binHeightM > 0 ? binHeightM : null,
+            facingHeightM: capacityFacingHeightM,
+          },
+        )
       : null
   const shelfRemaining =
     binWidthM > 0 && capacityFacingWidthM > 0
-      ? remainingFacingsForShelf(binWidthM, capacityFacingWidthM, usedWidthM)
+      ? remainingFacingsForShelf(binWidthM, capacityFacingWidthM, usedWidthM, {
+          binDepthM: binDepthM > 0 ? binDepthM : undefined,
+          facingDepthM: capacityFacingDepthM,
+          binHeightM: binHeightM > 0 ? binHeightM : undefined,
+          facingHeightM: capacityFacingHeightM,
+          placedFacings,
+        })
       : null
   const maxAttachQty =
     shelfRemaining != null && shelfRemaining >= 0
@@ -314,7 +335,13 @@ export default function AttachProductToBinModal({
 
   const capacityError =
     quantityOk && binWidthM > 0 && facingWidthM > 0
-      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedWidthM)
+      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedWidthM, {
+          binDepthM: binDepthM > 0 ? binDepthM : undefined,
+          facingDepthM: facingDepthM > 0 ? facingDepthM : undefined,
+          binHeightM: binHeightM > 0 ? binHeightM : undefined,
+          facingHeightM: facingHeightM > 0 ? facingHeightM : undefined,
+          placedFacings,
+        })
       : null
 
   // Push live facing ghosts to the selected bin in the 3D scene
@@ -730,7 +757,7 @@ export default function AttachProductToBinModal({
           required
           hint={
             maxAttachQty != null
-              ? `Up to ${maxAttachQty} facing${maxAttachQty === 1 ? '' : 's'} can fit on this shelf`
+              ? `Up to ${maxAttachQty} facing${maxAttachQty === 1 ? '' : 's'} can fit (${shelfMaxTotal != null ? `${shelfMaxTotal} max W×D×H` : 'shelf'})`
               : facingWidthM > 0
                 ? 'Select a SKU with dimensions to calculate capacity'
                 : 'Number of product facings to place in this bin'
@@ -765,15 +792,30 @@ export default function AttachProductToBinModal({
         </FormField>
 
         {inventory && inventory.width > 0 && facingWidthM > 0 && facingHeightM > 0 && (
-          <FacingShelfPreview
-            binWidthM={inventory.width}
-            binHeightM={Math.max(inventory.height, 0.1)}
-            facingWidthM={facingWidthM}
-            facingHeightM={facingHeightM}
-            quantity={quantityOk ? parsedQuantity : 0}
-            usedWidthM={usedWidthM}
-            label="Live facing preview"
-          />
+          <div className="space-y-2">
+            <FacingBin3DPreview
+              binWidthM={inventory.width}
+              binHeightM={Math.max(inventory.height, 0.1)}
+              binDepthM={Math.max(inventory.depth, 0.1)}
+              facingWidthM={facingWidthM}
+              facingHeightM={facingHeightM}
+              facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
+              quantity={quantityOk ? parsedQuantity : 0}
+              occupiedFacings={placedFacings}
+              label="3D bin preview"
+            />
+            <FacingShelfPreview
+              binWidthM={inventory.width}
+              binHeightM={Math.max(inventory.height, 0.1)}
+              binDepthM={Math.max(inventory.depth, 0.1)}
+              facingWidthM={facingWidthM}
+              facingHeightM={facingHeightM}
+              facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
+              quantity={quantityOk ? parsedQuantity : 0}
+              occupiedFacings={placedFacings}
+              label="Front & top packing"
+            />
+          </div>
         )}
 
         {mode === 'browse' ? (

@@ -79,6 +79,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     saveLayoutError,
     rotateRack,
     setRackRotationY,
+    setPendingBinPreview,
   } = usePlanogramStore();
 
   const [showRackModal, setShowRackModal] = useState(false);
@@ -101,6 +102,50 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [binDepthInput, setBinDepthInput] = useState("");
   const [binHeightInput, setBinHeightInput] = useState("");
   const [binNameError, setBinNameError] = useState<string | null>(null);
+
+  // Sync ghost bin onto selected row while Add Bin modal is open
+  useEffect(() => {
+    if (!showBinModal || selectedType !== 'row' || !selectedId) {
+      setPendingBinPreview(null)
+      return
+    }
+    const rack = area.racks.find((r: Rack) =>
+      r.sides.some((s: RackSide) => s.rows.some((row: Row) => row.id === selectedId)),
+    )
+    const row = rack?.sides
+      .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedId))
+      ?.rows.find((r: Row) => r.id === selectedId)
+    if (!row || !rack) {
+      setPendingBinPreview(null)
+      return
+    }
+    const rowW =
+      (typeof row.width === 'number' && row.width > 0
+        ? row.width
+        : typeof row.span === 'number' && row.span > 0
+          ? row.span
+          : rack.customConfig
+            ? computeCustomRackDimensions(rack.customConfig).innerWidth
+            : rack.width * 0.85) || DEFAULT_RACK_WIDTH
+    const occupied = row.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0)
+    const freeW = Math.max(0.1, rowW - occupied)
+    const rowD = Number(rack.depth) > 0 ? Number(rack.depth) : DEFAULT_RACK_DEPTH
+    const rowH = Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING
+    const width = parseFloat(binWidthInput) || Math.min(freeW, Math.max(0.15, freeW || rowW * 0.25))
+    const depth = parseFloat(binDepthInput) || rowD * 0.9
+    const height = parseFloat(binHeightInput) || Math.min(rowH * 0.9, Math.max(0.15, rowH - 0.05))
+    setPendingBinPreview({ rowId: selectedId, width, depth, height })
+    return () => setPendingBinPreview(null)
+  }, [
+    showBinModal,
+    selectedType,
+    selectedId,
+    binWidthInput,
+    binDepthInput,
+    binHeightInput,
+    area.racks,
+    setPendingBinPreview,
+  ])
 
   // Location state for the Add Rack form
   const [locations, setLocations] = useState<Location[]>([]);
@@ -560,6 +605,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           setBinDepthInput("");
           setBinHeightInput("");
           setBinNameError(null);
+          setPendingBinPreview(null);
         }
       } finally {
         setAddingBin(false);
@@ -631,7 +677,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
 
         <AddBinModal
           open={showBinModal}
-          onClose={() => !addingBin && setShowBinModal(false)}
+          onClose={() => {
+            if (!addingBin) {
+              setShowBinModal(false)
+              setPendingBinPreview(null)
+            }
+          }}
           binName={binNameInput}
           binWidth={binWidthInput}
           binDepth={binDepthInput}
@@ -640,6 +691,16 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           onBinWidthChange={setBinWidthInput}
           onBinDepthChange={setBinDepthInput}
           onBinHeightChange={setBinHeightInput}
+          rowWidthM={
+            (typeof row?.width === 'number' && row.width > 0
+              ? row.width
+              : typeof row?.span === 'number' && row.span > 0
+                ? row.span
+                : rowMaxWidth) || DEFAULT_RACK_WIDTH
+          }
+          rowDepthM={Number(rack?.depth) > 0 ? Number(rack?.depth) : DEFAULT_RACK_DEPTH}
+          rowHeightM={Number(row?.height) > 0 ? Number(row?.height) : GROCERY_SHELF_SPACING}
+          occupiedWidthM={row?.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0) ?? 0}
           error={binNameError}
           isSubmitting={addingBin}
           onSubmit={handleAddBin}

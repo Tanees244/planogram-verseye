@@ -73,11 +73,42 @@ export function BinInventoryPanel({
       racks,
       binId,
     })
+    const localBin = racks
+      ? (() => {
+          for (const rack of racks) {
+            for (const side of rack.sides) {
+              for (const row of side.rows) {
+                const b = row.bins.find((x) => x.id === binId)
+                if (b) return b
+              }
+            }
+          }
+          return null
+        })()
+      : null
+    const localProduct = localBin?.products.find((p) => {
+      const pid = resolveProductFacingId(p.id)
+      return pid === inventory.sku!.skuId || p.id === inventory.sku!.skuId
+    })
+    const facingDepthM =
+      localProduct && Number(localProduct.depth) > 0
+        ? Number(localProduct.depth)
+        : occupiedFacingWidthM
+    const facingHeightM =
+      localProduct && Number(localProduct.height) > 0
+        ? Number(localProduct.height)
+        : occupiedFacingWidthM
     return computeShelfCapacity(
       inventory.width,
       occupiedFacingWidthM,
       inventory.sku.quantity,
       used,
+      {
+        binDepthM: inventory.depth > 0 ? inventory.depth : undefined,
+        facingDepthM,
+        binHeightM: inventory.height > 0 ? inventory.height : undefined,
+        facingHeightM,
+      },
     )
   }, [inventory, occupiedFacingWidthM, racks, binId])
 
@@ -184,8 +215,19 @@ export function BinInventoryPanel({
                     <>
                       {shelfCapacity.placedFacings} / {shelfCapacity.maxTotalFacings} facings
                       {' '}· {shelfCapacity.remainingFacings} more can fit
-                      {' '}· {(shelfCapacity.facingWidthM * 100).toFixed(0)} cm each on{' '}
-                      {(shelfCapacity.binWidthM * 100).toFixed(0)} cm shelf
+                      {shelfCapacity.cols != null && shelfCapacity.depthRows != null
+                        ? ` · ${shelfCapacity.cols}×${shelfCapacity.depthRows}${
+                            shelfCapacity.stackLayers != null && shelfCapacity.stackLayers > 1
+                              ? `×${shelfCapacity.stackLayers}`
+                              : ''
+                          } grid`
+                        : ''}
+                      {' '}· {(shelfCapacity.facingWidthM * 100).toFixed(0)} cm facing on{' '}
+                      {(shelfCapacity.binWidthM * 100).toFixed(0)}
+                      {shelfCapacity.binDepthM
+                        ? `×${(shelfCapacity.binDepthM * 100).toFixed(0)}`
+                        : ''}{' '}
+                      cm shelf
                     </>
                   ) : (
                     <>

@@ -3,6 +3,7 @@
 import { Modal } from '@/components/ui/Modal'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Spinner } from '@/components/Spinner'
+import { BinCreatePreview } from '@/components/BinCreatePreview'
 
 interface AddBinModalProps {
   open: boolean
@@ -15,6 +16,11 @@ interface AddBinModalProps {
   onBinWidthChange?: (v: string) => void
   onBinDepthChange?: (v: string) => void
   onBinHeightChange?: (v: string) => void
+  /** Selected row dimensions for live preview (meters). */
+  rowWidthM?: number
+  rowDepthM?: number
+  rowHeightM?: number
+  occupiedWidthM?: number
   error?: string | null
   onSubmit: () => void
   isSubmitting?: boolean
@@ -31,16 +37,29 @@ export function AddBinModal({
   onBinWidthChange,
   onBinDepthChange,
   onBinHeightChange,
+  rowWidthM,
+  rowDepthM,
+  rowHeightM,
+  occupiedWidthM = 0,
   error,
   onSubmit,
   isSubmitting,
 }: AddBinModalProps) {
+  const defaultW = rowWidthM && rowWidthM > 0 ? Math.max(0.1, (rowWidthM - occupiedWidthM) || rowWidthM * 0.25) : 0.35
+  const defaultD = rowDepthM && rowDepthM > 0 ? rowDepthM * 0.9 : 0.35
+  const defaultH = rowHeightM && rowHeightM > 0 ? Math.min(rowHeightM * 0.9, rowHeightM - 0.05) : 0.35
+
+  const previewW = parseFloat(binWidth ?? '') || defaultW
+  const previewD = parseFloat(binDepth ?? '') || defaultD
+  const previewH = parseFloat(binHeight ?? '') || defaultH
+  const showPreview = Boolean(rowWidthM && rowDepthM && rowHeightM)
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Add Bin"
-      subtitle="Provide bin name and dimensions (W × D × H in meters)."
+      subtitle="Provide bin name and dimensions (W × D × H in meters). Preview updates on the selected row."
       maxWidth="md"
       footer={
         <>
@@ -70,7 +89,7 @@ export function AddBinModal({
             <Input
               inputMode="decimal"
               value={binWidth ?? ''}
-              placeholder="auto"
+              placeholder={defaultW.toFixed(2)}
               onChange={(e) => onBinWidthChange?.(e.target.value)}
             />
           </FormField>
@@ -78,7 +97,7 @@ export function AddBinModal({
             <Input
               inputMode="decimal"
               value={binDepth ?? ''}
-              placeholder="auto"
+              placeholder={defaultD.toFixed(2)}
               onChange={(e) => onBinDepthChange?.(e.target.value)}
             />
           </FormField>
@@ -86,11 +105,23 @@ export function AddBinModal({
             <Input
               inputMode="decimal"
               value={binHeight ?? ''}
-              placeholder="auto"
+              placeholder={defaultH.toFixed(2)}
               onChange={(e) => onBinHeightChange?.(e.target.value)}
             />
           </FormField>
         </div>
+
+        {showPreview && (
+          <BinCreatePreview
+            rowWidthM={rowWidthM!}
+            rowDepthM={rowDepthM!}
+            rowHeightM={rowHeightM!}
+            binWidthM={previewW}
+            binDepthM={previewD}
+            binHeightM={previewH}
+            occupiedWidthM={occupiedWidthM}
+          />
+        )}
       </div>
     </Modal>
   )
