@@ -537,6 +537,29 @@ export function TraditionalView() {
         onClose={() => setShowAddBinModal(false)}
         binName={binNameInput}
         onBinNameChange={(v) => { setBinNameInput(v); setBinNameError(null) }}
+        {...(() => {
+          if (!selectedRowId) return {}
+          const rack = area.racks.find((r: Rack) =>
+            r.sides.some((s: RackSide) => s.rows.some((row: Row) => row.id === selectedRowId)),
+          )
+          const row = rack?.sides
+            .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedRowId))
+            ?.rows.find((r: Row) => r.id === selectedRowId)
+          if (!rack || !row) return {}
+          const rowW =
+            (typeof row.width === 'number' && row.width > 0 && row.width) ||
+            (typeof row.span === 'number' && row.span > 0 && row.span) ||
+            rack.width * 0.85
+          return {
+            rowWidthM: rowW,
+            rowDepthM: Number(rack.depth) > 0 ? Number(rack.depth) : DEFAULT_RACK_DEPTH,
+            rowHeightM: Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING,
+            occupiedWidthM: row.bins.reduce(
+              (sum: number, b: Bin) => sum + (Number(b.width) || 0),
+              0,
+            ),
+          }
+        })()}
         error={binNameError}
         isSubmitting={addingBin}
         onSubmit={async () => {

@@ -17,6 +17,8 @@ import { getPlanogramTokenFromCookie } from '@verseye/utils'
 
 type Step = 'select' | 'preview' | 'results'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 interface StoreOption {
   id: string
   name: string
@@ -189,6 +191,8 @@ export function MultiRackReflowModal({
           storeId
 
         // Prefer live editor racks when targeting the open store (freshest + dimensions).
+        // Only server UUID racks can be Kind-C targets — local-only ids must not appear
+        // (sending them used to look like "reflow created a different rack").
         if (storeId === selectedStoreId && areaRacks.length > 0) {
           setCandidates(
             areaRacks
@@ -200,7 +204,7 @@ export function MultiRackReflowModal({
                 storeId,
                 storeName: storeName || 'Current store',
               }))
-              .filter((r) => r.id !== sourceRackId),
+              .filter((r) => UUID_RE.test(r.id) && r.id !== sourceRackId),
           )
           return
         }
@@ -229,7 +233,10 @@ export function MultiRackReflowModal({
                 storeName: storeName || storeId,
               }
             })
-            .filter((r: TargetRackOption) => r.id && r.id !== sourceRackId),
+            .filter(
+              (r: TargetRackOption) =>
+                UUID_RE.test(r.id) && r.id !== sourceRackId,
+            ),
         )
       } catch {
         setCandidates([])
@@ -350,10 +357,18 @@ export function MultiRackReflowModal({
     >
       <div className="space-y-4 p-1">
         <p className="text-sm text-gray-600">
-          Pick existing target racks in this store or another. Targets keep their own outer size
-          and floor placement. Source SKU/bin topology is mapped and facings reflow. Use{' '}
-          <strong>Publish</strong> only when you need to <em>create new</em> racks.
+          Pick <strong>existing</strong> target racks in this store or another. Targets keep their
+          own outer size and floor placement; source SKU/bin topology is mapped and facings
+          reflow onto those fixtures. This does <strong>not</strong> create new racks — use{' '}
+          <strong>Publish to stores</strong> only when you intentionally want to clone a new
+          fixture into another store.
         </p>
+        {!UUID_RE.test(sourceRackId) && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Source rack has no server id yet. Place/save it on the floor first before multi-rack
+            reflow.
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">

@@ -184,24 +184,22 @@ export interface PosmItemListItem {
 
 
 
+/** Bin-local product placement in meters from the bin face bottom-left. */
+export interface BinProductPosition {
+  x: Meters | null;
+  y: Meters | null;
+}
+
 export interface BinProduct {
-
   id: string | null;
-
   name: string;
-
   width: Meters;
-
   depth: Meters;
-
   height: Meters;
-
-  weightKg: Meters | null;
-
+  weightKg: number | null;
   quantity: number;
-
   imageUrl: string | null;
-
+  position: BinProductPosition | null;
 }
 
 

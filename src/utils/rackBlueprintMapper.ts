@@ -312,7 +312,17 @@ function mapProductForApi(product: Product) {
     depth: product.depth,
     height: product.height,
     quantity: Math.max(1, Math.floor(Number(product.quantity) || 1)),
-    imageUrl: product.imageUrl ?? null,
+    // Read URLs may be short-lived presigned links. The API resolves the
+    // catalog image again, so never persist that URL as product state.
+    imageUrl: null,
+    ...(product.position !== null && product.position !== undefined
+      ? {
+          position: {
+            x: product.position.x,
+            y: product.position.y,
+          },
+        }
+      : {}),
     weightKg: null,
   };
 }
@@ -360,7 +370,10 @@ function mapRowForApi(
     width: rowWidth,
     span: rowWidth,
     height: row.height,
-    depth: rowDepth,
+    // Keep the row's own usable depth (per-side, e.g. 0.55 on a double-sided
+    // gondola) — falling back to rack inner depth would inflate it to the
+    // full cavity and break the API's bin-depth rule.
+    depth: Number(row.depth) > 0 ? Number(row.depth) : rowDepth,
     sided: row.sided ?? 'one',
     dividerThickness,
     yStart,
@@ -399,10 +412,30 @@ export function resolveRackOuter(rack: Rack): { width: number; depth: number; he
 
 /** Max row span/width allowed by API = rack inner cavity width. */
 export function resolveRackInner(rack: Rack): { width: number; depth: number; height: number } {
-  if (rack.inner?.width != null && Number(rack.inner.width) > 0) {
+  const hasInner =
+    rack.inner &&
+    (Number(rack.inner.width) > 0 || Number(rack.inner.depth) > 0 || Number(rack.inner.height) > 0);
+
+  if (hasInner) {
+    // Prefer explicit inner axes. When depth is missing, prefer a side inner/depth
+    // over outer×0.9 — freezers/cabinets often report outer depth much larger than
+    // the usable cavity the API enforces (e.g. 0.99 outer vs 0.55 inner).
+    let depthFallback = rack.depth * 0.9;
+    for (const side of rack.sides ?? []) {
+      const sideInnerD = Number(side.inner?.depth);
+      if (Number.isFinite(sideInnerD) && sideInnerD > 0) {
+        depthFallback = sideInnerD;
+        break;
+      }
+      const sideD = Number(side.depth);
+      if (Number.isFinite(sideD) && sideD > 0) {
+        depthFallback = sideD;
+        break;
+      }
+    }
     return {
-      width: num(rack.inner.width, rack.width * 0.85),
-      depth: num(rack.inner?.depth, rack.depth * 0.9),
+      width: num(rack.inner?.width, rack.width * 0.85),
+      depth: num(rack.inner?.depth, depthFallback),
       height: num(rack.inner?.height, 2),
     };
   }
@@ -413,9 +446,22 @@ export function resolveRackInner(rack: Rack): { width: number; depth: number; he
   // Fallback when shell/inner missing: assume default wall thickness 0.08m each side
   // (matches backend default so span validates: outer − 2×0.08)
   const wallT = num(rack.shell?.wallThickness, 0.08);
+  let depth = Math.max(0.1, rack.depth - wallT * 2);
+  for (const side of rack.sides ?? []) {
+    const sideInnerD = Number(side.inner?.depth);
+    if (Number.isFinite(sideInnerD) && sideInnerD > 0) {
+      depth = sideInnerD;
+      break;
+    }
+    const sideD = Number(side.depth);
+    if (Number.isFinite(sideD) && sideD > 0) {
+      depth = sideD;
+      break;
+    }
+  }
   return {
     width: Math.max(0.1, rack.width - wallT * 2),
-    depth: Math.max(0.1, rack.depth - wallT * 2),
+    depth,
     height: 2,
   };
 }
@@ -429,12 +475,62 @@ export function clampRowSpanToInner(rack: Rack, requested?: number | null): numb
   return Math.min(requested, max);
 }
 
-/** Max bin depth allowed by API = rack inner cavity depth. */
-export function clampBinDepthToInner(rack: Rack, requested?: number | null): number {
-  const inner = resolveRackInner(rack);
-  const max = Math.max(0.05, inner.depth - 0.001);
+/** Max bin depth allowed by API = rack/side inner cavity depth. */
+export function clampBinDepthToInner(
+  rack: Rack,
+  requested?: number | null,
+  rowId?: string | null,
+): number {
+  const max = maxBinDepthM(rack, rowId);
   if (requested == null || !Number.isFinite(requested) || requested <= 0) return max;
   return Math.min(requested, max);
+}
+
+/** Usable bin depth ceiling in meters (inner cavity, with float epsilon). */
+export function maxBinDepthM(rack: Rack, rowId?: string | null): number {
+  let limit = 0;
+
+  if (rowId) {
+    for (const side of rack.sides) {
+      const row = side.rows.find((r) => r.id === rowId);
+      if (!row) continue;
+
+      // Priority mirrors the API's business rule: the row's own depth, then
+      // the side depth. side.inner.depth is the FULL cavity (both faces on a
+      // double-sided gondola, e.g. 0.94) and must NOT outrank side.depth (0.55).
+      const rowD = Number(row.depth);
+      const sideD = Number(side.depth);
+      const sideInnerD = Number(side.inner?.depth);
+      if (Number.isFinite(rowD) && rowD > 0) limit = rowD;
+      else if (Number.isFinite(sideD) && sideD > 0) limit = sideD;
+      else if (Number.isFinite(sideInnerD) && sideInnerD > 0) limit = sideInnerD;
+
+      // Existing bins already accepted by the API are a reliable ceiling too.
+      for (const bin of row.bins) {
+        const d = Number(bin.depth);
+        if (Number.isFinite(d) && d > 0) {
+          limit = limit > 0 ? Math.min(limit, d) : d;
+        }
+      }
+      break;
+    }
+  }
+
+  if (!(limit > 0)) {
+    // No row context — the smallest side depth is the safest ceiling.
+    for (const side of rack.sides ?? []) {
+      const sideD = Number(side.depth);
+      if (Number.isFinite(sideD) && sideD > 0) {
+        limit = limit > 0 ? Math.min(limit, sideD) : sideD;
+      }
+    }
+  }
+
+  if (!(limit > 0)) {
+    limit = resolveRackInner(rack).depth;
+  }
+
+  return Math.max(0.05, limit - 0.001);
 }
 
 /** Max bin height allowed by API ≈ row height (with small clearance). */
@@ -452,7 +548,15 @@ export function buildUpdateRackPayload(
   const serverRackId = rack.rackId || rack.id;
   const outer = resolveRackOuter(rack);
   const inner = resolveRackInner(rack);
-  const placement = rack.placement ?? rackToPlacement(rack);
+  // Always derive placement from the rack's *current* position/rotation.
+  // rack.placement can be stale (set at creation, not synced on later moves),
+  // and sending it would teleport the rack back on the next reload.
+  const placement: RackPlacement = {
+    position: { ...rack.position },
+    rotation: rack.rotation ? { ...rack.rotation } : { x: 0, y: 0, z: 0 },
+    snapMode: rack.placement?.snapMode ?? 'wall',
+    quadrant: rack.quadrant ?? rack.placement?.quadrant ?? null,
+  };
   const fixtureType = rack.fixtureType ?? 'GONDOLA';
 
   const payload: Record<string, unknown> = {

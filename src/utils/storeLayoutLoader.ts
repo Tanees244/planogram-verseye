@@ -73,6 +73,17 @@ function asArray(value: any): any[] {
   )
 }
 
+function normalizeProductPosition(value: unknown): { x: number | null; y: number | null } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  const axis = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return { x: axis(raw.x), y: axis(raw.y) }
+}
+
 export function normalizeSkus(skus: any[]): any[] {
   return asArray(skus).map((p: any) => {
     const attachments = asArray(p.attachments)
@@ -87,11 +98,20 @@ export function normalizeSkus(skus: any[]): any[] {
           String(a.url ?? '').toLowerCase().includes('.glb')),
     )
 
+    const id = String(p.skuId ?? p.id ?? p.productId ?? generateId())
+    // Stable fallback color from id (avoids random rainbow boxes on every reload)
+    const color =
+      typeof p.color === 'string' && p.color
+        ? p.color
+        : `#${(Array.from(id).reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 0xffffff)
+            .toString(16)
+            .padStart(6, '0')}`
+
     return {
-      id: p.skuId ?? p.id ?? p.productId ?? generateId(),
+      id,
       inventoryId: p.binInventoryId ?? p.inventoryId ?? p.id ?? undefined,
       name: p.skuName ?? p.name ?? p.productName ?? p.title ?? 'Product',
-      color: p.color ?? `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`,
+      color,
       width: safeDim(p.width, DEFAULT_PRODUCT_WIDTH),
       height: safeDim(p.height, DEFAULT_PRODUCT_HEIGHT),
       depth: safeDim(p.depth, DEFAULT_PRODUCT_DEPTH),
@@ -111,6 +131,7 @@ export function normalizeSkus(skus: any[]): any[] {
         modelFromAttachments?.storageKey ??
         modelFromAttachments?.objectKey ??
         undefined,
+      position: normalizeProductPosition(p.position),
     }
   })
 }
@@ -191,10 +212,19 @@ export function unwrapRackPayload(raw: any): any {
   return raw
 }
 
-const MAX_FACINGS = 24
+// Renderable facings per SKU. Matches FACING_PACK_VISUAL_LIMIT so a bin
+// filled to capacity (e.g. 132 = 22×6) actually shows every unit instead of
+// a single sparse front row that looks empty/floating.
+const MAX_FACINGS = 400
 
 /** Expands each SKU into N renderable facings based on its quantity (for 3D shelf display). */
-export function expandProductsByQuantity<T extends { id: string; quantity?: number }>(
+export function expandProductsByQuantity<
+  T extends {
+    id: string
+    quantity?: number
+    position?: { x: number | null; y: number | null } | null
+  },
+>(
   products: T[],
 ): T[] {
   const expanded: T[] = []
@@ -210,6 +240,9 @@ export function expandProductsByQuantity<T extends { id: string; quantity?: numb
         ...product,
         id: `${baseId}::facing-${facingCounter++}`,
         quantity: 1,
+        // A stored coordinate anchors the SKU's first facing. Additional
+        // quantity facings continue through the normal packing fallback.
+        position: i === 0 ? product.position : null,
       } as T)
     }
   }
@@ -271,6 +304,7 @@ export function normalizeRack(rawInput: any): Rack {
         return {
           id: resolveEntityId(r.rowId) ?? resolveEntityId(r.id) ?? resolveEntityId(r.rackRowId) ?? generateId(),
           height: rowHeight,
+          ...(r.depth != null && Number(r.depth) > 0 ? { depth: Number(r.depth) } : {}),
           ...(rowWidth != null
             ? {
                 width: safeDim(rowWidth, width * 0.85),
@@ -370,7 +404,19 @@ export function gridPlaceRacks(racks: Rack[], areaWidth: number, areaDepth: numb
 }
 
 /** Keep rack positions/rotations and 3D-only fields when refreshing layout data. */
-export function mergeRackPositions(existing: Rack[], fresh: Rack[]): Rack[] {
+export function mergeRackPositions(
+  existing: Rack[],
+  fresh: Rack[],
+  options?: {
+    /**
+     * Keep the existing (local) placement even when the API returns one.
+     * Use when refreshing an already-placed scene: the live session is the
+     * source of truth for positions, and server placement can be stale
+     * (e.g. after reflow / structure saves), which made racks jump.
+     */
+    preferExistingPlacement?: boolean
+  },
+): Rack[] {
   const byKey = new Map(
     existing.map((r) => [
       r.rackId || r.id,
@@ -383,17 +429,20 @@ export function mergeRackPositions(existing: Rack[], fresh: Rack[]): Rack[] {
     const prev = byKey.get(key)
     if (!prev) return rack
 
-    const hasApiPlacement = Boolean(rack.placement?.position)
+    const useApiPlacement =
+      Boolean(rack.placement?.position) && !options?.preferExistingPlacement
 
     return {
       ...rack,
-      position: hasApiPlacement ? rack.position : prev.position,
-      rotation: hasApiPlacement ? (rack.rotation ?? prev.rotation) : (prev.rotation ?? rack.rotation),
-      quadrant: hasApiPlacement ? (rack.quadrant ?? prev.quadrant) : (prev.quadrant ?? rack.quadrant),
+      position: useApiPlacement ? rack.position : prev.position,
+      rotation: useApiPlacement ? (rack.rotation ?? prev.rotation) : (prev.rotation ?? rack.rotation),
+      quadrant: useApiPlacement ? (rack.quadrant ?? prev.quadrant) : (prev.quadrant ?? rack.quadrant),
       fixtureType: rack.fixtureType ?? prev.fixtureType,
       customConfig: rack.customConfig ?? prev.customConfig,
       blueprintName: rack.blueprintName ?? prev.blueprintName,
-      placement: rack.placement ?? prev.placement,
+      placement: options?.preferExistingPlacement
+        ? (prev.placement ?? rack.placement)
+        : (rack.placement ?? prev.placement),
       outer: rack.outer ?? prev.outer,
       shell: rack.shell ?? prev.shell,
       inner: rack.inner ?? prev.inner,
@@ -488,5 +537,120 @@ export async function fetchStoreLayoutRacks(
     }),
   )
 
-  return { success: true, racks: hydrated }
+  try {
+    const withMedia = await hydrateSkuMediaFromCatalog(hydrated)
+    return { success: true, racks: withMedia }
+  } catch {
+    return { success: true, racks: hydrated }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SKU media hydration — layout endpoints often return thin product entries
+// without attachments / model keys, so 3D models never render. Fill the gaps
+// from the catalog SKU endpoint (cached per session).
+// ---------------------------------------------------------------------------
+
+interface SkuMedia {
+  imageUrl?: string
+  imageStorageKey?: string
+  modelUrl?: string
+  modelStorageKey?: string
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const skuMediaCache = new Map<string, SkuMedia | null>()
+
+function extractSkuMedia(s: any): SkuMedia {
+  const attachments = asArray(s?.attachments)
+  const imageAttachment = attachments.find(
+    (a: any) => a && a.is3D !== true && (a.storageKey || a.objectKey || a.url),
+  )
+  const modelAttachment = attachments.find(
+    (a: any) =>
+      a &&
+      (a.is3D === true ||
+        String(a.storageKey ?? a.objectKey ?? '').toLowerCase().endsWith('.glb') ||
+        String(a.url ?? '').toLowerCase().includes('.glb')),
+  )
+  return {
+    imageUrl: s?.imageUrl ?? s?.image ?? imageAttachment?.url ?? undefined,
+    imageStorageKey:
+      s?.imageStorageKey ?? imageAttachment?.storageKey ?? imageAttachment?.objectKey ?? undefined,
+    modelUrl: s?.modelUrl ?? s?.glbUrl ?? s?.model3dUrl ?? modelAttachment?.url ?? undefined,
+    modelStorageKey:
+      s?.modelStorageKey ??
+      s?.glbStorageKey ??
+      modelAttachment?.storageKey ??
+      modelAttachment?.objectKey ??
+      undefined,
+  }
+}
+
+function productNeedsMedia(p: any): boolean {
+  return !(p?.modelUrl || p?.modelStorageKey) || !(p?.imageUrl || p?.imageStorageKey)
+}
+
+async function fetchSkuMedia(skuId: string, headers: Record<string, string>): Promise<SkuMedia | null> {
+  if (skuMediaCache.has(skuId)) return skuMediaCache.get(skuId) ?? null
+  try {
+    const res = await fetch(`/api/products/${encodeURIComponent(skuId)}`, { headers })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || json?.isRequestSuccess === false) {
+      skuMediaCache.set(skuId, null)
+      return null
+    }
+    const media = extractSkuMedia(json?.data ?? json)
+    skuMediaCache.set(skuId, media)
+    return media
+  } catch {
+    skuMediaCache.set(skuId, null)
+    return null
+  }
+}
+
+/** Fill missing image / 3D model fields on bin products from the SKU catalog. */
+export async function hydrateSkuMediaFromCatalog(racks: Rack[]): Promise<Rack[]> {
+  const wanted = new Set<string>()
+  for (const rack of racks) {
+    for (const side of rack.sides) {
+      for (const row of side.rows) {
+        for (const bin of row.bins) {
+          for (const p of bin.products) {
+            const skuId = String(p.id).replace(/::facing-\d+$/, '')
+            if (UUID_RE.test(skuId) && productNeedsMedia(p)) wanted.add(skuId)
+          }
+        }
+      }
+    }
+  }
+  if (wanted.size === 0) return racks
+
+  const headers = { Accept: 'application/json', ...(await authHeaders()) }
+  await Promise.all([...wanted].map((skuId) => fetchSkuMedia(skuId, headers)))
+
+  return racks.map((rack) => ({
+    ...rack,
+    sides: rack.sides.map((side) => ({
+      ...side,
+      rows: side.rows.map((row) => ({
+        ...row,
+        bins: row.bins.map((bin) => ({
+          ...bin,
+          products: bin.products.map((p) => {
+            const skuId = String(p.id).replace(/::facing-\d+$/, '')
+            const media = skuMediaCache.get(skuId)
+            if (!media) return p
+            return {
+              ...p,
+              imageUrl: p.imageUrl ?? media.imageUrl,
+              imageStorageKey: (p as any).imageStorageKey ?? media.imageStorageKey,
+              modelUrl: p.modelUrl ?? media.modelUrl,
+              modelStorageKey: p.modelStorageKey ?? media.modelStorageKey,
+            }
+          }),
+        })),
+      })),
+    })),
+  }))
 }

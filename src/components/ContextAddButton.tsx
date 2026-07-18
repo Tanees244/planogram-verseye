@@ -41,6 +41,7 @@ import {
   DEFAULT_RACK_WIDTH,
   GROCERY_SHELF_SPACING,
 } from '@/constants/dimensions'
+import { maxBinDepthM } from '@/utils/rackBlueprintMapper'
 import { cn } from '@/lib/cn'
 import { usePlanogramExport } from '@/utils/planogramExport'
 export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
@@ -129,10 +130,10 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             : rack.width * 0.85) || DEFAULT_RACK_WIDTH
     const occupied = row.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0)
     const freeW = Math.max(0.1, rowW - occupied)
-    const rowD = Number(rack.depth) > 0 ? Number(rack.depth) : DEFAULT_RACK_DEPTH
+    const rowD = maxBinDepthM(rack, selectedId)
     const rowH = Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING
     const width = parseFloat(binWidthInput) || Math.min(freeW, Math.max(0.15, freeW || rowW * 0.25))
-    const depth = parseFloat(binDepthInput) || rowD * 0.9
+    const depth = parseFloat(binDepthInput) || rowD
     const height = parseFloat(binHeightInput) || Math.min(rowH * 0.9, Math.max(0.15, rowH - 0.05))
     setPendingBinPreview({ rowId: selectedId, width, depth, height })
     return () => setPendingBinPreview(null)
@@ -583,9 +584,21 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       }
       setAddingBin(true);
       try {
+        const maxDepth = rack ? maxBinDepthM(rack, selectedId) : undefined;
+        const parsedDepth = parseFloat(binDepthInput);
+        if (
+          maxDepth != null &&
+          Number.isFinite(parsedDepth) &&
+          parsedDepth > maxDepth + 1e-6
+        ) {
+          setBinNameError(
+            `Bin depth (${parsedDepth.toFixed(3)}m) exceeds the available space (${maxDepth.toFixed(2)}m).`,
+          );
+          return;
+        }
         const parsedDims = {
           width: parseFloat(binWidthInput) || undefined,
-          depth: parseFloat(binDepthInput) || undefined,
+          depth: Number.isFinite(parsedDepth) && parsedDepth > 0 ? parsedDepth : undefined,
           height: parseFloat(binHeightInput) || undefined,
         };
         const res = await addBinToServer(
@@ -698,9 +711,10 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
                 ? row.span
                 : rowMaxWidth) || DEFAULT_RACK_WIDTH
           }
-          rowDepthM={Number(rack?.depth) > 0 ? Number(rack?.depth) : DEFAULT_RACK_DEPTH}
+          rowDepthM={rack ? maxBinDepthM(rack, selectedId) : DEFAULT_RACK_DEPTH}
           rowHeightM={Number(row?.height) > 0 ? Number(row?.height) : GROCERY_SHELF_SPACING}
           occupiedWidthM={row?.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0) ?? 0}
+          maxBinDepthM={rack ? maxBinDepthM(rack, selectedId) : undefined}
           error={binNameError}
           isSubmitting={addingBin}
           onSubmit={handleAddBin}

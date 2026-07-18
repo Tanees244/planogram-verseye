@@ -15,6 +15,10 @@ function serializeProduct(product: Product) {
     imageUrl: product.imageUrl ?? null,
     modelUrl: product.modelUrl ?? null,
     modelStorageKey: product.modelStorageKey ?? null,
+    position:
+      product.position !== null && product.position !== undefined
+        ? { x: product.position.x, y: product.position.y }
+        : null,
   };
 }
 

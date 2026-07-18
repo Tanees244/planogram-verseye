@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiSearch, FiPlus, FiImage, FiX, FiBox } from 'react-icons/fi'
 import { Modal } from '@/components/ui/Modal'
+import { SkuThumb } from '@/components/SkuThumb'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
@@ -50,8 +51,14 @@ interface CatalogSku {
   height?: number | null
   depth?: number | null
   imageUrl?: string | null
+  imageStorageKey?: string | null
   modelUrl?: string | null
   modelStorageKey?: string | null
+  attachments?: Array<{
+    storageKey?: string | null
+    url?: string | null
+    is3D?: boolean | null
+  }> | null
   status?: string
 }
 
@@ -73,6 +80,22 @@ function authHeaders(): Record<string, string> {
   return headers
 }
 
+function skuModelStorageKey(sku: CatalogSku): string | undefined {
+  if (sku.modelStorageKey) return sku.modelStorageKey
+  const fromAttachment = sku.attachments?.find(
+    (a) =>
+      a &&
+      (a.is3D === true ||
+        String(a.storageKey ?? '').toLowerCase().split('?')[0].endsWith('.glb')),
+  )?.storageKey
+  if (fromAttachment) return fromAttachment
+  // Some rows carry the GLB in imageStorageKey by mistake
+  if (sku.imageStorageKey?.toLowerCase().split('?')[0].endsWith('.glb')) {
+    return sku.imageStorageKey
+  }
+  return undefined
+}
+
 function skuToProduct(sku: CatalogSku): Product {
   return {
     id: sku.id,
@@ -92,7 +115,7 @@ function skuToProduct(sku: CatalogSku): Product {
     createdDate: new Date().toISOString(),
     imageUrl: sku.imageUrl ?? undefined,
     modelUrl: sku.modelUrl ?? undefined,
-    modelStorageKey: sku.modelStorageKey ?? undefined,
+    modelStorageKey: skuModelStorageKey(sku),
     code: sku.code ?? undefined,
   }
 }
@@ -185,8 +208,10 @@ export default function AttachProductToBinModal({
           height: s.height ?? null,
           depth: s.depth ?? null,
           imageUrl: s.imageUrl ?? null,
+          imageStorageKey: s.imageStorageKey ?? null,
           modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
           modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
+          attachments: Array.isArray(s.attachments) ? s.attachments : null,
           status: s.status,
         })),
       )
@@ -856,18 +881,12 @@ export default function AttachProductToBinModal({
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        {sku.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={`/api/files/image?url=${encodeURIComponent(sku.imageUrl)}`}
-                            alt=""
-                            className="w-10 h-10 rounded-md object-cover bg-gray-100 shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-md bg-gray-100 shrink-0 flex items-center justify-center text-gray-300">
-                            <FiImage size={16} />
-                          </div>
-                        )}
+                        <SkuThumb
+                          sku={sku}
+                          className="w-10 h-10 rounded-md bg-gray-100"
+                          iconClassName="text-gray-300"
+                          size={16}
+                        />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-gray-900 truncate">{sku.name}</p>
                           <p className="text-xs text-gray-500 truncate">

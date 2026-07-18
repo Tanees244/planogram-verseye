@@ -49,8 +49,11 @@ export function RackSideZonesPanel({
       </dl>
       {issues.length > 0 && (
         <ul className="space-y-1 pt-1 border-t border-amber-500/30">
-          {issues.slice(0, 3).map((issue) => (
-            <li key={issue.message} className="text-[10px] text-amber-300/90 leading-snug">
+          {issues.slice(0, 3).map((issue, index) => (
+            <li
+              key={`${issue.message}-${index}`}
+              className="text-[10px] text-amber-300/90 leading-snug"
+            >
               {issue.message}
             </li>
           ))}

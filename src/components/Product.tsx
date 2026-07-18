@@ -125,12 +125,17 @@ export function Product({ product, position, rowId }: ProductProps) {
       return
     }
     const url = product.imageUrl
-    if (!url) {
+    const storageKey = product.imageStorageKey
+    if (!url && !storageKey) {
       setTexture(null)
       return
     }
     let active = true
-    const proxiedUrl = `/api/files/image?url=${encodeURIComponent(url)}`
+    const proxiedUrl = url
+      ? url.startsWith('/')
+        ? url
+        : `/api/files/image?url=${encodeURIComponent(url)}`
+      : `/api/files/image?key=${encodeURIComponent(storageKey!)}`
     const loader = new TextureLoader()
     loader.setCrossOrigin('anonymous')
     loader.load(
@@ -151,7 +156,7 @@ export function Product({ product, position, rowId }: ProductProps) {
     return () => {
       active = false
     }
-  }, [product.imageUrl, useGlb])
+  }, [product.imageUrl, product.imageStorageKey, useGlb])
 
   useEffect(() => {
     return () => {

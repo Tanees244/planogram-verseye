@@ -19,6 +19,7 @@ import {
 import { safeDim } from '@/utils/safeDimensions'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
+import { SkuThumb } from '@/components/SkuThumb'
 
 export const PRODUCT_DRAG_MIME = 'application/planogram-sku'
 
@@ -34,8 +35,14 @@ interface CatalogSkuRow {
   size?: string | null
   variant?: string | null
   imageUrl?: string | null
+  imageStorageKey?: string | null
   modelUrl?: string | null
   modelStorageKey?: string | null
+  attachments?: Array<{
+    storageKey?: string | null
+    url?: string | null
+    is3D?: boolean | null
+  }> | null
   width?: number | null
   height?: number | null
   depth?: number | null
@@ -52,6 +59,21 @@ function authHeaders(): Record<string, string> {
   return headers
 }
 
+function skuModelStorageKey(sku: CatalogSkuRow): string | null {
+  if (sku.modelStorageKey) return sku.modelStorageKey
+  const fromAttachment = sku.attachments?.find(
+    (a) =>
+      a &&
+      (a.is3D === true ||
+        String(a.storageKey ?? '').toLowerCase().split('?')[0].endsWith('.glb')),
+  )?.storageKey
+  if (fromAttachment) return fromAttachment
+  if (sku.imageStorageKey?.toLowerCase().split('?')[0].endsWith('.glb')) {
+    return sku.imageStorageKey
+  }
+  return null
+}
+
 function skuToPending(sku: CatalogSkuRow): PendingProductParams {
   return {
     id: sku.id,
@@ -63,7 +85,7 @@ function skuToPending(sku: CatalogSkuRow): PendingProductParams {
     variant: sku.variant ?? null,
     imageUrl: sku.imageUrl ?? null,
     modelUrl: sku.modelUrl ?? null,
-    modelStorageKey: sku.modelStorageKey ?? null,
+    modelStorageKey: skuModelStorageKey(sku),
     width: safeDim(sku.width, DEFAULT_PRODUCT_WIDTH),
     height: safeDim(sku.height, DEFAULT_PRODUCT_HEIGHT),
     depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
@@ -140,8 +162,10 @@ export function ProductPalette() {
           size: s.size ?? null,
           variant: s.variant ?? null,
           imageUrl: s.imageUrl ?? null,
+          imageStorageKey: s.imageStorageKey ?? null,
           modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
           modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
+          attachments: Array.isArray(s.attachments) ? s.attachments : null,
           width: s.width ?? null,
           height: s.height ?? null,
           depth: s.depth ?? null,
@@ -309,24 +333,14 @@ export function ProductPalette() {
                   !selectedStoreId && 'opacity-45 cursor-not-allowed',
                 )}
               >
-                {sku.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/files/image?url=${encodeURIComponent(sku.imageUrl)}`}
-                    alt=""
-                    className="w-9 h-9 rounded-lg object-contain bg-white/10 shrink-0"
-                    draggable={false}
-                  />
-                ) : (
-                  <div
-                    className={cn(
-                      'shrink-0 w-9 h-9 rounded-lg flex items-center justify-center',
-                      active ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-300',
-                    )}
-                  >
-                    <FiPackage size={15} />
-                  </div>
-                )}
+                <SkuThumb
+                  sku={sku}
+                  className={cn(
+                    'w-9 h-9 rounded-lg',
+                    active ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-300',
+                  )}
+                  size={15}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
                     <span className="text-xs font-semibold text-white truncate">{sku.name}</span>

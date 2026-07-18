@@ -82,11 +82,23 @@ export function Bin({
     lipHeight,
   })
 
-  const productPositions: [number, number, number][] = mixed.positions.map((p) => [
-    p.x,
-    p.y,
-    p.z,
-  ])
+  const productPositions: [number, number, number][] = mixed.positions.map((p, i) => {
+    const explicit = facings[i]?.position
+    const explicitX =
+      typeof explicit?.x === 'number' && Number.isFinite(explicit.x)
+        ? Math.min(Math.max(explicit.x, 0), Math.max(0, actualBinWidth - p.width))
+        : null
+    const explicitY =
+      typeof explicit?.y === 'number' && Number.isFinite(explicit.y)
+        ? Math.min(Math.max(explicit.y, 0), Math.max(0, actualBinHeight - p.height))
+        : null
+
+    return [
+      explicitX === null ? p.x : -actualBinWidth / 2 + explicitX + p.width / 2,
+      explicitY === null ? p.y : -actualBinHeight / 2 + explicitY + p.height / 2,
+      p.z,
+    ]
+  })
   const scaledFacings = mixed.positions.map((p, i) => ({
     ...facings[i],
     width: p.width,
@@ -230,10 +242,11 @@ export function Bin({
         <boxGeometry args={[actualBinWidth, actualBinHeight, actualBinDepth]} />
         <meshStandardMaterial
           color="#FFFFFF"
-          metalness={0.25}
-          roughness={0.55}
+          metalness={0.1}
+          roughness={0.08}
           transparent
-          opacity={isSelected || (placing && hovered) || dropHover ? 0.7 : 0.5}
+          opacity={isSelected || (placing && hovered) || dropHover ? 0.35 : 0.15}
+          depthWrite={false}
           emissive={
             dropHover || (placing && hovered)
               ? dropFits
@@ -263,20 +276,6 @@ export function Bin({
           }
           lineWidth={isSelected || (placing && hovered) || dropHover ? 3 : 2}
         />
-      </mesh>
-      {/* Lip/rim – skip raycast so clicks hit the main bin mesh */}
-      <mesh
-        position={[0, actualBinHeight / 2 + lipHeight / 2, 0]}
-        raycast={() => null}
-      >
-        <boxGeometry
-          args={[
-            actualBinWidth + wallThick * 2,
-            lipHeight,
-            actualBinDepth + wallThick * 2,
-          ]}
-        />
-        <meshStandardMaterial color="#FFFFFF" metalness={0.4} roughness={0.5} />
       </mesh>
       {previewSlots.map((slot, index) => (
         <ProductPlacementPreview

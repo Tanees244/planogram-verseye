@@ -21,6 +21,8 @@ interface AddBinModalProps {
   rowDepthM?: number
   rowHeightM?: number
   occupiedWidthM?: number
+  /** Max depth the API will accept for this rack/row (meters). */
+  maxBinDepthM?: number
   error?: string | null
   onSubmit: () => void
   isSubmitting?: boolean
@@ -41,18 +43,27 @@ export function AddBinModal({
   rowDepthM,
   rowHeightM,
   occupiedWidthM = 0,
+  maxBinDepthM,
   error,
   onSubmit,
   isSubmitting,
 }: AddBinModalProps) {
+  const depthCap =
+    maxBinDepthM && maxBinDepthM > 0
+      ? maxBinDepthM
+      : rowDepthM && rowDepthM > 0
+        ? rowDepthM
+        : 0.35
   const defaultW = rowWidthM && rowWidthM > 0 ? Math.max(0.1, (rowWidthM - occupiedWidthM) || rowWidthM * 0.25) : 0.35
-  const defaultD = rowDepthM && rowDepthM > 0 ? rowDepthM * 0.9 : 0.35
+  const defaultD = depthCap
   const defaultH = rowHeightM && rowHeightM > 0 ? Math.min(rowHeightM * 0.9, rowHeightM - 0.05) : 0.35
 
   const previewW = parseFloat(binWidth ?? '') || defaultW
-  const previewD = parseFloat(binDepth ?? '') || defaultD
+  const previewD = Math.min(parseFloat(binDepth ?? '') || defaultD, depthCap)
   const previewH = parseFloat(binHeight ?? '') || defaultH
   const showPreview = Boolean(rowWidthM && rowDepthM && rowHeightM)
+  const depthOverflow =
+    Boolean(binDepth && parseFloat(binDepth) > depthCap + 1e-6)
 
   return (
     <Modal
@@ -74,6 +85,31 @@ export function AddBinModal({
       }
     >
       <div className="space-y-4 pt-1">
+        {showPreview && (
+          <div className="rounded-xl border border-[#2C5282]/20 bg-[#2C5282]/5 px-3 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[#2C5282]/70 mb-1">
+              Selected row space
+            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-700">
+              <span>
+                Row: <strong>{rowWidthM!.toFixed(2)}</strong> W ×{' '}
+                <strong>{depthCap.toFixed(2)}</strong> D ×{' '}
+                <strong>{rowHeightM!.toFixed(2)}</strong> H m
+              </span>
+              <span className={occupiedWidthM > 0.001 ? '' : 'text-gray-500'}>
+                Free width:{' '}
+                <strong className="text-[#2C5282]">
+                  {Math.max(0, rowWidthM! - occupiedWidthM).toFixed(2)} m
+                </strong>
+                {occupiedWidthM > 0.001 &&
+                  ` (${occupiedWidthM.toFixed(2)} m used by existing bins)`}
+              </span>
+              <span className="text-gray-500">
+                Max bin depth: <strong className="text-[#2C5282]">{depthCap.toFixed(2)} m</strong>
+              </span>
+            </div>
+          </div>
+        )}
         <FormField label="Bin Name" required error={error}>
           <Input
             autoFocus
@@ -93,11 +129,19 @@ export function AddBinModal({
               onChange={(e) => onBinWidthChange?.(e.target.value)}
             />
           </FormField>
-          <FormField label="Depth (m)">
+          <FormField
+            label="Depth (m)"
+            error={
+              depthOverflow
+                ? `Max ${depthCap.toFixed(2)} m for this rack`
+                : undefined
+            }
+          >
             <Input
               inputMode="decimal"
               value={binDepth ?? ''}
               placeholder={defaultD.toFixed(2)}
+              error={depthOverflow}
               onChange={(e) => onBinDepthChange?.(e.target.value)}
             />
           </FormField>
@@ -114,7 +158,7 @@ export function AddBinModal({
         {showPreview && (
           <BinCreatePreview
             rowWidthM={rowWidthM!}
-            rowDepthM={rowDepthM!}
+            rowDepthM={depthCap}
             rowHeightM={rowHeightM!}
             binWidthM={previewW}
             binDepthM={previewD}

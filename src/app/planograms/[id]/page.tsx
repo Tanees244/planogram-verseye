@@ -16,6 +16,8 @@ interface SkuRow {
   sosPercentTarget?: number
   positionOrder?: number
   imageUrl?: string
+  quantity?: number
+  position?: { x: number | null; y: number | null } | null
 }
 
 interface PlanogramRow {
@@ -23,7 +25,7 @@ interface PlanogramRow {
   rowLabel?: string | null
   id?: string
   skus?: SkuRow[]
-  bins?: unknown[]
+  bins?: Array<{ products?: SkuRow[] }>
 }
 
 function asArray(value: unknown): unknown[] {
@@ -58,18 +60,59 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
     setLoading(true)
     setError(null)
     try {
+      // Prefer shelf blueprint (includes product imageUrl + bin-local position).
+      const blueprintRes = await fetch(
+        `/api/layout/shelves/${encodeURIComponent(id)}/blueprint`,
+        { headers: authHeaders() },
+      )
+      const blueprintJson = await blueprintRes.json().catch(() => ({}))
+      if (
+        blueprintRes.ok &&
+        blueprintJson?.isRequestSuccess !== false &&
+        blueprintJson?.success !== false
+      ) {
+        const d = blueprintJson?.data ?? blueprintJson
+        const shelf = d.shelf ?? d
+        const side = d.side ?? null
+        setDetail({
+          id: shelf.id ?? shelf.shelfId ?? id,
+          storeId: shelf.storeId,
+          name: shelf.name ?? 'Planogram',
+          storeName: shelf.storeName,
+          description: shelf.description,
+          categoryId: shelf.categoryId,
+          shelfType: shelf.shelfType,
+          fixtureType: shelf.fixtureType ?? d.fixtureType ?? null,
+          publishedAt: shelf.publishedAt ?? null,
+          lastUpdated: shelf.lastUpdated ?? shelf.updatedAt ?? null,
+          rackCode: shelf.rackCode ?? d.rackCode ?? null,
+          rackId: shelf.rackId ?? d.rackId ?? null,
+          sideCode: shelf.sideCode ?? side?.sideCode ?? null,
+          rows: side?.rows ?? shelf.rows ?? d.rows,
+          images: shelf.images ?? d.images,
+          hasLayout: shelf.hasLayout,
+          hasPlanogram: shelf.hasPlanogram,
+        })
+        return
+      }
+
+      // Fallback: shelf detail, then legacy catalog planogram.
       const res = await fetch(`/api/layout/shelves/${encodeURIComponent(id)}`, {
         headers: authHeaders(),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || json?.isRequestSuccess === false || json?.success === false) {
-        // Fallback to legacy catalog planogram if shelf endpoint fails
         const legacy = await fetch(`/api/catalog/planograms/${encodeURIComponent(id)}`, {
           headers: authHeaders(),
         })
         const legacyJson = await legacy.json().catch(() => ({}))
         if (!legacy.ok || legacyJson?.isRequestSuccess === false) {
-          setError(json?.message || legacyJson?.message || 'Failed to load planogram')
+          setError(
+            blueprintJson?.message ||
+              json?.message ||
+              legacyJson?.message ||
+              'Failed to load planogram',
+          )
           return
         }
         const d = legacyJson?.data ?? legacyJson
@@ -249,7 +292,11 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
               ) : (
                 <div className="space-y-4">
                   {rows.map((row, idx) => {
-                    const skus = asArray(row.skus) as SkuRow[]
+                    const directSkus = asArray(row.skus) as SkuRow[]
+                    const binProducts = asArray(row.bins).flatMap((bin) =>
+                      asArray((bin as { products?: SkuRow[] }).products),
+                    ) as SkuRow[]
+                    const skus = directSkus.length > 0 ? directSkus : binProducts
                     return (
                       <div key={row.id ?? idx} className="border border-gray-100 rounded-xl overflow-hidden">
                         <div className="bg-gray-50 px-4 py-3 flex items-center gap-2">
@@ -268,6 +315,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                               <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                                 <th className="px-4 py-2 font-semibold">SKU</th>
                                 <th className="px-4 py-2 font-semibold">Facings</th>
+                                <th className="px-4 py-2 font-semibold">Bin position</th>
                                 <th className="px-4 py-2 font-semibold">SOS % target</th>
                               </tr>
                             </thead>
@@ -278,9 +326,31 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                                   className="border-b border-gray-50 last:border-0"
                                 >
                                   <td className="px-4 py-2 text-gray-800">
-                                    {sku.name ?? sku.skuName ?? sku.skuId ?? sku.id}
+                                    <div className="flex items-center gap-2">
+                                      {sku.imageUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src={sku.imageUrl}
+                                          alt=""
+                                          className="h-9 w-9 shrink-0 rounded-md border border-gray-200 object-contain bg-white"
+                                        />
+                                      ) : (
+                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-dashed border-gray-300 text-gray-300">
+                                          <FiBox size={16} />
+                                        </span>
+                                      )}
+                                      <span>{sku.name ?? sku.skuName ?? sku.skuId ?? sku.id}</span>
+                                    </div>
                                   </td>
-                                  <td className="px-4 py-2 text-gray-600">{sku.facingCount ?? '—'}</td>
+                                  <td className="px-4 py-2 text-gray-600">
+                                    {sku.facingCount ?? sku.quantity ?? '—'}
+                                  </td>
+                                  <td className="px-4 py-2 text-gray-600">
+                                    {sku.position &&
+                                    (sku.position.x !== null || sku.position.y !== null)
+                                      ? `${sku.position.x === null ? 'auto' : `${sku.position.x.toFixed(3)} m`} × ${sku.position.y === null ? 'auto' : `${sku.position.y.toFixed(3)} m`}`
+                                      : 'Auto'}
+                                  </td>
                                   <td className="px-4 py-2 text-gray-600">
                                     {sku.sosPercentTarget != null ? `${sku.sosPercentTarget}%` : '—'}
                                   </td>

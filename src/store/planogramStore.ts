@@ -49,6 +49,13 @@ import {
 } from "@/constants/warehouse";
 // import { parseJSONToPlanogram } from '@/utils/jsonParser' // Removed: Logic consolidated in store
 
+export interface BinProductPosition {
+  /** Meters from the bin face's left edge. */
+  x: number | null;
+  /** Meters from the bin face's bottom edge. */
+  y: number | null;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -59,10 +66,14 @@ export interface Product {
   brandName?: string;
   categoryName?: string;
   imageUrl?: string;
+  /** Object storage key for the facing image — loaded via /api/files/image?key= */
+  imageStorageKey?: string;
   /** Direct GLB URL or path (e.g. /models/foo.glb) */
   modelUrl?: string;
   /** Object storage key for .glb — loaded via /api/files/model?key= */
   modelStorageKey?: string;
+  /** Optional placement in meters from the parent bin's bottom-left face. */
+  position?: BinProductPosition | null;
   quantity?: number;
 }
 
@@ -121,6 +132,8 @@ export interface Row {
   /** Shelf span inside rack (m). API field: `span`. */
   width?: number;
   span?: number;
+  /** Usable shelf depth (m) — the API's bin-depth ceiling for this row. */
+  depth?: number | null;
   dividerThickness?: number;
   sided?: RowSided;
   bins: Bin[];
@@ -1399,6 +1412,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         : rowExtent2 != null && rowExtent2 > 0
           ? rowExtent2
           : null,
+      foundRow.id,
     );
     let binHeight = clampBinHeightToRow(
       rowHeight ?? foundRow.height,
@@ -1917,9 +1931,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       }
 
       const fresh = result.racks;
+      // Local session owns rack positions during a reload — server placement
+      // can lag behind (reflow / structure saves) and would make racks jump.
       const placed =
         area.racks.length > 0
-          ? mergeRackPositions(area.racks, fresh)
+          ? mergeRackPositions(area.racks, fresh, { preferExistingPlacement: true })
           : gridPlaceRacks(fresh, area.width, area.depth);
 
       set({ area: { ...area, racks: placed } });
@@ -2228,9 +2244,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                 ...r,
                 position,
                 quadrant: getQuadrantFromPosition(position.x, position.z),
+                // Keep placement in sync so saves don't revert to the old spot
                 placement: {
                   position: { ...position },
-                  rotation: r.rotation ?? { x: 0, y: 0, z: 0 },
+                  rotation: r.rotation ? { ...r.rotation } : { x: 0, y: 0, z: 0 },
                   snapMode: r.placement?.snapMode ?? 'wall',
                   quadrant: getQuadrantFromPosition(position.x, position.z),
                 },
