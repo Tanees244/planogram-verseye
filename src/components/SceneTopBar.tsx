@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { FiChevronDown, FiSettings, FiX } from 'react-icons/fi'
+import Link from 'next/link'
+import { FiChevronDown, FiSettings, FiUpload, FiX } from 'react-icons/fi'
 import { DayNightToggle } from '@/components/ui/DayNightToggle'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { usePlanogramStore } from '@/store/planogramStore'
@@ -135,6 +136,14 @@ export function SceneTopBar({ className }: { className?: string }) {
         <DayNightToggle dark embedded className="w-full" />
         <RoofToggle dark embedded className="w-full justify-center" />
         <ControlsButton vertical />
+        <Link
+          href="/import"
+          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+          title="Import a PLM or PSA planogram"
+        >
+          <FiUpload size={14} />
+          Import planogram
+        </Link>
 
         {selectedStoreId && (
           <>

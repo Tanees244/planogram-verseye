@@ -1083,7 +1083,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           pendingRackParams: null,
           isPlacingRack: false,
           placingFixtureType: null,
-          isAddingRack: false,
+          // Keep loader active until preset shelves/bins are seeded below.
+          isAddingRack: true,
           addRackError: null,
           nextRackName: "",
           selectedId: rack.id,
@@ -1093,6 +1094,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         // Preset fixtures: create functional rows + bins on the backend
         if (fixtureType !== 'CUSTOM' && getFixtureSeedLayout(fixtureType)) {
           const seed = await get().seedPresetFixtureShelves(rack.id);
+          set({ isAddingRack: false });
           if (!seed.success) {
             return {
               success: true,
@@ -1107,6 +1109,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           };
         }
 
+        set({ isAddingRack: false });
         return { success: true, message: data.message || "Rack added successfully" };
       } else {
         set({ isAddingRack: false, addRackError: data.message || "Failed to add rack" });

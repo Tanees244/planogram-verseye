@@ -182,7 +182,7 @@ export function TraditionalView() {
           <FiShoppingCart className="inline mr-1" /> Product Catalog
         </Btn>
         <Link href="/import" className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-brand text-white rounded-lg hover:bg-brand-dark shadow-sm transition-colors">
-          <FiUpload /> Import JSON
+          <FiUpload /> Import planogram
         </Link>
       </div>
 

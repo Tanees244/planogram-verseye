@@ -11,6 +11,7 @@ import { SceneTopBar } from '@/components/SceneTopBar'
 import { CustomRackBuilder } from '@/components/CustomRackBuilder'
 import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
+import { Spinner } from '@/components/Spinner'
 import Link from 'next/link'
 import { usePlanogramStore, type Bin, type Product } from '@/store/planogramStore'
 import StoreLayout from '@/components/StoreLayout'
@@ -165,6 +166,7 @@ export default function Home() {
   } = usePlanogramStore()
 
   const productPaletteCollapsed = usePlanogramStore((s) => s.productPaletteCollapsed)
+  const isAddingRack = usePlanogramStore((s) => s.isAddingRack)
   const productLibraryOpen = !productPaletteCollapsed
   const contextPanelActive =
     selectedType === 'rack' ||
@@ -308,6 +310,22 @@ export default function Home() {
       <CustomRackBuilder />
 
       <SceneTopBar className="absolute top-4 right-4 z-[100]" />
+      {isAddingRack && (
+        <div
+          className="absolute inset-0 z-[200] flex items-center justify-center bg-black/25 backdrop-blur-[1px]"
+          role="status"
+          aria-live="polite"
+          aria-label="Placing rack"
+        >
+          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/80 px-5 py-4 text-white shadow-2xl">
+            <Spinner className="h-5 w-5 text-brand-light" />
+            <div>
+              <p className="text-sm font-semibold">Placing rack…</p>
+              <p className="text-[11px] text-gray-300">Creating fixture, shelves, and bins</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -18,6 +18,7 @@ import {
   FiFileText,
   FiCheckCircle,
   FiAlertCircle,
+  FiArrowRight,
 } from "react-icons/fi";
 
 export default function ImportPage() {
@@ -32,11 +33,14 @@ export default function ImportPage() {
   const [progress, setProgress] = useState(0);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [importSucceeded, setImportSucceeded] = useState(false);
 
   const handleImport = async () => {
     try {
       setError(null);
       setImportReport(null);
+      setImportSucceeded(false);
       setIsLoading(true);
       setProgress(0);
 
@@ -46,7 +50,7 @@ export default function ImportPage() {
         return;
       }
 
-      const format = detectPlanogramFormat(content);
+      const format = detectPlanogramFormat(content, fileName ?? undefined);
       setDetectedFormat(format);
 
       if (format === "legacy-json") {
@@ -55,7 +59,6 @@ export default function ImportPage() {
           setError("Legacy JSON is missing layout.racks[]");
           return;
         }
-        router.push("/");
         await loadFromJSON(parsed, setProgress);
         setImportReport({
           format: "legacy-json",
@@ -74,6 +77,7 @@ export default function ImportPage() {
             },
           ],
         });
+        setImportSucceeded(true);
         return;
       }
 
@@ -84,12 +88,17 @@ export default function ImportPage() {
         return;
       }
 
-      router.push("/");
-      const result = await importPlanogramFromContent(content);
+      const result = await importPlanogramFromContent(
+        content,
+        fileName ?? undefined,
+      );
       setImportReport(result.report);
 
       if (!result.success) {
         setError(result.message ?? "Import failed");
+      } else {
+        setProgress(100);
+        setImportSucceeded(true);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Invalid planogram file");
@@ -107,10 +116,12 @@ export default function ImportPage() {
     reader.onload = (event) => {
       try {
         const content = event.target?.result as string;
+        setFileName(file.name);
         setFileInput(content);
         setDetectedFormat(detectPlanogramFormat(content, file.name));
         setError(null);
         setImportReport(null);
+        setImportSucceeded(false);
       } catch (err: unknown) {
         setError(
           "Error reading file: " +
@@ -175,6 +186,10 @@ export default function ImportPage() {
             value={fileInput}
             onChange={(e) => {
               setFileInput(e.target.value);
+              setFileName(null);
+              setImportSucceeded(false);
+              setImportReport(null);
+              setError(null);
               setDetectedFormat(
                 e.target.value.trim()
                   ? detectPlanogramFormat(e.target.value)
@@ -221,8 +236,18 @@ export default function ImportPage() {
         )}
 
         {importReport && !isLoading && (
-          <div className="mb-6">
+          <div className="mb-6 space-y-4">
             <PlanogramImportReport report={importReport} />
+            {importSucceeded && (
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="w-full px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors shadow-lg"
+              >
+                Open imported planogram
+                <FiArrowRight className="inline ml-2" />
+              </button>
+            )}
           </div>
         )}
 
@@ -230,14 +255,18 @@ export default function ImportPage() {
           <div className="flex gap-4">
             <button
               onClick={handleImport}
-              disabled={!fileInput.trim() || isLoading}
+              disabled={!fileInput.trim() || isLoading || importSucceeded}
               className={`flex-1 px-8 py-4 rounded-xl text-lg font-semibold transition-all shadow-lg ${
-                !fileInput.trim() || isLoading
+                !fileInput.trim() || isLoading || importSucceeded
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-brand to-brand-dark text-white hover:from-brand-dark hover:to-[#152942] hover:shadow-xl hover:scale-[1.02]"
               }`}
             >
-              {isLoading ? "Importing…" : "Import & render"}
+              {isLoading
+                ? "Importing…"
+                : importSucceeded
+                  ? "Imported"
+                  : "Import planogram"}
             </button>
             <button
               onClick={() => router.push("/")}
