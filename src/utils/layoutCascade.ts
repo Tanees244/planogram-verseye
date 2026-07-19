@@ -420,6 +420,7 @@ export function applyCustomConfigWithCascade(
   const patched: Rack = {
     ...rack,
     customConfig: config,
+    isDoubleSided: Boolean(config.isDoubleSided),
     width: config.outerWidth,
     depth: config.outerDepth,
     outer: {

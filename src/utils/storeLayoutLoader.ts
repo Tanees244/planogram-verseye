@@ -213,9 +213,9 @@ export function unwrapRackPayload(raw: any): any {
 }
 
 // Renderable facings per SKU. Matches FACING_PACK_VISUAL_LIMIT so a bin
-// filled to capacity (e.g. 132 = 22×6) actually shows every unit instead of
-// a single sparse front row that looks empty/floating.
-const MAX_FACINGS = 400
+// filled to capacity actually shows every unit instead of a truncated
+// front slice that looks empty/floating.
+const MAX_FACINGS = 1500
 
 /** Expands each SKU into N renderable facings based on its quantity (for 3D shelf display). */
 export function expandProductsByQuantity<
@@ -278,9 +278,15 @@ export function normalizeRack(rawInput: any): Rack {
   const shell = enrichShell(raw.shell)
   const outer = raw.outer as Dimensions3 | null | undefined
   const inner = raw.inner as Dimensions3 | null | undefined
-  const customConfig =
+  const customConfigBase =
     fixtureType === 'CUSTOM' ? shellToCustomConfig(shell, outer, 'CUSTOM') : undefined
   const sidesRaw = asArray(raw.sides ?? raw.layout?.sides)
+  const customConfig = customConfigBase
+    ? {
+        ...customConfigBase,
+        isDoubleSided: isDoubleSided || sidesRaw.length >= 2,
+      }
+    : undefined
 
   const sides = (sidesRaw.length > 0 ? sidesRaw : [{ sideId: generateId(), sideCode: 'S1', rows: [] }]).map(
     (s: any, idx: number) => {

@@ -36,7 +36,7 @@ export interface FacingPackResult {
 }
 
 /** Soft cap for rendered meshes (capacity math still uses full maxFit). */
-export const FACING_PACK_VISUAL_LIMIT = 400
+export const FACING_PACK_VISUAL_LIMIT = 1500
 
 function safePositive(n: number, fallback = 0.08): number {
   return Number.isFinite(n) && n > 0 ? n : fallback
@@ -252,23 +252,31 @@ export function packMixedFacingsInBin(options: {
   positions: { id: string; x: number; y: number; z: number; width: number; height: number; depth: number }[]
   packScale: number
 } {
-  const wallThick = options.wallThick ?? 0.02
-  const lipHeight = options.lipHeight ?? 0.025
+  const wallThick = options.wallThick ?? 0
+  const lipHeight = options.lipHeight ?? 0
   const binW = safePositive(options.binWidth, 0.35)
   const binH = safePositive(options.binHeight, 0.35)
   const binD = safePositive(options.binDepth, 0.35)
   const usableW = Math.max(0.001, binW - wallThick * 2)
   const usableD = Math.max(0.001, binD - wallThick * 2)
-  const usableH = Math.max(0.001, binH - Math.max(lipHeight, 0.02))
-  const shelfFloorY = -binH / 2 + Math.max(lipHeight, 0.025)
+  const usableH = Math.max(0.001, binH - Math.max(lipHeight, 0))
+  // Sit on the bin floor (same as packFacingsInBin) — do not force a lip offset.
+  const shelfFloorY = -binH / 2 + Math.max(lipHeight, 0.001)
   const startX = -binW / 2 + wallThick
   const frontZ = -binD / 2 + wallThick
 
+  // Keep catalog size; only shrink a unit that itself cannot fit in the cavity.
+  // (Do not pre-crush height to usableH — that kills stacking.)
   const sized = options.facings.map((f) => {
     const pw = safePositive(f.width)
     const ph = safePositive(f.height, 0.27)
     const pd = safePositive(f.depth)
-    const s = Math.min(usableH / ph, usableD / pd, usableW / pw, 1)
+    const s = Math.min(
+      ph > usableH ? usableH / ph : 1,
+      pd > usableD ? usableD / pd : 1,
+      pw > usableW ? usableW / pw : 1,
+      1,
+    )
     return { id: f.id, width: pw * s, height: ph * s, depth: pd * s }
   })
 

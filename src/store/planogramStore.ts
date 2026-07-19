@@ -422,6 +422,7 @@ export interface PlanogramState {
   deleteRack: (rackId: string) => void;
   deleteRackFromServer: (rackId: string) => Promise<{ success: boolean; message: string }>;
   deleteRow: (rowId: string) => void;
+  deleteRowFromServer: (rowId: string) => Promise<{ success: boolean; message: string }>;
   deleteBin: (binId: string) => void;
   deleteBinFromServer: (binId: string) => Promise<{ success: boolean; message: string }>;
   deleteBlueprintFromServer: (
@@ -771,6 +772,15 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           outerDepth: rack.depth,
         };
       }
+      if (rack) {
+        draft = {
+          ...draft,
+          isDoubleSided:
+            draft.isDoubleSided != null
+              ? Boolean(draft.isDoubleSided)
+              : Boolean(rack.isDoubleSided) || rack.sides.length >= 2,
+        };
+      }
     }
     draft = normalizeSectionSpans(draft);
     set({
@@ -807,7 +817,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         width: cfg.outerWidth,
         depth: cfg.outerDepth,
         plankType: "custom",
-        sided: "one",
+        sided: cfg.isDoubleSided ? "two" : "one",
         fixtureType: "CUSTOM",
         customConfig: cloneCustomRackConfig(cfg),
         rackCode: `CUSTOM-${String(count).padStart(2, "0")}`,
@@ -2359,6 +2369,38 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       selectedId: null,
       selectedType: null,
     })),
+  deleteRowFromServer: async (rowId) => {
+    const serverRowId = resolveEntityId(rowId);
+    if (!serverRowId || !UUID_RE.test(serverRowId)) {
+      // Local-only row — just drop from scene
+      get().deleteRow(rowId);
+      return { success: true, message: 'Row removed locally' };
+    }
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers.Authorization = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const res = await fetch(`/api/rack-rows/${encodeURIComponent(serverRowId)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
+        return { success: false, message: data?.message || 'Failed to delete row' };
+      }
+      get().deleteRow(rowId);
+      return { success: true, message: data?.message || 'Row deleted' };
+    } catch {
+      return { success: false, message: 'Network or server error' };
+    }
+  },
   deleteBin: (binId) =>
     set((state) => ({
       area: {

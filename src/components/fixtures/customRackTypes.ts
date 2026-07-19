@@ -37,6 +37,8 @@ export interface CustomRackConfig {
   shelfCount: number
   shelfThickness: number
   accentColor: string
+  /** When true, rack has shelves on both faces (center divider). */
+  isDoubleSided?: boolean
 }
 
 export interface CustomRackDimensions {
@@ -181,6 +183,7 @@ export function createEndCapPreset(): CustomRackConfig {
     shelfCount: 0,
     shelfThickness: 0.03,
     accentColor: '#2C5282',
+    isDoubleSided: false,
   })
 }
 
@@ -214,6 +217,7 @@ export function createRefrigeratedPreset(): CustomRackConfig {
     shelfCount: 0,
     shelfThickness: 0.025,
     accentColor: '#2C5282',
+    isDoubleSided: false,
   }))
 }
 
@@ -246,6 +250,7 @@ export function createBlankCustomRack(): CustomRackConfig {
     shelfCount: 0,
     shelfThickness: 0.03,
     accentColor: '#2C5282',
+    isDoubleSided: false,
   })
 }
 

@@ -49,7 +49,7 @@ export function TraditionalView() {
     updateDimensions,
     deleteRack,
     deleteRackFromServer,
-    deleteRow,
+    deleteRowFromServer,
     deleteBinFromServer,
     deleteProduct,
     deleteProductFromServer,
@@ -322,9 +322,11 @@ export function TraditionalView() {
                                 Bin
                               </button>
                               <button
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation()
-                                  deleteRow(row.id)
+                                  const res = await deleteRowFromServer(row.id)
+                                  if (!res.success) toastApiError(res.message)
+                                  else toast.success(res.message ?? 'Row deleted')
                                 }}
                                 className="px-3 py-1.5 bg-[#e1e7ef] text-white rounded-lg text-xs font-medium hover:bg-white transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
                               >

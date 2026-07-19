@@ -10,15 +10,20 @@ export interface ProductModelFields {
 
 export function resolveProductModelUrl(fields: ProductModelFields): string | null {
   const rawUrl = typeof fields.modelUrl === 'string' ? fields.modelUrl.trim() : ''
+  const key = typeof fields.modelStorageKey === 'string' ? fields.modelStorageKey.trim() : ''
+
   if (rawUrl) {
     if (rawUrl.startsWith('/')) return rawUrl
     if (/^https?:\/\//i.test(rawUrl)) {
-      return `/api/files/model?url=${encodeURIComponent(rawUrl)}`
+      // Pass the storage key too — the proxy re-presigns via `key` when the
+      // (expirable) presigned `url` fails, instead of returning 502.
+      const params = new URLSearchParams({ url: rawUrl })
+      if (key) params.set('key', key)
+      return `/api/files/model?${params.toString()}`
     }
     return rawUrl
   }
 
-  const key = typeof fields.modelStorageKey === 'string' ? fields.modelStorageKey.trim() : ''
   if (key) {
     return `/api/files/model?key=${encodeURIComponent(key)}`
   }

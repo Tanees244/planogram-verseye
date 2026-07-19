@@ -19,3 +19,20 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ rowId: 
     body,
   });
 }
+
+/** DELETE /api/rack-rows/{rowId} → DELETE /api/v1/layout/rack-rows/{id} */
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ rowId: string }> },
+) {
+  const { rowId } = await context.params;
+  if (!rowId) {
+    return NextResponse.json(
+      { isRequestSuccess: false, message: 'rowId is required', statusCode: 400 },
+      { status: 400 },
+    );
+  }
+  return proxyLayout(req, `/api/v1/layout/rack-rows/${encodeURIComponent(rowId)}`, {
+    method: 'DELETE',
+  });
+}

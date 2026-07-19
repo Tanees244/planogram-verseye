@@ -1,9 +1,12 @@
 'use client'
 
 import { Canvas } from '@react-three/fiber'
-import { Edges, OrbitControls } from '@react-three/drei'
-import { packFacingsInBin, FACING_PACK_VISUAL_LIMIT } from '@/utils/facingPack'
+import { Edges, Instance, Instances, OrbitControls } from '@react-three/drei'
+import { packFacingsInBin } from '@/utils/facingPack'
 import { cn } from '@/lib/cn'
+
+/** Instanced boxes are cheap — render every slot so a full bin looks full. */
+const PREVIEW_SLOT_LIMIT = 5000
 
 function BinScene({
   binWidthM,
@@ -36,7 +39,7 @@ function BinScene({
     quantity,
     usedWidthM,
     occupiedFacings,
-    visualLimit: FACING_PACK_VISUAL_LIMIT,
+    visualLimit: PREVIEW_SLOT_LIMIT,
   })
 
   const maxDim = Math.max(binWidthM, binHeightM, binDepthM, 0.2)
@@ -55,17 +58,20 @@ function BinScene({
           <boxGeometry args={[binWidthM * 0.98, 0.01, binDepthM * 0.98]} />
           <meshStandardMaterial color="#cbd5e1" />
         </mesh>
-        {pack.slots.map((slot) => (
-          <mesh key={slot.index} position={[slot.x, slot.y, slot.z]}>
-            <boxGeometry args={[slot.width * 0.92, slot.height * 0.92, slot.depth * 0.92]} />
-            <meshStandardMaterial
-              color={slot.overflow || !fits ? '#ef4444' : '#2C5282'}
-              transparent
-              opacity={slot.overflow ? 0.45 : 0.9}
-            />
-            <Edges color={slot.overflow || !fits ? '#b91c1c' : '#1e3a5f'} />
-          </mesh>
-        ))}
+        {pack.slots.length > 0 && (
+          <Instances key={pack.slots.length} limit={pack.slots.length}>
+            <boxGeometry />
+            <meshStandardMaterial transparent opacity={0.92} roughness={0.55} />
+            {pack.slots.map((slot) => (
+              <Instance
+                key={slot.index}
+                position={[slot.x, slot.y, slot.z]}
+                scale={[slot.width * 0.9, slot.height * 0.9, slot.depth * 0.9]}
+                color={slot.overflow || !fits ? '#ef4444' : '#2C5282'}
+              />
+            ))}
+          </Instances>
+        )}
       </group>
       <OrbitControls
         enablePan={false}
@@ -118,7 +124,8 @@ export function FacingBin3DPreview({
     quantity: Math.max(0, Math.floor(quantity) || 0),
     usedWidthM,
     occupiedFacings,
-    visualLimit: FACING_PACK_VISUAL_LIMIT,
+    // Header only needs grid math (cols × rows × layers) — skip slot building.
+    visualLimit: 0,
   })
   const qty = Math.max(0, Math.floor(quantity) || 0)
   const overflow = qty > pack.maxFit

@@ -443,8 +443,14 @@ export default function AttachProductToBinModal({
         return
       }
 
-      // Persist dims onto catalog SKU when missing (required before attach)
-      if (selectedNeedsDims) {
+      // Persist dims onto catalog SKU when missing OR when the user edited
+      // them. The layout reload after attach re-reads dims from the catalog,
+      // so unsaved overrides would be silently reverted in the 3D view.
+      const dimsDiffer =
+        Math.abs(w - safeDim(selectedSku.width, 0)) > 1e-4 ||
+        Math.abs(d - safeDim(selectedSku.depth, 0)) > 1e-4 ||
+        Math.abs(h - safeDim(selectedSku.height, 0)) > 1e-4
+      if (selectedNeedsDims || dimsDiffer) {
         const headers = { ...authHeaders(), 'Content-Type': 'application/json' }
         const patchRes = await fetch(`/api/products/${encodeURIComponent(selectedSku.id)}`, {
           method: 'PUT',
@@ -534,10 +540,10 @@ export default function AttachProductToBinModal({
       setError('This bin has no remaining facing capacity.')
       return
     }
-    const createFacingW = parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
-    const createCapError = facingCapacityMessage(binWidthM, createFacingW, parsedQuantity, usedWidthM)
-    if (createCapError) {
-      setError(createCapError)
+    // Same W×D×H capacity math as the live hint — a width-only check here
+    // used to reject quantities the stacked capacity actually allows.
+    if (capacityError) {
+      setError(capacityError)
       return
     }
     setSubmitting(true)

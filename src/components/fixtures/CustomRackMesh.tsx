@@ -59,10 +59,16 @@ export function CustomRackMesh({
   const postR = wt * 0.45
   const innerW = dims.innerWidth
   const innerD = dims.innerDepth
-  const cavityZ = -d / 2 + wt + innerD / 2
+  const isDoubleSided = Boolean(config.isDoubleSided)
+  // One-sided: cavity in front of back wall. Two-sided: full depth around center divider.
+  const cavityZ = isDoubleSided ? 0 : -d / 2 + wt + innerD / 2
+  const cavityDepth = isDoubleSided ? d - wt : innerD
+  const dividerZ = isDoubleSided ? 0 : d / 2 - wt / 2
   const footerFullBase = footerSize.depth >= d * 0.85
   const footerZ = footerFullBase ? 0 : sectionFrontZ(d, footerSize.depth, config.footer.protrusion)
-  const headerZ = sectionFrontZ(d, headerSize.depth, config.header.protrusion)
+  const headerZ = isDoubleSided
+    ? 0
+    : sectionFrontZ(d, headerSize.depth, config.header.protrusion)
 
   const wallMat = (
     <meshStandardMaterial
@@ -144,29 +150,31 @@ export function CustomRackMesh({
         </mesh>
       ))}
 
-      {/* Back wall — pegboard style */}
+      {/* Back wall (one-sided) or center divider (two-sided) */}
       {config.walls.back && (
-        <group position={[0, bodyCenterY, d / 2 - wt / 2]} {...bind}>
+        <group position={[0, bodyCenterY, dividerZ]} {...bind}>
           <mesh>
             <boxGeometry args={[innerW + wt, dims.bodyH - wt * 0.5, wt]} />
             {wallMat}
             <Edges color={hovered ? '#2C5282' : '#95a5a6'} lineWidth={1} />
           </mesh>
-          {/* Peg holes hint */}
-          {Array.from({ length: 5 }, (_, row) =>
-            Array.from({ length: 8 }, (_, col) => (
-              <mesh
-                key={`peg-${row}-${col}`}
-                position={[
-                  -innerW / 2 + (col + 0.5) * (innerW / 8),
-                  -dims.bodyH / 2 + wt + (row + 1) * ((dims.bodyH - wt) / 6),
-                  wt / 2 + 0.002,
-                ]}
-              >
-                <circleGeometry args={[0.012, 8]} />
-                <meshStandardMaterial color={PEG_COLOR} roughness={0.9} />
-              </mesh>
-            )),
+          {/* Peg holes hint — both faces when double-sided */}
+          {Array.from({ length: isDoubleSided ? 2 : 1 }, (_, face) =>
+            Array.from({ length: 5 }, (_, row) =>
+              Array.from({ length: 8 }, (_, col) => (
+                <mesh
+                  key={`peg-${face}-${row}-${col}`}
+                  position={[
+                    -innerW / 2 + (col + 0.5) * (innerW / 8),
+                    -dims.bodyH / 2 + wt + (row + 1) * ((dims.bodyH - wt) / 6),
+                    (face === 0 ? 1 : -1) * (wt / 2 + 0.002),
+                  ]}
+                >
+                  <circleGeometry args={[0.012, 8]} />
+                  <meshStandardMaterial color={PEG_COLOR} roughness={0.9} />
+                </mesh>
+              )),
+            ),
           )}
         </group>
       )}
@@ -191,13 +199,13 @@ export function CustomRackMesh({
 
       {/* Thin top rail */}
       <mesh position={[0, bodyTopY - wt / 4, cavityZ]} {...bind}>
-        <boxGeometry args={[innerW, wt * 0.6, innerD]} />
+        <boxGeometry args={[innerW, wt * 0.6, cavityDepth]} />
         <meshStandardMaterial color={POST_COLOR} metalness={0.65} roughness={0.4} />
       </mesh>
 
       {/* Inner floor (base of cavity) */}
       <mesh position={[0, bodyBottomY + wt / 4, cavityZ]} {...bind}>
-        <boxGeometry args={[innerW, wt / 2, innerD]} />
+        <boxGeometry args={[innerW, wt / 2, cavityDepth]} />
         <meshStandardMaterial color="#f4f6f8" roughness={0.85} metalness={0.1} />
       </mesh>
 

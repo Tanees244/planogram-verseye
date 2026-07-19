@@ -62,27 +62,74 @@ export function Bin({
   const actualBinWidth = safeDim(binWidth ?? bin.width, 0.35);
   const actualBinDepth = safeDim(binDepth ?? bin.depth, 0.35);
   const actualBinHeight = safeDim(binHeight ?? bin.height, 0.35);
-  const wallThick = 0.02;
-  const lipHeight = 0.02;
+  // Match attach preview / capacity grid — no wall inset so a full qty fills the bin.
+  const wallThick = 0;
+  const lipHeight = 0;
 
   const facings = expandProductsByQuantity(bin.products);
 
-  // Pack left→right (X), then front→back (Z depth). Scale down if needed to stay in bin.
-  const mixed = packMixedFacingsInBin({
-    binWidth: actualBinWidth,
-    binHeight: actualBinHeight,
-    binDepth: actualBinDepth,
-    facings: facings.map((product, i) => ({
-      id: `${product.id}-${i}`,
-      width: safeDim(product.width, 0.08),
-      height: safeDim(product.height, 0.27),
-      depth: safeDim(product.depth, 0.08),
-    })),
-    wallThick,
-    lipHeight,
-  })
+  const facingDims = facings.map((product) => ({
+    id: product.id,
+    width: safeDim(product.width, 0.08),
+    height: safeDim(product.height, 0.27),
+    depth: safeDim(product.depth, 0.08),
+  }))
+  const firstDim = facingDims[0]
+  const uniformPack =
+    Boolean(firstDim) &&
+    facingDims.every(
+      (d) =>
+        Math.abs(d.width - firstDim.width) < 1e-6 &&
+        Math.abs(d.height - firstDim.height) < 1e-6 &&
+        Math.abs(d.depth - firstDim.depth) < 1e-6,
+    )
 
-  const productPositions: [number, number, number][] = mixed.positions.map((p, i) => {
+  // Same W×D×H grid as the Attach Product preview — otherwise packed products
+  // used a different algorithm and looked sparse / floating after attach.
+  let packedPositions: {
+    x: number
+    y: number
+    z: number
+    width: number
+    height: number
+    depth: number
+  }[] = []
+
+  if (uniformPack && firstDim && facingDims.length > 0) {
+    const pack = packFacingsInBin({
+      binWidth: actualBinWidth,
+      binHeight: actualBinHeight,
+      binDepth: actualBinDepth,
+      facing: {
+        width: firstDim.width,
+        height: firstDim.height,
+        depth: firstDim.depth,
+      },
+      quantity: facingDims.length,
+      wallThick,
+      lipHeight,
+    })
+    packedPositions = pack.slots.map((slot) => ({
+      x: slot.x,
+      y: slot.y,
+      z: slot.z,
+      width: slot.width,
+      height: slot.height,
+      depth: slot.depth,
+    }))
+  } else if (facingDims.length > 0) {
+    const mixed = packMixedFacingsInBin({
+      binWidth: actualBinWidth,
+      binHeight: actualBinHeight,
+      binDepth: actualBinDepth,
+      facings: facingDims,
+      wallThick,
+      lipHeight,
+    })
+    packedPositions = mixed.positions
+  }
+
+  const productPositions: [number, number, number][] = packedPositions.map((p, i) => {
     const explicit = facings[i]?.position
     const explicitX =
       typeof explicit?.x === 'number' && Number.isFinite(explicit.x)
@@ -99,7 +146,7 @@ export function Bin({
       p.z,
     ]
   })
-  const scaledFacings = mixed.positions.map((p, i) => ({
+  const scaledFacings = packedPositions.map((p, i) => ({
     ...facings[i],
     width: p.width,
     height: p.height,
@@ -165,15 +212,19 @@ export function Bin({
       wallThick,
       lipHeight,
     })
+    // GLB ghosts are expensive (scene clone each) — model the front slots,
+    // plain ghost boxes beyond that so large quantities still fill the bin.
+    const GLB_GHOST_LIMIT = 80
     for (const slot of pack.slots) {
+      const useModel = slot.index < GLB_GHOST_LIMIT
       previewSlots.push({
         pos: [slot.x, slot.y, slot.z],
         w: slot.width,
         h: slot.height,
         d: slot.depth,
         fits: attachPreview.fits && !slot.overflow,
-        modelUrl: attachPreview.modelUrl,
-        modelStorageKey: attachPreview.modelStorageKey,
+        modelUrl: useModel ? attachPreview.modelUrl : null,
+        modelStorageKey: useModel ? attachPreview.modelStorageKey : null,
         color: attachPreview.color ?? "#2C5282",
       })
     }

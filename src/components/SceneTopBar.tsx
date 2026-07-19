@@ -62,10 +62,8 @@ export function SceneTopBar({ className }: { className?: string }) {
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
   const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
   const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
-  const saveStoreLayoutToServer = usePlanogramStore((s) => s.saveStoreLayoutToServer)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
   const { exportStore } = usePlanogramExport()
-  const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -103,7 +101,7 @@ export function SceneTopBar({ className }: { className?: string }) {
           <span className="flex flex-col min-w-0">
             <span className="text-sm font-semibold text-white leading-tight">Scene & store</span>
             <span className="text-[10px] text-gray-400 leading-tight truncate max-w-[140px]">
-              {selectedStoreName || 'Day · roof · save'}
+              {selectedStoreName || 'Day · roof · export'}
             </span>
           </span>
           <FiChevronDown size={16} className="text-gray-400 shrink-0 group-hover:text-white transition-colors" />
@@ -165,19 +163,6 @@ export function SceneTopBar({ className }: { className?: string }) {
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
-                    disabled={isSavingLayout}
-                    onClick={async () => {
-                      setSaveMessage(null)
-                      const res = await saveStoreLayoutToServer()
-                      setSaveMessage(res.message ?? (res.success ? 'Saved' : 'Save failed'))
-                      setTimeout(() => setSaveMessage(null), 4000)
-                    }}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-brand/40 hover:bg-brand/55 text-white transition-colors disabled:opacity-50"
-                  >
-                    Save all
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setSelectedStore(null)}
                     className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
                   >
@@ -198,9 +183,6 @@ export function SceneTopBar({ className }: { className?: string }) {
                     Export store PSA
                   </button>
                 </div>
-              )}
-              {saveMessage && (
-                <span className="text-[10px] text-brand-light leading-snug">{saveMessage}</span>
               )}
             </div>
           </>

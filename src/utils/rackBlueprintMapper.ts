@@ -102,6 +102,7 @@ export function shellToCustomConfig(
     shelfCount: 0,
     shelfThickness: 0.03,
     accentColor: shell?.materials?.accentColor ?? '#2C5282',
+    isDoubleSided: false,
   };
 }
 

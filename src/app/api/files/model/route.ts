@@ -5,7 +5,14 @@ import { getToken } from '@/app/api/utils/getToken'
 const API_BASE_URL = process.env.API_BASE_URL
 
 async function fetchBinary(url: string): Promise<Response> {
-  const upstream = await fetch(url, { cache: 'no-store' })
+  let upstream: globalThis.Response
+  try {
+    upstream = await fetch(url, { cache: 'no-store' })
+  } catch {
+    // Transient network/TLS hiccups are common against staging MinIO — retry once.
+    await new Promise((r) => setTimeout(r, 300))
+    upstream = await fetch(url, { cache: 'no-store' })
+  }
   if (!upstream.ok) {
     return new NextResponse('Upstream error', { status: upstream.status })
   }
@@ -33,11 +40,17 @@ export async function GET(req: NextRequest) {
   const url = searchParams.get('url')
   const key = searchParams.get('key')
 
+  // Direct URL first; presigned URLs expire (24h), so fall through to a
+  // fresh presign via `key` instead of failing when both are provided.
   if (url && /^https?:\/\//i.test(url)) {
     try {
-      return await fetchBinary(url)
+      const res = await fetchBinary(url)
+      if (res.status < 400) return res
+      if (!key || !API_BASE_URL) return res
     } catch {
-      return new NextResponse('Fetch failed', { status: 502 })
+      if (!key || !API_BASE_URL) {
+        return new NextResponse('Fetch failed', { status: 502 })
+      }
     }
   }
 

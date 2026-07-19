@@ -68,7 +68,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
 
     deleteRack,
     deleteRackFromServer,
-    deleteRow,
+    deleteRowFromServer,
     deleteBinFromServer,
     deleteProduct,
     addProduct,
@@ -672,7 +672,15 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <span className="text-lg leading-none">+</span> Add Bin
           </ActionBtn>
           {isSidebar ? (
-            <ActionBtn variant="danger" fullWidth onClick={() => deleteRow(selectedId)}>
+            <ActionBtn
+              variant="danger"
+              fullWidth
+              onClick={async () => {
+                const res = await deleteRowFromServer(selectedId)
+                if (!res.success) toastApiError(res.message)
+                else toast.success(res.message ?? 'Row deleted')
+              }}
+            >
               <FiTrash2 /> Delete row
             </ActionBtn>
           ) : (
@@ -680,7 +688,11 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               variant={"default"}
               size={"sm"}
               className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-              onClick={() => deleteRow(selectedId)}
+              onClick={async () => {
+                const res = await deleteRowFromServer(selectedId)
+                if (!res.success) toastApiError(res.message)
+                else toast.success(res.message ?? 'Row deleted')
+              }}
             >
               <FiTrash2 />
             </Button>
