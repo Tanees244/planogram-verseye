@@ -713,6 +713,7 @@ export default function AttachProductToBinModal({
         width: String(DEFAULT_PRODUCT_WIDTH),
         depth: String(DEFAULT_PRODUCT_DEPTH),
         height: String(DEFAULT_PRODUCT_HEIGHT),
+        isHero: false,
       })
       clearImage()
       clearModel()
