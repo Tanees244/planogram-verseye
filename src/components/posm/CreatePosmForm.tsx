@@ -61,6 +61,10 @@ export function CreatePosmForm({
       setError('Name is required')
       return
     }
+    if (!imageFile) {
+      setError('Upload an image for the shelf talker')
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -214,7 +218,7 @@ export function CreatePosmForm({
           <>
             <FiImage size={16} className={dark ? 'text-gray-400' : 'text-gray-500'} />
             <span className={cn('text-[10px]', dark ? 'text-gray-400' : 'text-gray-500')}>
-              Upload image (optional)
+              Upload shelf talker image *
             </span>
           </>
         )}
@@ -253,7 +257,7 @@ export function CreatePosmForm({
           className="flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-brand text-white hover:bg-brand-dark disabled:opacity-60"
         >
           {busy && <Spinner />}
-          {busy ? 'Creating…' : 'Create'}
+          {busy ? 'Creating…' : 'Create & assign'}
         </button>
       </div>
     </div>

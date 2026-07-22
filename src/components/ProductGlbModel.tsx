@@ -52,15 +52,17 @@ function GlbMesh({
     clone.traverse((child) => {
       const mesh = child as Mesh
       if (!mesh.isMesh) return
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.raycast = () => null
-      mesh.userData = { ...mesh.userData, id: productId, type: 'product' }
-      if (Array.isArray(mesh.material)) {
-        mesh.material = mesh.material.map((m) => m.clone())
-      } else if (mesh.material) {
-        mesh.material = mesh.material.clone()
-      }
+        mesh.castShadow = false
+        mesh.receiveShadow = false
+        mesh.raycast = () => null
+        mesh.userData = { ...mesh.userData, id: productId, type: 'product' }
+        // Share materials when possible — only clone if we need per-instance emissive later.
+        // Cloning every facing's materials was a major memory/CPU cost.
+        if (Array.isArray(mesh.material)) {
+          mesh.material = mesh.material.map((m) => m.clone())
+        } else if (mesh.material) {
+          mesh.material = mesh.material.clone()
+        }
     })
     fitObjectToBox(clone, width, height, depth)
     return clone

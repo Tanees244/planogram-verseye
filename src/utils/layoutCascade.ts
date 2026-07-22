@@ -15,6 +15,7 @@ import type { CustomRackConfig } from '@/components/fixtures/customRackTypes'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import type { Bin, Product, Rack, Row } from '@/store/planogramStore'
 import { resolveRackInner, resolveRackOuter } from '@/utils/rackBlueprintMapper'
+import { fillBinFrontFacings as fillBinFrontFacingsLocal } from '@/utils/faceFill'
 
 export type CascadeExceptionCode =
   | 'row_span_clamped'
@@ -352,7 +353,11 @@ export function cascadeRescaleRack(rack: Rack): CascadeResult {
         let withSpan = rescaleBins({ ...row, width: span }, span, exceptions, rack.id)
         withSpan = {
           ...withSpan,
-          bins: withSpan.bins.map((b) => reintegeriseFacings(b, exceptions, rack.id, row.id)),
+          bins: withSpan.bins.map((b) => {
+            const shrunk = reintegeriseFacings(b, exceptions, rack.id, row.id)
+            // Fill underfilled front face (Exact Face Fill) after shrink-to-fit.
+            return fillBinFrontFacingsLocal(shrunk)
+          }),
         }
         return withSpan
       })

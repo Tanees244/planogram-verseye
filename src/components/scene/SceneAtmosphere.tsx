@@ -4,9 +4,6 @@ import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SCENE_THEMES, type SceneTheme } from '@/constants/sceneTheme'
-import { WAREHOUSE_SCALE } from '@/constants/warehouse'
-
-const SHADOW_EXT = 80 * WAREHOUSE_SCALE
 
 export function SceneAtmosphere({ theme }: { theme: SceneTheme }) {
   const scene = useThree((s) => s.scene)
@@ -34,14 +31,7 @@ export function SceneLighting({ theme }: { theme: SceneTheme }) {
         position={cfg.sunPosition}
         intensity={cfg.sunIntensity}
         color={cfg.sunColor}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={200}
-        shadow-camera-left={-SHADOW_EXT}
-        shadow-camera-right={SHADOW_EXT}
-        shadow-camera-top={SHADOW_EXT}
-        shadow-camera-bottom={-SHADOW_EXT}
+        castShadow={false}
       />
       <directionalLight
         position={[-cfg.sunPosition[0] * 0.4, 12, -cfg.sunPosition[2] * 0.4]}

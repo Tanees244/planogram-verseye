@@ -152,7 +152,7 @@ export function ProductDropHandler() {
         })
         return
       }
-      await placeProductOnBin(binId, 1)
+      await placeProductOnBin(binId)
     }
 
     const onDragEnd = () => clearHover()

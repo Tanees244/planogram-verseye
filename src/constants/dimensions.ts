@@ -12,13 +12,13 @@ export const DEFAULT_WAREHOUSE_HEIGHT = 8
 export const DEFAULT_RACK_WIDTH = 2.7
 export const DEFAULT_RACK_DEPTH = 1.1
 export const DEFAULT_RACK_HEIGHT = 6
-export const DEFAULT_SHELF_LEVELS = 5
+export const DEFAULT_SHELF_LEVELS = 4
 
 /** Retail grocery shelf bay. */
 export const GROCERY_SHELF_WIDTH = 1.2
 export const GROCERY_SHELF_DEPTH = 0.55
 export const GROCERY_SHELF_HEIGHT = 2.0
-export const GROCERY_SHELF_SPACING = 0.4
+export const GROCERY_SHELF_SPACING = 0.35
 
 /** End-cap promotional. */
 export const END_CAP_WIDTH = 0.9
@@ -37,8 +37,8 @@ export const AISLE_FORKLIFT = 3.5
 
 /** Default bin on a retail shelf (one bay section). */
 export const DEFAULT_BIN_WIDTH = 0.9
-export const DEFAULT_BIN_DEPTH = 0.55
-export const DEFAULT_BIN_HEIGHT = 0.4
+export const DEFAULT_BIN_DEPTH = 0.45
+export const DEFAULT_BIN_HEIGHT = 0.35
 
 /**
  * Default product when catalog dims are missing — approx. 1 L milk bottle.

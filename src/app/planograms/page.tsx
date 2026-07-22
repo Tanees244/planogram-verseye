@@ -6,6 +6,8 @@ import { FiArrowLeft, FiLayers, FiSearch, FiBox, FiChevronRight, FiTrash2 } from
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { formatPlanogramDateTime, type ShelfListItem } from '@/types/shelf'
+import { PlanogramThumb } from '@/components/PlanogramThumb'
+import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
 
 function asArray(value: unknown): unknown[] {
   if (!value) return []
@@ -57,6 +59,11 @@ export default function PlanogramsPage() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    setNameSuggestions(getUserEnteredNames('planogram'))
+  }, [items.length])
 
   useEffect(() => {
     if (selectedStoreId) setStoreId(selectedStoreId)
@@ -169,7 +176,7 @@ export default function PlanogramsPage() {
                 Planograms
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                Browse planograms for a store — fixture type, publish time, and last update.
+                Browse by planogram name — 2D shelf sketches, fixture type, and last update.
               </p>
             </div>
           </div>
@@ -192,10 +199,22 @@ export default function PlanogramsPage() {
           <input
             type="text"
             value={search}
+            list="planogram-name-suggestions"
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search planograms…"
+            onBlur={() => {
+              if (search.trim()) {
+                rememberUserEnteredName('planogram', search.trim())
+                setNameSuggestions(getUserEnteredNames('planogram'))
+              }
+            }}
+            placeholder="Search by planogram name…"
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2C5282]/20 focus:border-[#2C5282] transition-all"
           />
+          <datalist id="planogram-name-suggestions">
+            {nameSuggestions.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
         </div>
 
         {loading ? (
@@ -220,68 +239,67 @@ export default function PlanogramsPage() {
             <p className="font-medium">No planograms found for {storeLabel}.</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                  <th className="px-4 py-3 font-semibold">Planogram name</th>
-                  <th className="px-4 py-3 font-semibold">Fixture type</th>
-                  <th className="px-4 py-3 font-semibold">Published</th>
-                  <th className="px-4 py-3 font-semibold">Last updated</th>
-                  <th className="px-4 py-3 font-semibold w-20" />
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/80">
-                    <td className="px-4 py-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map((p) => (
+              <div
+                key={p.id}
+                className="group rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden hover:shadow-md hover:border-[#2C5282]/25 transition-all"
+              >
+                <Link
+                  href={`/planograms/${p.id}`}
+                  className="block"
+                  onClick={() => rememberUserEnteredName('planogram', p.name)}
+                >
+                  <PlanogramThumb item={p} className="aspect-[16/10]" />
+                </Link>
+                <div className="p-3.5 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <Link
                         href={`/planograms/${p.id}`}
-                        className="font-semibold text-gray-900 hover:text-[#2C5282]"
+                        onClick={() => rememberUserEnteredName('planogram', p.name)}
+                        className="font-semibold text-gray-900 hover:text-[#2C5282] line-clamp-2"
                       >
                         {p.name}
                       </Link>
                       <p className="text-xs text-gray-500 mt-0.5 truncate">
-                        {p.rackCode ? `Fixture ${p.rackCode}` : storeLabel}
+                        {p.rackCode ? p.rackCode : storeLabel}
                         {p.sideCode ? ` · ${p.sideCode}` : ''}
                       </p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">
+                    </div>
+                    <button
+                      type="button"
+                      disabled={deletingId === p.id}
+                      onClick={() => void removeShelf(p)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 shrink-0 disabled:opacity-50"
+                      title="Delete planogram"
+                      aria-label={`Delete ${p.name}`}
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-gray-500">
+                    <span>
                       {p.fixtureType ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                          {p.fixtureType}
+                        <span className="px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700">
+                          {p.fixtureType.replace(/_/g, ' ')}
                         </span>
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {formatPlanogramDateTime(p.publishedAt)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {formatPlanogramDateTime(p.lastUpdated)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void removeShelf(p)}
-                          disabled={deletingId === p.id}
-                          className="p-1 text-gray-300 hover:text-red-600 disabled:cursor-wait disabled:opacity-50"
-                          title="Delete planogram"
-                          aria-label={`Delete ${p.name}`}
-                        >
-                          <FiTrash2 />
-                        </button>
-                        <Link href={`/planograms/${p.id}`} className="text-gray-300 hover:text-[#2C5282]">
-                          <FiChevronRight />
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </span>
+                    <span className="truncate">{formatPlanogramDateTime(p.lastUpdated)}</span>
+                  </div>
+                  <Link
+                    href={`/planograms/${p.id}`}
+                    onClick={() => rememberUserEnteredName('planogram', p.name)}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#2C5282] hover:underline"
+                  >
+                    Open <FiChevronRight size={12} />
+                  </Link>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

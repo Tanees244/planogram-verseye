@@ -197,14 +197,14 @@ export function CustomRackMesh({
         </mesh>
       )}
 
-      {/* Thin top rail */}
-      <mesh position={[0, bodyTopY - wt / 4, cavityZ]} {...bind}>
+      {/* Thin top rail — visual only; do not steal row/bin clicks */}
+      <mesh position={[0, bodyTopY - wt / 4, cavityZ]} raycast={() => null}>
         <boxGeometry args={[innerW, wt * 0.6, cavityDepth]} />
         <meshStandardMaterial color={POST_COLOR} metalness={0.65} roughness={0.4} />
       </mesh>
 
-      {/* Inner floor (base of cavity) */}
-      <mesh position={[0, bodyBottomY + wt / 4, cavityZ]} {...bind}>
+      {/* Inner floor (base of cavity) — visual only */}
+      <mesh position={[0, bodyBottomY + wt / 4, cavityZ]} raycast={() => null}>
         <boxGeometry args={[innerW, wt / 2, cavityDepth]} />
         <meshStandardMaterial color="#f4f6f8" roughness={0.85} metalness={0.1} />
       </mesh>
@@ -227,7 +227,7 @@ export function CustomRackMesh({
       {/* Optional glass front */}
       {config.walls.frontGlass && (
         <group>
-          <mesh position={[0, bodyCenterY, -d / 2 + wt / 2]} {...bind}>
+          <mesh position={[0, bodyCenterY, -d / 2 + wt / 2]} raycast={() => null}>
             <boxGeometry args={[innerW, dims.bodyH * 0.92, 0.03]} />
             <meshStandardMaterial
               color="#ffffff"
@@ -237,7 +237,7 @@ export function CustomRackMesh({
               roughness={0.05}
             />
           </mesh>
-          <mesh position={[0, bodyTopY - 0.04, -d / 2 + wt]}>
+          <mesh position={[0, bodyTopY - 0.04, -d / 2 + wt]} raycast={() => null}>
             <boxGeometry args={[innerW * 0.9, 0.025, 0.025]} />
             <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={0.6} />
           </mesh>

@@ -8,6 +8,7 @@ import { FixturePalette } from '@/components/FixturePalette'
 import { ProductPalette } from '@/components/ProductPalette'
 import { cn } from '@/lib/cn'
 import { SceneTopBar } from '@/components/SceneTopBar'
+import { PlanogramClipboardHotkeys } from '@/components/PlanogramClipboardHotkeys'
 import { CustomRackBuilder } from '@/components/CustomRackBuilder'
 import { TraditionalView } from '@/components/TraditionalView'
 import { ContextAddButton } from '@/components/ContextAddButton'
@@ -308,6 +309,7 @@ export default function Home() {
       <Scene3D />
       <StoreLayout />
       <CustomRackBuilder />
+      <PlanogramClipboardHotkeys />
 
       <SceneTopBar className="absolute top-4 right-4 z-[100]" />
       {isAddingRack && (

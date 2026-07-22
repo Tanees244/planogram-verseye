@@ -29,6 +29,7 @@ import {
   type CascadeException,
 } from "@/utils/layoutCascade";
 import { maxFacingsInBinVolume } from "@/utils/facingPack";
+import { applyLocalFaceFillToRack } from "@/utils/faceFill";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
 import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
 import type { SceneTheme } from "@/constants/sceneTheme";
@@ -75,6 +76,8 @@ export interface Product {
   /** Optional placement in meters from the parent bin's bottom-left face. */
   position?: BinProductPosition | null;
   quantity?: number;
+  /** Hero / eye-facing SKU (client policy + optional API field). */
+  isHero?: boolean;
 }
 
 export interface PendingProductParams {
@@ -92,6 +95,8 @@ export interface PendingProductParams {
   height: number;
   depth: number;
   color?: string;
+  /** Hero / eye-facing — placement restricted to eye-level rows. */
+  isHero?: boolean;
 }
 
 /** Live ghost facings while Attach Product modal quantity/dims change. */
@@ -114,6 +119,47 @@ export interface PendingBinPreview {
   depth: number;
   height: number;
 }
+
+/** Serializable SKU snapshot for copy/paste. */
+export type ClipboardSkuPayload = {
+  kind: 'sku';
+  product: {
+    id: string;
+    name: string;
+    width: number;
+    height: number;
+    depth: number;
+    color?: string;
+    brandName?: string;
+    categoryName?: string;
+    imageUrl?: string;
+    imageStorageKey?: string;
+    modelUrl?: string;
+    modelStorageKey?: string;
+  };
+  /** Face facing count from source (paste prefers target front-fill). */
+  quantity: number;
+};
+
+/** Serializable row snapshot for copy/paste. */
+export type ClipboardRowPayload = {
+  kind: 'row';
+  height: number;
+  width?: number;
+  depth?: number | null;
+  dividerPosmItemId?: string | null;
+  dividerPosm?: RackSurfacePosm | null;
+  bins: Array<{
+    binName?: string;
+    width: number;
+    depth: number;
+    height: number;
+    products: ClipboardSkuPayload['product'][];
+    quantity: number;
+  }>;
+};
+
+export type PlanogramClipboard = ClipboardSkuPayload | ClipboardRowPayload | null;
 
 export interface Bin {
   id: string;
@@ -431,6 +477,31 @@ export interface PlanogramState {
   deleteProduct: (productId: string) => void;
   clearBinProductsLocally: (binId: string) => void;
   detachBinInventory: (binId: string) => Promise<{ success: boolean; message?: string }>;
+  /**
+   * Move the SKU inventory from one bin to another.
+   * Detaches source, attaches to target with front-face quantity by default.
+   */
+  moveBinInventoryToBin: (
+    sourceBinId: string,
+    targetBinId: string,
+    options?: { quantity?: number },
+  ) => Promise<{ success: boolean; message?: string }>;
+  /** Source bin while relocating an existing SKU via click/drop onto another bin. */
+  movingInventoryFromBinId: string | null;
+  startMovingBinInventory: (sourceBinId: string) => void;
+  cancelMovingBinInventory: () => void;
+  /** Editor clipboard for SKU / whole-row copy-paste (Ctrl+C / Ctrl+V). */
+  clipboard: PlanogramClipboard;
+  copySelection: () => { success: boolean; message?: string };
+  pasteClipboard: () => Promise<{ success: boolean; message?: string }>;
+  clearClipboard: () => void;
+  /** Local Exact Face Fill: redistribute bin widths + front facing qty on a rack. */
+  applyFaceFillToRack: (rackId: string) => { success: boolean; message?: string };
+  /** Copy shell + row divider POSM from source rack onto a target (by side/row index). */
+  copyPosmFromRackToRack: (
+    sourceRackId: string,
+    targetRackId: string,
+  ) => Promise<{ success: boolean; message?: string }>;
   deleteProductFromServer: (productId: string) => Promise<{ success: boolean; message?: string }>;
   assignRackPosmItems: (
     rackId: string,
@@ -617,6 +688,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   isPlacingProduct: false,
   pendingProductParams: null,
   productDropHover: null,
+  movingInventoryFromBinId: null,
+  clipboard: null,
   attachFacingPreview: null,
   pendingBinPreview: null,
   customRackBuilderOpen: false,
@@ -715,11 +788,49 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       pendingProductParams: null,
       productDropHover: null,
     }),
-  placeProductOnBin: async (binId, quantity = 1) => {
+  placeProductOnBin: async (binId, quantity) => {
     const state = get();
     const pending = state.pendingProductParams;
     if (!pending) {
       return { success: false, message: 'No product selected for placement' };
+    }
+
+    // Default: fill the front face (linear facings), not depth.
+    let qty = quantity != null ? Math.max(1, Math.floor(Number(quantity) || 1)) : 0;
+    if (!(qty >= 1)) {
+      let binWidth = 0;
+      let usedWidth = 0;
+      let found = false;
+      outer: for (const rack of state.area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            const bin = row.bins.find((b) => b.id === binId);
+            if (!bin) continue;
+            binWidth = Number(bin.width) || 0;
+            usedWidth = bin.products.reduce((sum, p) => {
+              const w = Number(p.width);
+              const q = Math.max(1, Math.floor(Number(p.quantity) || 1));
+              return sum + (w > 0 ? w * q : 0);
+            }, 0);
+            found = true;
+            break outer;
+          }
+        }
+      }
+      if (!found) {
+        return { success: false, message: 'Bin not found' };
+      }
+      const { remainingFaceFacings, suggestedFaceFacings } = await import('@/utils/faceFill');
+      qty =
+        usedWidth > 0.001
+          ? remainingFaceFacings(binWidth, pending.width, usedWidth)
+          : suggestedFaceFacings(binWidth, pending.width);
+      if (!(qty >= 1)) {
+        return {
+          success: false,
+          message: `No front facings fit — SKU (${(pending.width * 100).toFixed(0)} cm) is wider than remaining bin face.`,
+        };
+      }
     }
 
     const result = await get().attachProductToBin(
@@ -736,8 +847,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         imageUrl: pending.imageUrl ?? undefined,
         modelUrl: pending.modelUrl ?? undefined,
         modelStorageKey: pending.modelStorageKey ?? undefined,
+        isHero: pending.isHero,
       },
-      quantity,
+      qty,
     );
 
     if (result.success) {
@@ -1809,6 +1921,20 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const qty = Math.max(1, Math.floor(Number(quantity) || 1));
     const serverBinId = resolveEntityId(binId);
     const skuId = resolveEntityId(product.id);
+
+    // Hero SKUs → eye-level rows only
+    try {
+      const { heroPlacementBlocked, isHeroSkuId, setHeroSkuId } = await import('@/utils/heroSku');
+      if (product.isHero) setHeroSkuId(skuId || product.id, true);
+      const heroId = skuId || product.id;
+      if (isHeroSkuId(heroId) || product.isHero) {
+        const blocked = heroPlacementBlocked(heroId, binId, get().area.racks);
+        if (blocked) return { success: false, message: blocked };
+      }
+    } catch {
+      /* non-fatal */
+    }
+
     const canAttachInventory =
       Boolean(serverBinId && skuId && UUID_RE.test(serverBinId) && UUID_RE.test(skuId));
 
@@ -1983,6 +2109,19 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
+      // Client-side exact face-fill check (matches backend save rules).
+      const { validateRackFaceFill, formatFaceFillIssues } = await import('@/utils/faceFill');
+      const faceIssues = validateRackFaceFill(rack);
+      if (faceIssues.length > 0) {
+        const message =
+          formatFaceFillIssues(faceIssues) ||
+          'Front face is not fully filled — fix bin widths / facings before save.';
+        if (!options?.suppressLoading) {
+          set({ isSavingLayout: false, saveLayoutError: message });
+        }
+        return { success: false, message };
+      }
+
       const payload = buildUpdateRackPayload(rack, { reflowSkus: options?.reflowSkus });
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
@@ -2596,6 +2735,546 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     } catch {
       return { success: false, message: 'Network error while detaching product' };
     }
+  },
+  startMovingBinInventory: (sourceBinId) => {
+    set({
+      movingInventoryFromBinId: sourceBinId,
+      isPlacingProduct: false,
+      pendingProductParams: null,
+      productDropHover: null,
+      selectedId: sourceBinId,
+      selectedType: 'bin',
+      addProductError: null,
+    });
+  },
+  cancelMovingBinInventory: () =>
+    set({
+      movingInventoryFromBinId: null,
+      productDropHover: null,
+    }),
+  clearClipboard: () => set({ clipboard: null }),
+  applyFaceFillToRack: (rackId) => {
+    const state = get();
+    const rack = state.area.racks.find((r) => r.id === rackId || r.rackId === rackId);
+    if (!rack) return { success: false, message: 'Rack not found' };
+    const next = applyLocalFaceFillToRack(rack);
+    set((s) => ({
+      area: {
+        ...s.area,
+        racks: s.area.racks.map((r) =>
+          r.id === rack.id || r.rackId === rack.rackId ? { ...r, ...next, id: r.id, rackId: r.rackId } : r,
+        ),
+      },
+    }));
+    return { success: true, message: 'Front face filled locally' };
+  },
+  copyPosmFromRackToRack: async (sourceRackId, targetRackId) => {
+    const state = get();
+    const source = state.area.racks.find(
+      (r) => r.id === sourceRackId || r.rackId === sourceRackId,
+    );
+    const target = state.area.racks.find(
+      (r) => r.id === targetRackId || r.rackId === targetRackId,
+    );
+    if (!source || !target) {
+      return { success: false, message: 'Source or target rack not found' };
+    }
+
+    const shell = source.shell;
+    const payload: import('@/types/rackBlueprint').UpdateRackPosmItemsRequest = {
+      headerPosmItemId: shell?.headerPosmItemId ?? shell?.headerPosm?.id ?? null,
+      footerPosmItemId: shell?.footerPosmItemId ?? shell?.footerPosm?.id ?? null,
+      leftWallPosmItemId: shell?.leftWallPosmItemId ?? shell?.leftWallPosm?.id ?? null,
+      rightWallPosmItemId: shell?.rightWallPosmItemId ?? shell?.rightWallPosm?.id ?? null,
+      rowPosmItems: [],
+    };
+
+    const catalog: Record<string, RackSurfacePosm> = {};
+    const take = (p: RackSurfacePosm | null | undefined) => {
+      if (p?.id) catalog[p.id] = p;
+    };
+    take(shell?.headerPosm);
+    take(shell?.footerPosm);
+    take(shell?.leftWallPosm);
+    take(shell?.rightWallPosm);
+
+    const sideCount = Math.min(source.sides.length, target.sides.length);
+    for (let si = 0; si < sideCount; si++) {
+      const sSide = source.sides[si];
+      const tSide = target.sides[si];
+      const rowCount = Math.min(sSide.rows.length, tSide.rows.length);
+      for (let ri = 0; ri < rowCount; ri++) {
+        const sRow = sSide.rows[ri];
+        const tRow = tSide.rows[ri];
+        const posmId = sRow.dividerPosmItemId ?? sRow.dividerPosm?.id ?? null;
+        if (!posmId) continue;
+        const rowKey = resolveEntityId(tRow.id) ?? tRow.id;
+        payload.rowPosmItems = payload.rowPosmItems ?? [];
+        payload.rowPosmItems.push({ rowId: rowKey, dividerPosmItemId: posmId });
+        if (sRow.dividerPosm) catalog[posmId] = sRow.dividerPosm;
+      }
+    }
+
+    const hasShell =
+      payload.headerPosmItemId ||
+      payload.footerPosmItemId ||
+      payload.leftWallPosmItemId ||
+      payload.rightWallPosmItemId;
+    const hasRows = (payload.rowPosmItems?.length ?? 0) > 0;
+    if (!hasShell && !hasRows) {
+      return { success: true, message: 'No POSM to copy' };
+    }
+
+    return get().assignRackPosmItems(target.id, payload, catalog);
+  },
+  copySelection: () => {
+    const state = get();
+    const { selectedId, selectedType, area } = state;
+    if (!selectedId || !selectedType) {
+      return { success: false, message: 'Select a bin, product, or row to copy' };
+    }
+
+    const snapshotProduct = (p: Product): ClipboardSkuPayload['product'] => ({
+      id: resolveProductFacingId(p.id),
+      name: p.name,
+      width: p.width,
+      height: p.height,
+      depth: p.depth,
+      color: p.color,
+      brandName: p.brandName,
+      categoryName: p.categoryName,
+      imageUrl: p.imageUrl,
+      imageStorageKey: p.imageStorageKey,
+      modelUrl: p.modelUrl,
+      modelStorageKey: p.modelStorageKey,
+    });
+
+    if (selectedType === 'bin' || selectedType === 'product') {
+      let bin: Bin | null = null;
+      let product: Product | null = null;
+      for (const rack of area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            for (const b of row.bins) {
+              if (selectedType === 'bin' && b.id === selectedId) {
+                bin = b;
+                product = b.products[0] ?? null;
+                break;
+              }
+              if (selectedType === 'product') {
+                const match = b.products.find(
+                  (p) =>
+                    p.id === selectedId ||
+                    resolveProductFacingId(p.id) === resolveProductFacingId(selectedId),
+                );
+                if (match) {
+                  bin = b;
+                  product = match;
+                  break;
+                }
+              }
+            }
+            if (product) break;
+          }
+          if (product) break;
+        }
+        if (product) break;
+      }
+      if (!product) {
+        return { success: false, message: 'No SKU on the selection to copy' };
+      }
+      const qty = Math.max(1, Math.floor(Number(product.quantity) || 1));
+      set({
+        clipboard: {
+          kind: 'sku',
+          product: snapshotProduct(product),
+          quantity: qty,
+        },
+      });
+      return {
+        success: true,
+        message: `Copied SKU “${product.name}” (${qty} front facing${qty === 1 ? '' : 's'})`,
+      };
+    }
+
+    if (selectedType === 'row') {
+      let row: Row | null = null;
+      for (const rack of area.racks) {
+        for (const side of rack.sides) {
+          const found = side.rows.find((r) => r.id === selectedId);
+          if (found) {
+            row = found;
+            break;
+          }
+        }
+        if (row) break;
+      }
+      if (!row) return { success: false, message: 'Row not found' };
+      if (!row.bins.length) {
+        return { success: false, message: 'Row has no bins to copy' };
+      }
+      set({
+        clipboard: {
+          kind: 'row',
+          height: row.height,
+          width: row.width ?? row.span,
+          depth: row.depth,
+          dividerPosmItemId: row.dividerPosmItemId ?? row.dividerPosm?.id ?? null,
+          dividerPosm: row.dividerPosm ?? null,
+          bins: row.bins.map((b) => {
+            const p = b.products[0];
+            return {
+              binName: b.binName,
+              width: b.width,
+              depth: b.depth,
+              height: b.height,
+              products: p ? [snapshotProduct(p)] : [],
+              quantity: p ? Math.max(1, Math.floor(Number(p.quantity) || 1)) : 0,
+            };
+          }),
+        },
+      });
+      return {
+        success: true,
+        message: `Copied row (${row.bins.length} bin${row.bins.length === 1 ? '' : 's'})`,
+      };
+    }
+
+    return { success: false, message: 'Copy supports bin, product, or row selection' };
+  },
+  pasteClipboard: async () => {
+    const state = get();
+    const clip = state.clipboard;
+    if (!clip) return { success: false, message: 'Clipboard is empty — copy a SKU or row first' };
+
+    const { suggestedFaceFacings } = await import('@/utils/faceFill');
+
+    if (clip.kind === 'sku') {
+      let targetBinId: string | null = null;
+      if (state.selectedType === 'bin' && state.selectedId) {
+        targetBinId = state.selectedId;
+      } else if (state.selectedType === 'product' && state.selectedId) {
+        outer: for (const rack of state.area.racks) {
+          for (const side of rack.sides) {
+            for (const row of side.rows) {
+              for (const b of row.bins) {
+                if (
+                  b.products.some(
+                    (p) =>
+                      p.id === state.selectedId ||
+                      resolveProductFacingId(p.id) ===
+                        resolveProductFacingId(state.selectedId!),
+                  )
+                ) {
+                  targetBinId = b.id;
+                  break outer;
+                }
+              }
+            }
+          }
+        }
+      }
+      if (!targetBinId) {
+        return { success: false, message: 'Select a target bin (or product in a bin) to paste the SKU' };
+      }
+
+      let binWidth = 0;
+      let occupied = false;
+      for (const rack of get().area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            const bin = row.bins.find((b) => b.id === targetBinId);
+            if (bin) {
+              binWidth = Number(bin.width) || 0;
+              occupied = bin.products.length > 0;
+              break;
+            }
+          }
+        }
+      }
+      if (occupied) {
+        const detach = await get().detachBinInventory(targetBinId);
+        if (!detach.success) {
+          return { success: false, message: detach.message ?? 'Could not clear target bin' };
+        }
+      }
+
+      const qty = Math.max(
+        1,
+        suggestedFaceFacings(binWidth, clip.product.width) || clip.quantity || 1,
+      );
+      const attach = await get().attachProductToBin(
+        targetBinId,
+        {
+          id: clip.product.id,
+          name: clip.product.name,
+          width: clip.product.width,
+          height: clip.product.height,
+          depth: clip.product.depth,
+          color: clip.product.color ?? '#2C5282',
+          brandName: clip.product.brandName,
+          categoryName: clip.product.categoryName,
+          imageUrl: clip.product.imageUrl,
+          modelUrl: clip.product.modelUrl,
+          modelStorageKey: clip.product.modelStorageKey,
+        },
+        qty,
+      );
+      if (!attach.success) {
+        return { success: false, message: attach.message ?? 'Paste SKU failed' };
+      }
+      return {
+        success: true,
+        message: `Pasted “${clip.product.name}” (${qty} front facing${qty === 1 ? '' : 's'})`,
+      };
+    }
+
+    // Row paste
+    if (state.selectedType !== 'row' || !state.selectedId) {
+      return { success: false, message: 'Select a target row to paste the copied row onto' };
+    }
+    const targetRowId = state.selectedId;
+    let targetRow: Row | null = null;
+    let targetRack: Rack | null = null;
+    for (const rack of get().area.racks) {
+      for (const side of rack.sides) {
+        const row = side.rows.find((r) => r.id === targetRowId);
+        if (row) {
+          targetRow = row;
+          targetRack = rack;
+          break;
+        }
+      }
+      if (targetRow) break;
+    }
+    if (!targetRow || !targetRack) {
+      return { success: false, message: 'Target row not found' };
+    }
+
+    const rowSpan =
+      Number(targetRow.width ?? targetRow.span) ||
+      Number(targetRack.inner?.width) ||
+      Number(targetRack.width) ||
+      0;
+    const clipWidthSum = clip.bins.reduce((s, b) => s + (b.width > 0 ? b.width : 0), 0) || 1;
+    const scale = rowSpan > 0 ? rowSpan / clipWidthSum : 1;
+
+    // Clear existing inventory on target bins
+    for (const b of [...targetRow.bins]) {
+      if (b.products.length > 0) {
+        await get().detachBinInventory(b.id);
+      }
+    }
+
+    // Refresh row after detaches
+    const findLiveRow = () =>
+      get().area.racks.flatMap((r) => r.sides.flatMap((s) => s.rows)).find((r) => r.id === targetRowId);
+
+    let liveRow = findLiveRow();
+    if (!liveRow) return { success: false, message: 'Target row disappeared during paste' };
+
+    const errors: string[] = [];
+    for (let i = 0; i < clip.bins.length; i++) {
+      liveRow = findLiveRow();
+      if (!liveRow) {
+        errors.push('Target row disappeared during paste');
+        break;
+      }
+      const src = clip.bins[i];
+      let binId = liveRow.bins[i]?.id;
+      const targetW = Math.max(
+        0.05,
+        Math.round((src.width > 0 ? src.width * scale : rowSpan / clip.bins.length) * 1000) / 1000,
+      );
+
+      if (!binId) {
+        const created = await get().addBinToServer(
+          targetRowId,
+          undefined,
+          undefined,
+          liveRow.height,
+          src.binName ?? `Bin ${i + 1}`,
+          {
+            width: targetW,
+            depth: src.depth,
+            height: src.height || liveRow.height,
+          },
+          { quiet: true },
+        );
+        if (!created.success || !created.binId) {
+          errors.push(created.message ?? `Failed to create bin ${i + 1}`);
+          continue;
+        }
+        binId = created.binId;
+      }
+
+      liveRow = findLiveRow();
+      const liveBin = liveRow?.bins.find((b) => b.id === binId) ?? liveRow?.bins[i];
+      const binWidth = Number(liveBin?.width) || targetW;
+      const product = src.products[0];
+      if (!product) continue;
+
+      if (liveBin && liveBin.products.length > 0) {
+        await get().detachBinInventory(liveBin.id);
+      }
+
+      const qty = Math.max(
+        1,
+        suggestedFaceFacings(binWidth, product.width) || src.quantity || 1,
+      );
+      const attach = await get().attachProductToBin(
+        binId,
+        {
+          id: product.id,
+          name: product.name,
+          width: product.width,
+          height: product.height,
+          depth: product.depth,
+          color: product.color ?? '#2C5282',
+          brandName: product.brandName,
+          categoryName: product.categoryName,
+          imageUrl: product.imageUrl,
+          modelUrl: product.modelUrl,
+          modelStorageKey: product.modelStorageKey,
+        },
+        qty,
+      );
+      if (!attach.success) {
+        errors.push(attach.message ?? `Failed to paste SKU into bin ${i + 1}`);
+      }
+    }
+
+    const posmId = clip.dividerPosmItemId ?? clip.dividerPosm?.id ?? null;
+    if (posmId && targetRack) {
+      await get().assignRowDividerPosm(
+        targetRack.id,
+        targetRowId,
+        posmId,
+        clip.dividerPosm ?? null,
+      );
+    }
+
+    try {
+      await get().reloadStoreLayout();
+    } catch {
+      /* non-fatal */
+    }
+
+    if (errors.length) {
+      return {
+        success: false,
+        message: `Row paste partial: ${errors.slice(0, 2).join(' · ')}`,
+      };
+    }
+    return {
+      success: true,
+      message: `Pasted row (${clip.bins.length} bin${clip.bins.length === 1 ? '' : 's'})`,
+    };
+  },
+  moveBinInventoryToBin: async (sourceBinId, targetBinId, options) => {
+    if (sourceBinId === targetBinId) {
+      get().cancelMovingBinInventory();
+      return { success: true, message: 'Same bin' };
+    }
+
+    const state = get();
+    let sourceProduct: Product | null = null;
+    let sourceQty = 1;
+    for (const rack of state.area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const bin = row.bins.find((b) => b.id === sourceBinId);
+          if (bin?.products?.[0]) {
+            sourceProduct = bin.products[0];
+            sourceQty = Math.max(1, Math.floor(Number(sourceProduct.quantity) || 1));
+            break;
+          }
+        }
+        if (sourceProduct) break;
+      }
+      if (sourceProduct) break;
+    }
+
+    if (!sourceProduct) {
+      return { success: false, message: 'Source bin has no SKU to move' };
+    }
+
+    const detach = await get().detachBinInventory(sourceBinId);
+    if (!detach.success) {
+      return { success: false, message: detach.message ?? 'Failed to detach source bin' };
+    }
+
+    // Prefer explicit qty, else fill target front face.
+    let qty = options?.quantity;
+    if (qty == null || !(qty >= 1)) {
+      let targetWidth = 0;
+      for (const rack of get().area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            const bin = row.bins.find((b) => b.id === targetBinId);
+            if (bin) {
+              targetWidth = Number(bin.width) || 0;
+              break;
+            }
+          }
+        }
+      }
+      const { suggestedFaceFacings } = await import('@/utils/faceFill');
+      qty = suggestedFaceFacings(targetWidth, Number(sourceProduct.width) || 0);
+      if (!(qty >= 1)) qty = sourceQty;
+    }
+
+    const attach = await get().attachProductToBin(
+      targetBinId,
+      {
+        id: resolveProductFacingId(sourceProduct.id),
+        name: sourceProduct.name,
+        width: sourceProduct.width,
+        height: sourceProduct.height,
+        depth: sourceProduct.depth,
+        color: sourceProduct.color,
+        brandName: sourceProduct.brandName,
+        categoryName: sourceProduct.categoryName,
+        imageUrl: sourceProduct.imageUrl,
+        modelUrl: sourceProduct.modelUrl,
+        modelStorageKey: sourceProduct.modelStorageKey,
+      },
+      qty,
+    );
+
+    get().cancelMovingBinInventory();
+
+    if (!attach.success) {
+      // Best-effort restore onto source if target attach failed.
+      await get().attachProductToBin(
+        sourceBinId,
+        {
+          id: resolveProductFacingId(sourceProduct.id),
+          name: sourceProduct.name,
+          width: sourceProduct.width,
+          height: sourceProduct.height,
+          depth: sourceProduct.depth,
+          color: sourceProduct.color,
+          brandName: sourceProduct.brandName,
+          categoryName: sourceProduct.categoryName,
+          imageUrl: sourceProduct.imageUrl,
+          modelUrl: sourceProduct.modelUrl,
+          modelStorageKey: sourceProduct.modelStorageKey,
+        },
+        sourceQty,
+      );
+      return {
+        success: false,
+        message: attach.message ?? 'Moved off source but failed to attach to target — restored source',
+      };
+    }
+
+    set({
+      selectedId: targetBinId,
+      selectedType: 'bin',
+      addProductError: null,
+    });
+    return { success: true, message: 'SKU moved' };
   },
   deleteProductFromServer: async (productId) => {
     const catalogId = resolveProductFacingId(productId);

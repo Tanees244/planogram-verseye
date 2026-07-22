@@ -36,7 +36,14 @@ export interface FacingPackResult {
 }
 
 /** Soft cap for rendered meshes (capacity math still uses full maxFit). */
-export const FACING_PACK_VISUAL_LIMIT = 1500
+export const FACING_PACK_VISUAL_LIMIT = 48
+
+/**
+ * Max full GLB clones per bin. Extra facings use cheap boxes/textures.
+ * Each GLB clones meshes+materials — 100 bottles = browser melt.
+ */
+export const MAX_GLB_FACINGS_PER_BIN = 8
+
 
 function safePositive(n: number, fallback = 0.08): number {
   return Number.isFinite(n) && n > 0 ? n : fallback

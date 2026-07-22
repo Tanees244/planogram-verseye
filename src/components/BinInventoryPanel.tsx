@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FiBox, FiRefreshCw, FiTrash2 } from 'react-icons/fi'
+import { FiBox, FiRefreshCw, FiTrash2, FiMove, FiCopy, FiClipboard } from 'react-icons/fi'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
 import {
@@ -34,6 +34,12 @@ export function BinInventoryPanel({
   const racks = usePlanogramStore((s) => s.area.racks)
   const setSelected = usePlanogramStore((s) => s.setSelected)
   const detachBinInventory = usePlanogramStore((s) => s.detachBinInventory)
+  const startMovingBinInventory = usePlanogramStore((s) => s.startMovingBinInventory)
+  const cancelMovingBinInventory = usePlanogramStore((s) => s.cancelMovingBinInventory)
+  const movingInventoryFromBinId = usePlanogramStore((s) => s.movingInventoryFromBinId)
+  const copySelection = usePlanogramStore((s) => s.copySelection)
+  const pasteClipboard = usePlanogramStore((s) => s.pasteClipboard)
+  const clipboard = usePlanogramStore((s) => s.clipboard)
   const selectedId = usePlanogramStore((s) => s.selectedId)
   const selectedType = usePlanogramStore((s) => s.selectedType)
 
@@ -213,7 +219,8 @@ export function BinInventoryPanel({
                 <p className={cn('text-[11px] mt-0.5 leading-snug', dark ? 'text-gray-400' : 'text-gray-500')}>
                   {shelfCapacity ? (
                     <>
-                      {shelfCapacity.placedFacings} / {shelfCapacity.maxTotalFacings} facings
+                      {shelfCapacity.placedFacings} / {shelfCapacity.maxTotalFacings} units (W×D×H)
+                      {' '}· front face uses linear facings for save
                       {' '}· {shelfCapacity.remainingFacings} more can fit
                       {shelfCapacity.cols != null && shelfCapacity.depthRows != null
                         ? ` · ${shelfCapacity.cols}×${shelfCapacity.depthRows}${
@@ -246,6 +253,77 @@ export function BinInventoryPanel({
               />
             </div>
           </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(binId, 'bin')
+                const res = copySelection()
+                if (res.success) toast.success(res.message ?? 'Copied')
+                else toast.error(res.message ?? 'Copy failed')
+              }}
+              className={cn(
+                'flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+                dark
+                  ? 'border border-white/15 text-gray-200 hover:bg-white/10'
+                  : 'border border-gray-200 text-gray-700 hover:bg-gray-50',
+              )}
+              title="Ctrl+C"
+            >
+              <FiCopy size={12} />
+              Copy SKU
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  setSelected(binId, 'bin')
+                  const res = await pasteClipboard()
+                  if (res.success) {
+                    toast.success(res.message ?? 'Pasted')
+                    onInventoryChange?.()
+                    await load()
+                  } else toast.error(res.message ?? 'Paste failed')
+                })()
+              }}
+              disabled={!clipboard || clipboard.kind !== 'sku'}
+              className={cn(
+                'flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+                dark
+                  ? 'border border-white/15 text-gray-200 hover:bg-white/10 disabled:opacity-40'
+                  : 'border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40',
+              )}
+              title="Ctrl+V — paste SKU into this bin"
+            >
+              <FiClipboard size={12} />
+              Paste SKU
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (movingInventoryFromBinId === binId) {
+                cancelMovingBinInventory()
+                toast('Move cancelled')
+                return
+              }
+              startMovingBinInventory(binId)
+              toast('Click another bin in the scene to move this SKU (front-face fill)')
+            }}
+            className={cn(
+              'w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+              movingInventoryFromBinId === binId
+                ? dark
+                  ? 'border border-amber-500/40 bg-amber-500/15 text-amber-200'
+                  : 'border border-amber-300 bg-amber-50 text-amber-800'
+                : dark
+                  ? 'border border-white/15 text-gray-200 hover:bg-white/10'
+                  : 'border border-gray-200 text-gray-700 hover:bg-gray-50',
+            )}
+          >
+            <FiMove size={12} />
+            {movingInventoryFromBinId === binId ? 'Cancel move' : 'Move to another bin'}
+          </button>
           <button
             type="button"
             onClick={() => void handleDetach()}
@@ -265,17 +343,42 @@ export function BinInventoryPanel({
       ) : (
         <div
           className={cn(
-            'rounded-lg border px-2.5 py-3 text-[11px] leading-snug',
+            'rounded-lg border px-2.5 py-3 text-[11px] leading-snug space-y-2',
             dark ? 'border-white/10 text-gray-400' : 'border-gray-100 text-gray-500',
           )}
         >
           <p>Bin is empty.</p>
           {inventory && (
-            <p className="mt-1">
+            <p>
               Size {(inventory.width * 100).toFixed(0)}×{(inventory.depth * 100).toFixed(0)}×
               {(inventory.height * 100).toFixed(0)} cm — attach a SKU to see capacity.
             </p>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                setSelected(binId, 'bin')
+                const res = await pasteClipboard()
+                if (res.success) {
+                  toast.success(res.message ?? 'Pasted')
+                  onInventoryChange?.()
+                  await load()
+                } else toast.error(res.message ?? 'Paste failed')
+              })()
+            }}
+            disabled={!clipboard || clipboard.kind !== 'sku'}
+            className={cn(
+              'w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+              dark
+                ? 'border border-white/15 text-gray-200 hover:bg-white/10 disabled:opacity-40'
+                : 'border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40',
+            )}
+            title="Ctrl+V — paste SKU into this empty bin"
+          >
+            <FiClipboard size={12} />
+            Paste SKU
+          </button>
         </div>
       )}
     </div>

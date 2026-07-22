@@ -10,7 +10,7 @@ import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
 import { ProductPlacementPreview } from "./ProductPlacementPreview";
 import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
-import { packFacingsInBin, packMixedFacingsInBin } from "@/utils/facingPack";
+import { packFacingsInBin, packMixedFacingsInBin, MAX_GLB_FACINGS_PER_BIN } from "@/utils/facingPack";
 import { safeDim } from "@/utils/safeDimensions";
 
 interface BinProps {
@@ -42,12 +42,16 @@ export function Bin({
     setProductDropHover,
     canProductFitInBin,
     attachFacingPreview,
+    movingInventoryFromBinId,
+    moveBinInventoryToBin,
+    cancelMovingBinInventory,
   } = usePlanogramStore();
 
   const isSelected = selectedId === bin.id;
-  const placing = isPlacingProduct;
+  const placing = isPlacingProduct || Boolean(movingInventoryFromBinId);
   const dropHover = productDropHover?.binId === bin.id;
   const dropFits = productDropHover?.fits ?? true;
+  const isMoveSource = movingInventoryFromBinId === bin.id;
   const showPlacementPreview =
     Boolean(pendingProductParams) && placing && (dropHover || hovered);
   const attachPreview =
@@ -93,6 +97,8 @@ export function Bin({
     width: number
     height: number
     depth: number
+    depthRow: number
+    col: number
   }[] = []
 
   if (uniformPack && firstDim && facingDims.length > 0) {
@@ -116,6 +122,8 @@ export function Bin({
       width: slot.width,
       height: slot.height,
       depth: slot.depth,
+      depthRow: slot.depthRow,
+      col: slot.col,
     }))
   } else if (facingDims.length > 0) {
     const mixed = packMixedFacingsInBin({
@@ -126,7 +134,11 @@ export function Bin({
       wallThick,
       lipHeight,
     })
-    packedPositions = mixed.positions
+    packedPositions = mixed.positions.map((p, i) => ({
+      ...p,
+      depthRow: 0,
+      col: i,
+    }))
   }
 
   const productPositions: [number, number, number][] = packedPositions.map((p, i) => {
@@ -258,8 +270,19 @@ export function Bin({
       setSelected(rowId, "row");
       return;
     }
+    if (movingInventoryFromBinId) {
+      if (movingInventoryFromBinId === bin.id) {
+        cancelMovingBinInventory();
+        return;
+      }
+      const res = await moveBinInventoryToBin(movingInventoryFromBinId, bin.id);
+      if (!res.success && res.message) {
+        usePlanogramStore.setState({ addProductError: res.message });
+      }
+      return;
+    }
     if (isPlacingProduct) {
-      const res = await placeProductOnBin(bin.id, 1);
+      const res = await placeProductOnBin(bin.id);
       if (!res.success && res.message) {
         /* error shown via store.addProductError */
       }
@@ -296,10 +319,12 @@ export function Bin({
           metalness={0.1}
           roughness={0.08}
           transparent
-          opacity={isSelected || (placing && hovered) || dropHover ? 0.35 : 0.15}
+          opacity={isSelected || isMoveSource || (placing && hovered) || dropHover ? 0.35 : 0.15}
           depthWrite={false}
           emissive={
-            dropHover || (placing && hovered)
+            isMoveSource
+              ? "#d97706"
+              : dropHover || (placing && hovered)
               ? dropFits
                 ? "#059669"
                 : "#dc2626"
@@ -309,7 +334,7 @@ export function Bin({
                   ? "#059669"
                   : "#000000"
           }
-          emissiveIntensity={hovered || placing || dropHover ? 0.45 : 0}
+          emissiveIntensity={hovered || placing || dropHover || isMoveSource ? 0.45 : 0}
         />
         <Edges
           scale={1}
@@ -341,14 +366,25 @@ export function Bin({
           modelStorageKey={slot.modelStorageKey}
         />
       ))}
-      {scaledFacings.map((product, index) => (
-        <Product
-          key={`${bin.id}-${index}-${product.id}`}
-          product={product}
-          rowId={rowId}
-          position={productPositions[index] ?? [0, 0, 0]}
-        />
-      ))}
+      {(() => {
+        // Prefer front-row slots for GLBs; everything else = cheap box (LOD).
+        let glbBudget = MAX_GLB_FACINGS_PER_BIN
+        return scaledFacings.map((product, index) => {
+          const slot = packedPositions[index]
+          const isFront = !slot || slot.depthRow === 0
+          const useGlb = isFront && glbBudget > 0
+          if (useGlb) glbBudget -= 1
+          return (
+            <Product
+              key={`${bin.id}-${index}-${product.id}`}
+              product={product}
+              rowId={rowId}
+              position={productPositions[index] ?? [0, 0, 0]}
+              forceSimple={!useGlb}
+            />
+          )
+        })
+      })()}
     </group>
   );
 }

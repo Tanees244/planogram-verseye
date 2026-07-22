@@ -12,9 +12,16 @@ import { safeDim } from '@/utils/safeDimensions';
 import type { ImportIssue, PlanogramExportOptions, PsaRecord } from './types';
 import { boundsFromRacks, summarizeRacks } from './serialize';
 import { cmToMeters, degreesToRadians, metersToCm, radiansToDegrees } from './units';
+import {
+  binFacingOccupied,
+  isFaceFilled,
+  minProductFacingWidth,
+  suggestedFaceFacings,
+} from '@/utils/faceFill';
 
 const PSA_VERSION = '1.0';
-const PSA_HEADER = `# Aisleris PSA interchange v${PSA_VERSION} (JDA Space Planning compatible subset)`;
+const PSA_HEADER = `# Aisleris PSA interchange v${PSA_VERSION} (JDA Space Planning compatible subset)
+# SHF fields: fixtureId, seg, shelf, heightCm, depthCm, yStartCm, spanCm, [dividerPosmItemId]`;
 
 const KNOWN_FIXTURE_TYPES = new Set<FixtureType>([
   'GONDOLA',
@@ -153,6 +160,7 @@ export function importRacksFromPsa(content: string): {
     height: number;
     span: number;
     yStart: number;
+    dividerPosmItemId?: string | null;
     bins: Map<number, BinBuilder>;
   };
 
@@ -235,7 +243,16 @@ export function importRacksFromPsa(content: string): {
     }
 
     if (record.type === 'SHF') {
-      const [fixtureId, segNumRaw, shelfNumRaw, heightCm, depthCm, yStartCm, spanCm] = record.fields;
+      const [
+        fixtureId,
+        segNumRaw,
+        shelfNumRaw,
+        heightCm,
+        depthCm,
+        yStartCm,
+        spanCm,
+        dividerPosmItemId,
+      ] = record.fields;
       const fixture = fixtureId ? fixtures.get(fixtureId) : undefined;
       const segNum = Number(segNumRaw) || 1;
       const shelfNum = Number(shelfNumRaw) || 1;
@@ -251,6 +268,7 @@ export function importRacksFromPsa(content: string): {
         height: safeDim(cmToMeters(Number(heightCm)), 0.4),
         span: safeDim(cmToMeters(Number(spanCm)), fixture.width * 0.85),
         yStart: cmToMeters(Number(yStartCm) || 0),
+        dividerPosmItemId: dividerPosmItemId?.trim() || null,
         bins: new Map(),
       });
       continue;
@@ -378,6 +396,20 @@ export function importRacksFromPsa(content: string): {
                   binState.products.length > 0
                     ? binState.products
                     : [];
+                if (products.length > 0) {
+                  const occupied = binFacingOccupied(products);
+                  const minW = minProductFacingWidth(products);
+                  if (!isFaceFilled(occupied, binState.width, minW)) {
+                    const first = products[0];
+                    const suggested = suggestedFaceFacings(binState.width, first.width);
+                    issues.push({
+                      severity: 'warning',
+                      code: 'BinFaceUnderfilled',
+                      message: `Bin ${binNum} on shelf ${shelfNum} leaves empty front space (has ${occupied.toFixed(3)}m of ${binState.width.toFixed(3)}m). Suggested front facings for “${first.name}”: ${suggested}.`,
+                      path: `FIX:${fixtureId}/SEG:${segNum}/SHF:${shelfNum}/BIN:${binNum}`,
+                    });
+                  }
+                }
                 return {
                   id: `${fixtureId}-S${segNum}-SH${shelfNum}-B${binNum}`,
                   binName: binState.binName,
@@ -405,6 +437,7 @@ export function importRacksFromPsa(content: string): {
               yStart: rowState.yStart,
               yEnd: rowState.yStart + rowState.height,
               sided: fixture.sides.size > 1 ? 'two' as const : 'one' as const,
+              dividerPosmItemId: rowState.dividerPosmItemId ?? null,
               bins,
             } satisfies Row;
           });
@@ -491,6 +524,7 @@ export function exportRacksToPsa(racks: Rack[], options: PlanogramExportOptions 
             metersToCm(rack.depth * 0.9),
             metersToCm(row.yStart ?? yCursor),
             metersToCm(rowSpan),
+            row.dividerPosmItemId ?? '',
           ]),
         );
         yCursor += row.height;

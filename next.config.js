@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const webpack = require("webpack");
 
 // Monorepo node_modules (when run via npm workspace from root, cwd is root)
 const rootNm = path.join(process.cwd(), "node_modules");
@@ -27,6 +28,22 @@ const nextConfig = {
         "react-dom/client": path.join(nodeModules, "react-dom/client"),
       };
       config.resolve.modules = [nodeModules, ...(config.resolve.modules || [])];
+      // pptxgenjs imports node:https / node:fs — strip the scheme and stub for browser.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, "");
+        }),
+      );
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        https: false,
+        http: false,
+        path: false,
+        os: false,
+        express: false,
+        "image-size": false,
+      };
     }
     return config;
   },

@@ -36,10 +36,15 @@ export function usePosmItems(storeId: string | null) {
       setItems(
         (Array.isArray(list) ? list : []).filter(
           (p: PosmItemListItem) => p?.id && (p.status ?? 'Active') === 'Active',
-        ).map((p: PosmItemListItem) => ({
-          ...p,
+        ).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          posmType: p.posmType,
+          status: p.status ?? 'Active',
+          conditionStandards: p.conditionStandards ?? null,
           imageUrl: p.imageUrl ?? null,
-          imageStorageKey: p.imageStorageKey ?? null,
+          imageStorageKey:
+            p.imageStorageKey ?? p.imageObjectKey ?? p.storageKey ?? null,
         })),
       )
     } catch {

@@ -319,7 +319,12 @@ export function normalizeRack(rawInput: any): Rack {
             : {}),
           dividerThickness:
             r.dividerThickness != null ? safeDim(r.dividerThickness, 0.025) : 0.025,
-          dividerPosmItemId: r.dividerPosmItemId ?? r.dividerDisplayProgramId ?? null,
+          dividerPosmItemId:
+            r.dividerPosmItemId ??
+            r.dividerDisplayProgramId ??
+            (typeof r.dividerPosm?.id === 'string' ? r.dividerPosm.id : null) ??
+            (typeof r.dividerDisplay?.id === 'string' ? r.dividerDisplay.id : null) ??
+            null,
           dividerPosm: normalizeRackPosm(r.dividerPosm ?? r.dividerDisplay),
           sided: (r.sided === 'two' ? 'two' : isDoubleSided ? 'two' : 'one') as 'one' | 'two',
           yStart: r.yStart != null ? Number(r.yStart) : null,
@@ -544,8 +549,9 @@ export async function fetchStoreLayoutRacks(
   )
 
   try {
-    const withMedia = await hydrateSkuMediaFromCatalog(hydrated)
-    return { success: true, racks: withMedia }
+    const withSkuMedia = await hydrateSkuMediaFromCatalog(hydrated)
+    const withPosmMedia = await hydratePosmMediaFromCatalog(withSkuMedia, storeId)
+    return { success: true, racks: withPosmMedia }
   } catch {
     return { success: true, racks: hydrated }
   }
@@ -656,6 +662,170 @@ export async function hydrateSkuMediaFromCatalog(racks: Rack[]): Promise<Rack[]>
             }
           }),
         })),
+      })),
+    })),
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// POSM media hydration — rack/structure often returns dividerPosm as
+// { id, name, posmType } with no image fields. Fill from POSM catalog list.
+// ---------------------------------------------------------------------------
+
+interface PosmMedia {
+  imageUrl?: string | null
+  imageStorageKey?: string | null
+  name?: string
+  posmType?: string
+}
+
+const posmMediaCache = new Map<string, PosmMedia | null>()
+
+function posmNeedsMedia(p: { imageUrl?: string | null; imageStorageKey?: string | null } | null | undefined): boolean {
+  if (!p) return false
+  // Prefer hydrating a storage key even when signed imageUrl/imageUrls exist —
+  // long signed proxy URLs are unreliable for WebGL textures.
+  return !p.imageStorageKey
+}
+
+function collectPosmIdsNeedingMedia(racks: Rack[]): Set<string> {
+  const wanted = new Set<string>()
+  const take = (p: { id?: string; imageUrl?: string | null; imageStorageKey?: string | null } | null | undefined) => {
+    if (p?.id && UUID_RE.test(p.id) && posmNeedsMedia(p)) wanted.add(p.id)
+  }
+  for (const rack of racks) {
+    const shell = rack.shell
+    take(shell?.headerPosm)
+    take(shell?.footerPosm)
+    take(shell?.leftWallPosm)
+    take(shell?.rightWallPosm)
+    for (const side of rack.sides) {
+      for (const row of side.rows) {
+        take(row.dividerPosm)
+        // ID-only assignment (no nested object yet)
+        if (
+          !row.dividerPosm &&
+          row.dividerPosmItemId &&
+          UUID_RE.test(row.dividerPosmItemId)
+        ) {
+          wanted.add(row.dividerPosmItemId)
+        }
+      }
+    }
+  }
+  return wanted
+}
+
+async function fetchPosmCatalogMedia(
+  storeId: string,
+  headers: Record<string, string>,
+): Promise<void> {
+  try {
+    const qs = new URLSearchParams({
+      storeId,
+      status: 'Active',
+      page: '1',
+      pageSize: '200',
+    })
+    const res = await fetch(`/api/company-assets/posm/list?${qs}`, {
+      headers,
+      cache: 'no-store',
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || json?.isRequestSuccess === false) return
+    const list = asArray(json?.data?.items ?? json?.data ?? [])
+    for (const raw of list) {
+      const p = raw as Record<string, unknown>
+      const id = String(p.id ?? p.posmItemId ?? '').trim()
+      if (!id || !UUID_RE.test(id)) continue
+      posmMediaCache.set(id, {
+        name: typeof p.name === 'string' ? p.name : undefined,
+        posmType: typeof p.posmType === 'string' ? p.posmType : undefined,
+        imageUrl:
+          (typeof p.imageUrl === 'string' && p.imageUrl) ||
+          (typeof p.thumbnailUrl === 'string' && p.thumbnailUrl) ||
+          null,
+        imageStorageKey:
+          (typeof p.imageStorageKey === 'string' && p.imageStorageKey) ||
+          (typeof p.imageObjectKey === 'string' && p.imageObjectKey) ||
+          (typeof p.storageKey === 'string' && p.storageKey) ||
+          null,
+      })
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
+
+function mergePosmMedia<T extends { id: string; name: string; posmType: string; imageUrl?: string | null; imageStorageKey?: string | null }>(
+  posm: T | null | undefined,
+  fallbackId?: string | null,
+): T | null {
+  const id = posm?.id ?? fallbackId
+  if (!id) return posm ?? null
+  const media = posmMediaCache.get(id)
+  if (!posm && !media) {
+    return {
+      id,
+      name: 'POSM item',
+      posmType: 'ShelfTalker',
+      imageUrl: null,
+      imageStorageKey: null,
+    } as T
+  }
+  if (!posm && media) {
+    return {
+      id,
+      name: media.name ?? 'POSM item',
+      posmType: media.posmType ?? 'ShelfTalker',
+      imageUrl: media.imageUrl ?? null,
+      imageStorageKey: media.imageStorageKey ?? null,
+    } as T
+  }
+  if (!posm) return null
+  if (!media) return posm
+  return {
+    ...posm,
+    name: posm.name || media.name || posm.name,
+    posmType: posm.posmType || media.posmType || posm.posmType,
+    imageUrl: posm.imageUrl ?? media.imageUrl ?? null,
+    imageStorageKey: posm.imageStorageKey ?? media.imageStorageKey ?? null,
+  }
+}
+
+/**
+ * Fill missing POSM image fields (divider / shell) from the company-assets catalog.
+ * Rack structure often returns `{ id, name, posmType }` with no imageUrl/imageStorageKey.
+ */
+export async function hydratePosmMediaFromCatalog(
+  racks: Rack[],
+  storeId: string,
+): Promise<Rack[]> {
+  const wanted = collectPosmIdsNeedingMedia(racks)
+  if (wanted.size === 0) return racks
+
+  const missing = [...wanted].filter((id) => !posmMediaCache.has(id))
+  if (missing.length > 0) {
+    const headers = { Accept: 'application/json', ...(await authHeaders()) }
+    await fetchPosmCatalogMedia(storeId, headers)
+  }
+
+  return racks.map((rack) => ({
+    ...rack,
+    shell: rack.shell
+      ? {
+          ...rack.shell,
+          headerPosm: mergePosmMedia(rack.shell.headerPosm),
+          footerPosm: mergePosmMedia(rack.shell.footerPosm),
+          leftWallPosm: mergePosmMedia(rack.shell.leftWallPosm),
+          rightWallPosm: mergePosmMedia(rack.shell.rightWallPosm),
+        }
+      : rack.shell,
+    sides: rack.sides.map((side) => ({
+      ...side,
+      rows: side.rows.map((row) => ({
+        ...row,
+        dividerPosm: mergePosmMedia(row.dividerPosm, row.dividerPosmItemId),
       })),
     })),
   }))

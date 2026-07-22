@@ -64,6 +64,9 @@ export interface RackSurfacePosm {
 
   imageUrl?: string | null;
 
+  /** Some layout APIs return one or more signed URLs as an array. */
+  imageUrls?: string[] | null;
+
   imageStorageKey?: string | null;
 
 }

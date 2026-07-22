@@ -12,7 +12,7 @@ import { usePlanogramExport } from '@/utils/planogramExport'
 const OPEN_KEY = 'planogram.sceneTopBarOpen'
 
 const MOVE_HINT =
-  'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus camera · Shift+click bin/product to select row · Click front shelf lip to select row'
+  'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus · Shift+click bin/product → row · Dense bins: only front facings show full 3D models (rest are boxes) for performance'
 
 const shell = 'rounded-xl shadow-lg backdrop-blur-sm bg-black/70 border border-white/10'
 
@@ -63,7 +63,8 @@ export function SceneTopBar({ className }: { className?: string }) {
   const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
   const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
-  const { exportStore } = usePlanogramExport()
+  const { exportStore, exportStoreCsv, exportSceneImage, exportStorePdf, exportStorePptx } =
+    usePlanogramExport()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -181,6 +182,34 @@ export function SceneTopBar({ className }: { className?: string }) {
                     className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
                   >
                     Export store PSA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportStoreCsv()}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export CSV (Excel)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportSceneImage()}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export PNG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportStorePdf()}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportStorePptx()}
+                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                  >
+                    Export PowerPoint
                   </button>
                 </div>
               )}

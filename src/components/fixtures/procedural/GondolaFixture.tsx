@@ -45,8 +45,8 @@ export function GondolaFixture({
         </mesh>
       ))}
 
-      {/* Top rail */}
-      <mesh position={[0, rackHeight / 2 - 0.04, 0]} {...bind}>
+      {/* Top rail — visual only; do not steal row clicks */}
+      <mesh position={[0, rackHeight / 2 - 0.04, 0]} raycast={() => null}>
         <boxGeometry args={[rack.width, 0.08, rack.depth]} />
         <meshStandardMaterial {...metal(hovered, isSelected)} />
         <Edges color={hovered ? '#2C5282' : '#1a252f'} lineWidth={2} />

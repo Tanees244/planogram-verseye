@@ -7,6 +7,7 @@ import {
   FiMove,
   FiPackage,
   FiSearch,
+  FiStar,
   FiX,
 } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
@@ -46,6 +47,7 @@ interface CatalogSkuRow {
   width?: number | null
   height?: number | null
   depth?: number | null
+  isHero?: boolean
 }
 
 function authHeaders(): Record<string, string> {
@@ -90,6 +92,7 @@ function skuToPending(sku: CatalogSkuRow): PendingProductParams {
     height: safeDim(sku.height, DEFAULT_PRODUCT_HEIGHT),
     depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
     color: '#10b981',
+    isHero: Boolean(sku.isHero),
   }
 }
 
@@ -152,24 +155,34 @@ export function ProductPalette() {
         return
       }
       const list = json?.data?.products ?? json?.data ?? []
+      const { markHeroFromFlags, isHeroSkuId } = await import('@/utils/heroSku')
       setSkus(
-        (Array.isArray(list) ? list : []).map((s: any) => ({
-          id: s.id ?? s.skuId,
-          name: s.name ?? s.skuName ?? 'SKU',
-          code: s.code ?? null,
-          brandName: s.brandName ?? null,
-          categoryName: s.categoryName ?? null,
-          size: s.size ?? null,
-          variant: s.variant ?? null,
-          imageUrl: s.imageUrl ?? null,
-          imageStorageKey: s.imageStorageKey ?? null,
-          modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
-          modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
-          attachments: Array.isArray(s.attachments) ? s.attachments : null,
-          width: s.width ?? null,
-          height: s.height ?? null,
-          depth: s.depth ?? null,
-        })),
+        (Array.isArray(list) ? list : []).map((s: any) => {
+          const id = String(s.id ?? s.skuId ?? '')
+          markHeroFromFlags(id, {
+            isHero: s.isHero,
+            heroSku: s.heroSku,
+            isEyeFacing: s.isEyeFacing,
+          })
+          return {
+            id,
+            name: s.name ?? s.skuName ?? 'SKU',
+            code: s.code ?? null,
+            brandName: s.brandName ?? null,
+            categoryName: s.categoryName ?? null,
+            size: s.size ?? null,
+            variant: s.variant ?? null,
+            imageUrl: s.imageUrl ?? null,
+            imageStorageKey: s.imageStorageKey ?? null,
+            modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+            modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
+            attachments: Array.isArray(s.attachments) ? s.attachments : null,
+            width: s.width ?? null,
+            height: s.height ?? null,
+            depth: s.depth ?? null,
+            isHero: Boolean(s.isHero || s.heroSku || s.isEyeFacing || isHeroSkuId(id)),
+          }
+        }),
       )
     } catch {
       setError('Could not connect to catalog')
@@ -312,6 +325,7 @@ export function ProductPalette() {
           skus.map((sku) => {
             const active = pendingProduct?.id === sku.id
             const isDragging = draggingId === sku.id
+            const isHero = Boolean(sku.isHero)
             return (
               <div
                 key={sku.id}
@@ -344,6 +358,11 @@ export function ProductPalette() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
                     <span className="text-xs font-semibold text-white truncate">{sku.name}</span>
+                    {isHero && (
+                      <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-amber-500/25 text-amber-200 border border-amber-500/35">
+                        Hero
+                      </span>
+                    )}
                     <FiMove size={10} className="text-gray-500 shrink-0 opacity-60" />
                   </div>
                   <p className="text-[10px] text-gray-500 truncate mt-0.5">{metaLine(sku)}</p>
@@ -353,6 +372,28 @@ export function ProductPalette() {
                     </p>
                   )}
                 </div>
+                <button
+                  type="button"
+                  title={isHero ? 'Unset hero (eye-level only)' : 'Mark as hero SKU'}
+                  className={cn(
+                    'shrink-0 p-1.5 rounded-md transition-colors',
+                    isHero
+                      ? 'text-amber-300 hover:bg-amber-500/20'
+                      : 'text-gray-500 hover:text-amber-200 hover:bg-white/10',
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    const next = !isHero
+                    void import('@/utils/heroSku').then(({ setHeroSkuId }) => {
+                      setHeroSkuId(sku.id, next)
+                      setSkus((prev) =>
+                        prev.map((s) => (s.id === sku.id ? { ...s, isHero: next } : s)),
+                      )
+                    })
+                  }}
+                >
+                  <FiStar size={13} className={isHero ? 'fill-current' : undefined} />
+                </button>
               </div>
             )
           })

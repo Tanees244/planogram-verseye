@@ -2,6 +2,7 @@
 
 import type { PosmItemListItem } from '@/types/rackBlueprint'
 import { cn } from '@/lib/cn'
+import { POSM_DRAG_MIME } from '@/components/scene/PosmDropHandler'
 
 export function PosmItemSelect({
   label,
@@ -63,6 +64,45 @@ export function PosmItemSelect({
           {selected.posmType}
           {selected.assignedStoresLabel ? ` · ${selected.assignedStoresLabel}` : ''}
         </p>
+      )}
+      {/* Draggable chips — drop onto a row/bin in the 3D scene */}
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1">
+          {items.slice(0, 12).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              draggable={!disabled}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  POSM_DRAG_MIME,
+                  JSON.stringify({
+                    id: p.id,
+                    name: p.name,
+                    posmType: p.posmType,
+                    imageUrl: p.imageUrl ?? null,
+                    imageStorageKey: p.imageStorageKey ?? null,
+                  }),
+                )
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+              onClick={() => onChange(p.id)}
+              className={cn(
+                'text-[10px] px-1.5 py-0.5 rounded border cursor-grab active:cursor-grabbing',
+                value === p.id
+                  ? dark
+                    ? 'border-brand/50 bg-brand/20 text-brand-100'
+                    : 'border-brand/40 bg-brand/10 text-brand'
+                  : dark
+                    ? 'border-white/10 text-gray-300 hover:bg-white/5'
+                    : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+              )}
+              title="Drag onto a row in the 3D scene"
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
       )}
       {hint && (
         <p className={cn('text-[10px]', dark ? 'text-gray-500' : 'text-gray-400')}>{hint}</p>

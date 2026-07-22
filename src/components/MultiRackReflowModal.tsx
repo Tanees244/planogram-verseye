@@ -136,6 +136,8 @@ export function MultiRackReflowModal({
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
   const reloadStoreLayout = usePlanogramStore((s) => s.reloadStoreLayout)
+  const copyPosmFromRackToRack = usePlanogramStore((s) => s.copyPosmFromRackToRack)
+  const applyFaceFillToRack = usePlanogramStore((s) => s.applyFaceFillToRack)
   const sourceRackId = rack.rackId || rack.id
 
   const [step, setStep] = useState<Step>('select')
@@ -308,10 +310,23 @@ export function MultiRackReflowModal({
       setResult(res.data)
       setStep('results')
       await reloadStoreLayout()
+
+      // Soft-copy POSM + local face fill for targets that live in this scene.
+      const warnings: string[] = []
+      for (const t of res.data.targets ?? []) {
+        if (t.status === 'blocked') continue
+        const posm = await copyPosmFromRackToRack(rack.id, t.rackId)
+        if (!posm.success && posm.message) warnings.push(posm.message)
+        applyFaceFillToRack(t.rackId)
+      }
+      applyFaceFillToRack(rack.id)
+      if (warnings.length) {
+        setError(`Reflow applied. POSM copy notes: ${warnings.slice(0, 2).join(' · ')}`)
+      }
     } finally {
       setBusy(false)
     }
-  }, [selectedIds, sourceRackId, reloadStoreLayout])
+  }, [selectedIds, sourceRackId, reloadStoreLayout, copyPosmFromRackToRack, applyFaceFillToRack, rack.id])
 
   const targets = (step === 'results' ? result?.targets : preview?.targets) ?? []
   const canApply =

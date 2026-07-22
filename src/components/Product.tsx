@@ -40,6 +40,8 @@ interface ProductProps {
   product: ProductType
   position: [number, number, number]
   rowId?: string
+  /** Force box/texture instead of GLB (LOD for dense bins). */
+  forceSimple?: boolean
 }
 
 function ProductBoxFallback({
@@ -79,8 +81,8 @@ function ProductBoxFallback({
         setHovered(false)
         document.body.style.cursor = 'default'
       }}
-      castShadow
-      receiveShadow
+      castShadow={false}
+      receiveShadow={false}
     >
       <boxGeometry args={[width, height, depth]} />
       <meshStandardMaterial
@@ -96,7 +98,7 @@ function ProductBoxFallback({
   )
 }
 
-export function Product({ product, position, rowId }: ProductProps) {
+export function Product({ product, position, rowId, forceSimple = false }: ProductProps) {
   const meshRef = useRef<Mesh>(null)
   const [hovered, setHovered] = useState(false)
   const [texture, setTexture] = useState<Texture | null>(null)
@@ -109,11 +111,11 @@ export function Product({ product, position, rowId }: ProductProps) {
   const height = safeDim(product.height, DEFAULT_PRODUCT_HEIGHT)
   const depth = safeDim(product.depth, DEFAULT_PRODUCT_DEPTH)
   const modelUrl = resolveProductModelUrl(product)
-  const useGlb = Boolean(modelUrl && !glbFailed)
+  const useGlb = Boolean(modelUrl && !glbFailed && !forceSimple)
 
   useEffect(() => {
-    if (modelUrl) preloadProductGlb(modelUrl)
-  }, [modelUrl])
+    if (modelUrl && !forceSimple) preloadProductGlb(modelUrl)
+  }, [modelUrl, forceSimple])
 
   useEffect(() => {
     setGlbFailed(false)

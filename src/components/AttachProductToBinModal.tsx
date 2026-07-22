@@ -26,6 +26,10 @@ import {
   usedShelfWidthM,
   type BinInventoryData,
 } from '@/utils/binInventoryApi'
+import {
+  remainingFaceFacings,
+  suggestedFaceFacings,
+} from '@/utils/faceFill'
 import { FacingShelfPreview } from '@/components/FacingShelfPreview'
 import { FacingBin3DPreview } from '@/components/FacingBin3DPreview'
 import { usePlanogramStore } from '@/store/planogramStore'
@@ -138,6 +142,8 @@ export default function AttachProductToBinModal({
   const [skus, setSkus] = useState<CatalogSku[]>([])
   const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null)
   const [quantityInput, setQuantityInput] = useState('1')
+  /** When true, Auto-fill uses full W×D×H pack; default is front-face only. */
+  const [fillDepthToo, setFillDepthToo] = useState(false)
   const [categories, setCategories] = useState<CategoryOption[]>([])
 
   const [createForm, setCreateForm] = useState({
@@ -147,6 +153,7 @@ export default function AttachProductToBinModal({
     width: String(DEFAULT_PRODUCT_WIDTH),
     depth: String(DEFAULT_PRODUCT_DEPTH),
     height: String(DEFAULT_PRODUCT_HEIGHT),
+    isHero: false,
   })
   const [overrideDims, setOverrideDims] = useState({
     width: String(DEFAULT_PRODUCT_WIDTH),
@@ -248,6 +255,7 @@ export default function AttachProductToBinModal({
     setError(null)
     setSelectedSkuId(null)
     setQuantityInput('1')
+    setFillDepthToo(false)
     setSearch('')
     setImageFile(null)
     setImagePreview((prev) => {
@@ -358,15 +366,65 @@ export default function AttachProductToBinModal({
       ? shelfRemaining
       : undefined
 
+  const frontFaceMax =
+    binWidthM > 0 && capacityFacingWidthM > 0
+      ? remainingFaceFacings(binWidthM, capacityFacingWidthM, usedWidthM)
+      : null
+  const frontFaceFull =
+    binWidthM > 0 && capacityFacingWidthM > 0
+      ? suggestedFaceFacings(binWidthM, capacityFacingWidthM)
+      : null
+
+  const applyAutofill = (includeDepth: boolean) => {
+    if (includeDepth) {
+      const q = maxAttachQty != null && maxAttachQty > 0 ? maxAttachQty : frontFaceMax
+      if (q != null && q > 0) {
+        setQuantityInput(String(q))
+        setError(null)
+      }
+      return
+    }
+    const q = frontFaceMax != null && frontFaceMax > 0 ? frontFaceMax : frontFaceFull
+    if (q != null && q > 0) {
+      setQuantityInput(String(q))
+      setError(null)
+    }
+  }
+
+  // Default quantity to front-face fill when SKU dims + bin are known.
+  useEffect(() => {
+    if (!isOpen || !(binWidthM > 0) || !(capacityFacingWidthM > 0)) return
+    const q =
+      frontFaceMax != null && frontFaceMax > 0
+        ? frontFaceMax
+        : suggestedFaceFacings(binWidthM, capacityFacingWidthM)
+    if (q > 0) setQuantityInput(String(q))
+  }, [
+    isOpen,
+    selectedSkuId,
+    binWidthM,
+    capacityFacingWidthM,
+    // intentionally not depending on every usedWidth tick — set when SKU/bin ready
+    inventory?.binId,
+  ])
+
   const capacityError =
     quantityOk && binWidthM > 0 && facingWidthM > 0
-      ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedWidthM, {
-          binDepthM: binDepthM > 0 ? binDepthM : undefined,
-          facingDepthM: facingDepthM > 0 ? facingDepthM : undefined,
-          binHeightM: binHeightM > 0 ? binHeightM : undefined,
-          facingHeightM: facingHeightM > 0 ? facingHeightM : undefined,
-          placedFacings,
-        })
+      ? fillDepthToo
+        ? facingCapacityMessage(binWidthM, facingWidthM, parsedQuantity, usedWidthM, {
+            binDepthM: binDepthM > 0 ? binDepthM : undefined,
+            facingDepthM: facingDepthM > 0 ? facingDepthM : undefined,
+            binHeightM: binHeightM > 0 ? binHeightM : undefined,
+            facingHeightM: facingHeightM > 0 ? facingHeightM : undefined,
+            placedFacings,
+          })
+        : (() => {
+            const maxFront = frontFaceMax ?? 0
+            if (parsedQuantity > maxFront) {
+              return `Only ${maxFront} front facing${maxFront === 1 ? '' : 's'} fit across this bin (${(facingWidthM * 100).toFixed(0)} cm each). Turn on “Also fill depth” for W×D×H pack.`
+            }
+            return null
+          })()
       : null
 
   // Push live facing ghosts to the selected bin in the 3D scene
@@ -606,6 +664,9 @@ export default function AttachProductToBinModal({
           modelStorageKey,
           attachments,
           status: 'active',
+          // Forwarded when backend supports it; FE also stores locally.
+          isHero: createForm.isHero,
+          heroSku: createForm.isHero,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -620,6 +681,13 @@ export default function AttachProductToBinModal({
         setError('SKU created but no id was returned')
         return
       }
+
+      if (createForm.isHero) {
+        const { setHeroSkuId } = await import('@/utils/heroSku')
+        setHeroSkuId(skuId, true)
+      }
+      const { rememberUserEnteredName } = await import('@/utils/userEnteredNames')
+      rememberUserEnteredName('sku', createForm.name.trim())
 
       const product = skuToProduct({
         id: skuId,
@@ -784,14 +852,16 @@ export default function AttachProductToBinModal({
         )}
 
         <FormField
-          label="Quantity (facings)"
+          label="Quantity (front facings)"
           required
           hint={
-            maxAttachQty != null
-              ? `Up to ${maxAttachQty} facing${maxAttachQty === 1 ? '' : 's'} can fit (${shelfMaxTotal != null ? `${shelfMaxTotal} max W×D×H` : 'shelf'})`
+            frontFaceMax != null
+              ? fillDepthToo
+                ? `Depth fill: up to ${maxAttachQty ?? frontFaceMax} units (W×D×H). Front face alone fits ${frontFaceMax}.`
+                : `Front fill: ${frontFaceMax} facing${frontFaceMax === 1 ? '' : 's'} across the bin (${(capacityFacingWidthM * 100).toFixed(0)} cm each)`
               : facingWidthM > 0
                 ? 'Select a SKU with dimensions to calculate capacity'
-                : 'Number of product facings to place in this bin'
+                : 'Number of front facings left-to-right across the bin'
           }
           error={capacityError ?? undefined}
         >
@@ -799,7 +869,7 @@ export default function AttachProductToBinModal({
             type="number"
             inputMode="numeric"
             min={1}
-            max={maxAttachQty}
+            max={fillDepthToo ? maxAttachQty : frontFaceMax ?? maxAttachQty}
             step={1}
             required
             value={quantityInput}
@@ -815,12 +885,39 @@ export default function AttachProductToBinModal({
                 setQuantityInput('1')
                 return
               }
-              if (maxAttachQty != null && parsedQuantity > maxAttachQty) {
-                setQuantityInput(String(maxAttachQty))
+              const cap = fillDepthToo ? maxAttachQty : frontFaceMax ?? maxAttachQty
+              if (cap != null && parsedQuantity > cap) {
+                setQuantityInput(String(cap))
               }
             }}
           />
         </FormField>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Btn
+            type="button"
+            variant="secondary"
+            disabled={
+              submitting ||
+              !(
+                (fillDepthToo ? maxAttachQty : frontFaceMax ?? frontFaceFull) != null &&
+                (fillDepthToo ? maxAttachQty! : (frontFaceMax ?? frontFaceFull)!) > 0
+              )
+            }
+            onClick={() => applyAutofill(fillDepthToo)}
+          >
+            {fillDepthToo ? 'Auto-fill depth' : 'Auto-fill front'}
+          </Btn>
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="rounded border-gray-300"
+              checked={fillDepthToo}
+              onChange={(e) => setFillDepthToo(e.target.checked)}
+            />
+            Also fill depth (W×D×H)
+          </label>
+        </div>
 
         {inventory && inventory.width > 0 && facingWidthM > 0 && facingHeightM > 0 && (
           <div className="space-y-2">
@@ -997,6 +1094,18 @@ export default function AttachProductToBinModal({
                 ))}
               </select>
             </FormField>
+            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-amber-300"
+                checked={createForm.isHero}
+                onChange={(e) => setCreateForm({ ...createForm, isHero: e.target.checked })}
+              />
+              <span className="text-xs text-amber-950 leading-snug">
+                <span className="font-semibold">Hero SKU</span> — only place on eye-level rows
+                (≈1.2–1.6 m from floor).
+              </span>
+            </label>
 
             <FormField label="Product image">
               {imagePreview ? (

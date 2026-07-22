@@ -9,7 +9,7 @@ import {
   resolveSectionSize,
   type CustomRackConfig,
 } from '@/components/fixtures/customRackTypes'
-import { resolvePosmImageUrl } from '@/utils/posmImageUrl'
+import { usePosmImageSrc } from '@/hooks/usePosmImageSrc'
 
 const POSM_TYPE_COLORS: Record<string, string> = {
   Standee: '#8e44ad',
@@ -87,7 +87,7 @@ function PosmSurface({
   size: [number, number, number]
   rotation?: [number, number, number]
 }) {
-  const imageUrl = resolvePosmImageUrl(posm)
+  const imageUrl = usePosmImageSrc(posm)
   if (!imageUrl) {
     return <PosmColorPlaque posm={posm} position={position} size={size} rotation={rotation} />
   }

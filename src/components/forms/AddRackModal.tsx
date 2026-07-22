@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Alert, Btn, FormField, FormGrid, Input, PillGroup, Select } from '@/components/ui/form'
 import { FIXTURE_LIBRARY, FIXTURE_TYPES, type FixtureType } from '@/components/fixtures/types'
 import { Spinner } from '@/components/Spinner'
+import { getUserEnteredNames } from '@/utils/userEnteredNames'
 
 export interface RackFormState {
   width: string
@@ -55,6 +57,12 @@ export function AddRackModal({
   submitLabel = 'Add Rack',
 }: AddRackModalProps) {
   const set = (patch: Partial<RackFormState>) => onChange({ ...form, ...patch })
+  const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!open) return
+    setNameSuggestions(getUserEnteredNames('rack'))
+  }, [open])
 
   return (
     <Modal
@@ -112,14 +120,20 @@ export function AddRackModal({
 
           <FormField
             label="Rack Name"
-            hint="Display name — defaults to rack code"
+            hint="Display name — suggestions are names you typed before"
             className="sm:col-span-2"
           >
             <Input
               placeholder="e.g. Dairy end cap"
               value={form.rackName}
+              list="rack-name-suggestions"
               onChange={(e) => set({ rackName: e.target.value })}
             />
+            <datalist id="rack-name-suggestions">
+              {nameSuggestions.map((n) => (
+                <option key={n} value={n} />
+              ))}
+            </datalist>
           </FormField>
 
           <FormField

@@ -30,7 +30,12 @@ export async function GET(req: NextRequest) {
           imageStorageKey:
             p.imageStorageKey ?? p.imageObjectKey ?? p.storageKey ?? null,
           imageUrl:
-            p.imageUrl ?? p.thumbnailUrl ?? p.previewUrl ?? p.downloadUrl ?? null,
+            p.imageUrl ??
+            p.thumbnailUrl ??
+            p.previewUrl ??
+            p.downloadUrl ??
+            (Array.isArray(p.imageUrls) ? p.imageUrls[0] : null) ??
+            null,
         })),
       };
     },

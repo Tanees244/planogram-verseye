@@ -12,6 +12,16 @@ export function normalizeRackPosm(raw: unknown): RackSurfacePosm | null {
     (typeof d.posmType === 'string' && d.posmType) ||
     (typeof d.type === 'string' && d.type) ||
     'ShelfTalker'
+
+  const imageUrls = Array.isArray(d.imageUrls)
+    ? d.imageUrls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+    : []
+  const imageUrl =
+    (typeof d.imageUrl === 'string' && d.imageUrl) ||
+    (typeof d.thumbnailUrl === 'string' && d.thumbnailUrl) ||
+    imageUrls[0] ||
+    null
+
   return {
     id: id.trim(),
     name:
@@ -19,13 +29,13 @@ export function normalizeRackPosm(raw: unknown): RackSurfacePosm | null {
       (typeof d.programName === 'string' && d.programName) ||
       'POSM item',
     posmType,
-    imageUrl:
-      (typeof d.imageUrl === 'string' && d.imageUrl) ||
-      (typeof d.thumbnailUrl === 'string' && d.thumbnailUrl) ||
-      null,
+    imageUrl,
+    imageUrls: imageUrls.length > 0 ? imageUrls : null,
     imageStorageKey:
       (typeof d.imageStorageKey === 'string' && d.imageStorageKey) ||
+      (typeof d.imageObjectKey === 'string' && d.imageObjectKey) ||
       (typeof d.storageKey === 'string' && d.storageKey) ||
+      (typeof d.objectKey === 'string' && d.objectKey) ||
       null,
   }
 }

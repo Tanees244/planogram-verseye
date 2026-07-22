@@ -15,7 +15,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload, FiMaximize2, FiGitMerge } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload, FiMaximize2, FiGitMerge, FiCopy, FiClipboard } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -30,6 +30,8 @@ import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeights
 import { RackPosmPanel } from '@/components/RackPosmPanel'
 import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
 import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
+import { RowFaceFillChip } from '@/components/RowFaceFillChip'
+import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
 import { RackReflowModal } from '@/components/RackReflowModal'
 import { MultiRackReflowModal } from '@/components/MultiRackReflowModal'
@@ -81,6 +83,9 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     rotateRack,
     setRackRotationY,
     setPendingBinPreview,
+    copySelection,
+    pasteClipboard,
+    clipboard,
   } = usePlanogramStore();
 
   const [showRackModal, setShowRackModal] = useState(false);
@@ -94,7 +99,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showReflowModal, setShowReflowModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
-  const { exportRack } = usePlanogramExport();
+  const { exportRack, exportRackCsv, exportSceneImage, exportRackPdf, exportRackPptx } =
+    usePlanogramExport();
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -201,7 +207,10 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [rackErrors, setRackErrors] = useState<Record<string, string | null>>({});
   const [isRackFormValid, setIsRackFormValid] = useState(false);
 
-  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING) });
+  const [rowForm, setRowForm] = useState({
+    height: String(GROCERY_SHELF_SPACING),
+    count: '1',
+  });
 
   const { attachProductToBin } = usePlanogramStore();
 
@@ -247,7 +256,15 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       },
       selectedLocationId,
     )
-    if (res.success) setShowRackModal(false)
+    if (res.success) {
+      const name = (rackForm.rackName || rackForm.rackCode || '').trim()
+      if (name) {
+        void import('@/utils/userEnteredNames').then(({ rememberUserEnteredName }) => {
+          rememberUserEnteredName('rack', name)
+        })
+      }
+      setShowRackModal(false)
+    }
     return res.success
   }
 
@@ -285,6 +302,16 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           )}
         >
           {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
+          {rack && (
+            <div
+              className={cn(
+                'w-full rounded-xl border p-2.5',
+                isSidebar ? 'bg-black/70 border-white/10' : 'bg-white border-gray-200',
+              )}
+            >
+              <ShelfUtilizationMeter rack={rack} dark={isSidebar} />
+            </div>
+          )}
           <ActionBar
             label="Rack selected"
             layout={layout}
@@ -438,6 +465,38 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             >
               <FiDownload /> Export PSA
             </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => rack && exportRackCsv(rack)}
+              title="Export SKU table as CSV for Excel"
+            >
+              <FiDownload /> Export CSV
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => exportSceneImage(rack?.rackCode ?? 'planogram')}
+              title="Capture 3D scene as PNG"
+            >
+              <FiDownload /> Export PNG
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => rack && void exportRackPdf(rack)}
+              title="Export PDF report"
+            >
+              <FiDownload /> Export PDF
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => rack && void exportRackPptx(rack)}
+              title="Export PowerPoint deck"
+            >
+              <FiDownload /> Export PPTX
+            </ActionBtn>
             {isSidebar ? (
               <ActionBtn
                 variant="danger"
@@ -517,14 +576,34 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           onClose={() => setShowRowModal(false)}
           height={rowForm.height}
           onHeightChange={(v) => setRowForm({ ...rowForm, height: v })}
+          count={rowForm.count}
+          onCountChange={(v) => setRowForm({ ...rowForm, count: v })}
           isSubmitting={addingRow}
           onSubmit={async () => {
             if (!selectedId) return;
             setAddingRow(true);
             try {
-              const res = await addRowToServer(selectedId, parseFloat(rowForm.height) || GROCERY_SHELF_SPACING);
-              if (!res.success) setAddRackError(res.message);
-              else setShowRowModal(false);
+              const h = parseFloat(rowForm.height) || GROCERY_SHELF_SPACING;
+              const n = Math.max(1, Math.min(20, Math.floor(Number(rowForm.count) || 1)));
+              let added = 0;
+              let lastMsg: string | undefined;
+              for (let i = 0; i < n; i++) {
+                const res = await addRowToServer(selectedId, h, undefined, { quiet: i > 0 });
+                if (!res.success) {
+                  lastMsg = res.message;
+                  break;
+                }
+                added += 1;
+              }
+              if (added === 0) setAddRackError(lastMsg ?? 'Failed to add row');
+              else {
+                setShowRowModal(false);
+                if (added < n) {
+                  toast(`${added} of ${n} rows added — ${lastMsg ?? 'no more height'}`);
+                } else {
+                  toast.success(added > 1 ? `Added ${added} rows` : 'Row added');
+                }
+              }
             } finally {
               setAddingRow(false);
             }
@@ -640,14 +719,18 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
                 isSidebar ? 'bg-black/70 border-white/10' : 'bg-white border-gray-200',
               )}
             >
-              <p
-                className={cn(
-                  'text-[10px] font-semibold uppercase tracking-wide mb-1.5',
-                  isSidebar ? 'text-gray-400' : 'text-gray-500',
-                )}
-              >
-                Row size (W × H)
-              </p>
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <p
+                  className={cn(
+                    'text-[10px] font-semibold uppercase tracking-wide',
+                    isSidebar ? 'text-gray-400' : 'text-gray-500',
+                  )}
+                >
+                  Row size (W × H)
+                </p>
+                <RowFaceFillChip row={row} rack={rack} />
+              </div>
+              <ShelfUtilizationMeter row={row} dark={isSidebar} className="mb-1.5" />
               <RowDimensionsField
                 row={row}
                 dark={isSidebar}
@@ -658,6 +741,33 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           )}
           {row && <RowDividerPosmPanel row={row} dark={isSidebar} />}
           <ActionBar label="Row selected" layout={layout}>
+          <ActionBtn
+            fullWidth={isSidebar}
+            variant="secondary"
+            onClick={() => {
+              const res = copySelection();
+              if (res.success) toast.success(res.message ?? 'Copied');
+              else toast.error(res.message ?? 'Copy failed');
+            }}
+            title="Ctrl+C — copy this row (bins, SKUs, shelf talker)"
+          >
+            <FiCopy /> Copy row
+          </ActionBtn>
+          <ActionBtn
+            fullWidth={isSidebar}
+            variant="secondary"
+            disabled={!clipboard || clipboard.kind !== 'row'}
+            onClick={() => {
+              void (async () => {
+                const res = await pasteClipboard();
+                if (res.success) toast.success(res.message ?? 'Pasted');
+                else toast.error(res.message ?? 'Paste failed');
+              })();
+            }}
+            title="Ctrl+V — paste copied row onto this row"
+          >
+            <FiClipboard /> Paste row
+          </ActionBtn>
           <ActionBtn
             fullWidth={isSidebar}
             onClick={() => {

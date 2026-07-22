@@ -75,10 +75,10 @@ export function Row({
   };
 
   return (
-    <group position={position}>
+    <group position={position} userData={{ id: row.id, type: 'row' }}>
       {/* Hitbox at back – for clicks from behind the rack */}
       <mesh
-        userData={{ id: row.id }}
+        userData={{ id: row.id, type: 'row' }}
         position={[0, 0, z + safeRackDepth / 2 - 0.05]}
         onClick={selectRow}
         {...rowHoverProps}
@@ -108,6 +108,7 @@ export function Row({
       {/* Floor of the slot – click empty shelf areas to select row */}
       <mesh
         ref={meshRef}
+        userData={{ id: row.id, type: 'row' }}
         position={[0, -rowHeight / 2 + 0.03, z]}
         onClick={selectRow}
         {...rowHoverProps}
@@ -127,15 +128,6 @@ export function Row({
           lineWidth={isSelected ? 2.5 : 2}
         />
       </mesh>
-      {/* Front shelf lip – easy row target from the shopper-facing side */}
-      <mesh
-        position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
-        onClick={selectRow}
-        {...rowHoverProps}
-      >
-        <boxGeometry args={[safeRackWidth, 0.12, 0.1]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
       {/* Visible front lip */}
       <mesh
         position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
@@ -143,6 +135,25 @@ export function Row({
       >
         <boxGeometry args={[safeRackWidth, 0.08, 0.06]} />
         <meshStandardMaterial color="#34495e" metalness={0.5} roughness={0.4} />
+      </mesh>
+      {/*
+        Dedicated row hit strip in front of bins/products.
+        depthTest=false so the strip stays clickable even when bins fill the shelf.
+      */}
+      <mesh
+        userData={{ id: row.id, type: 'row' }}
+        position={[0, -rowHeight / 2 + 0.1, z - safeRackDepth / 2 - 0.07]}
+        onClick={selectRow}
+        {...rowHoverProps}
+        renderOrder={20}
+      >
+        <boxGeometry args={[safeRackWidth, Math.min(0.28, rowHeight * 0.45), 0.14]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0}
+          depthTest={false}
+          depthWrite={false}
+        />
       </mesh>
 
       {showBottomBorder && (

@@ -45,10 +45,29 @@ export function RowDividerPosmPanel({
     setPosmItemId(row.dividerPosmItemId ?? '')
   }, [row.id, row.dividerPosmItemId])
 
-  const handleCreated = (item: PosmItemListItem) => {
+  const handleCreated = async (item: PosmItemListItem) => {
     setLocalItems((prev) => [item, ...prev.filter((p) => p.id !== item.id)])
-    if (!row.dividerPosmItemId) setPosmItemId(item.id)
+    setPosmItemId(item.id)
     void refetch()
+
+    // Auto-assign newly created talker (with image) so it shows on the shelf immediately.
+    if (!rack || row.dividerPosmItemId) return
+    setBusy(true)
+    setSaveError(null)
+    try {
+      const res = await assignRow(rack.id, row.id, item.id, {
+        id: item.id,
+        name: item.name,
+        posmType: item.posmType,
+        imageUrl: item.imageUrl,
+        imageStorageKey: item.imageStorageKey,
+      })
+      if (!res.success) {
+        setSaveError(res.message ?? 'Created, but failed to assign to this row — click Save shelf talker')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleSave = async () => {

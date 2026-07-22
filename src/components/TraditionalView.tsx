@@ -88,7 +88,7 @@ export function TraditionalView() {
     () => usePlanogramStore.getState().selectedStoreId ?? ''
   )
   const [locationValidationError, setLocationValidationError] = useState<string | null>(null)
-  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING) })
+  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING), count: '1' })
   const [productForm, setProductForm] = useState({
     name: '',
     color: '#2C5282',
@@ -511,7 +511,15 @@ export function TraditionalView() {
             sided: rackForm.fixtureType === 'GONDOLA' ? rackForm.sided : 'one',
             fixtureType: rackForm.fixtureType,
           }, selectedLocationId)
-          if (res.success) setShowAddRackModal(false)
+          if (res.success) {
+            const name = (rackForm.rackName || rackForm.rackCode || '').trim()
+            if (name) {
+              void import('@/utils/userEnteredNames').then(({ rememberUserEnteredName }) => {
+                rememberUserEnteredName('rack', name)
+              })
+            }
+            setShowAddRackModal(false)
+          }
         }}
       />
 
@@ -520,13 +528,26 @@ export function TraditionalView() {
         onClose={() => setShowAddRowModal(false)}
         height={rowForm.height}
         onHeightChange={(v) => setRowForm({ ...rowForm, height: v })}
+        count={rowForm.count}
+        onCountChange={(v) => setRowForm({ ...rowForm, count: v })}
         isSubmitting={addingRow}
         onSubmit={async () => {
           if (!selectedRackId) return
           setAddingRow(true)
           try {
-            const res = await addRowToServer(selectedRackId, parseFloat(rowForm.height) || 1.5)
-            if (!res.success) setAddRackError(res.message)
+            const h = parseFloat(rowForm.height) || 1.5
+            const n = Math.max(1, Math.min(20, Math.floor(Number(rowForm.count) || 1)))
+            let added = 0
+            let lastMsg: string | undefined
+            for (let i = 0; i < n; i++) {
+              const res = await addRowToServer(selectedRackId, h, undefined, { quiet: i > 0 })
+              if (!res.success) {
+                lastMsg = res.message
+                break
+              }
+              added += 1
+            }
+            if (added === 0) setAddRackError(lastMsg ?? 'Failed to add row')
             else setShowAddRowModal(false)
           } finally {
             setAddingRow(false)

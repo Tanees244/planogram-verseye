@@ -12,6 +12,7 @@ import { usePlanogramStore } from "@/store/planogramStore";
 import { WAREHOUSE_SCALE } from "@/constants/warehouse";
 import { FloorDropHandler } from "@/components/scene/FloorDropHandler";
 import { ProductDropHandler } from "@/components/scene/ProductDropHandler";
+import { PosmDropHandler } from "@/components/scene/PosmDropHandler";
 
 const S = WAREHOUSE_SCALE;
 
@@ -20,7 +21,12 @@ export function Scene3DCanvas() {
   const sceneTheme = usePlanogramStore((s) => s.sceneTheme);
 
   return (
-    <Canvas shadows>
+    <Canvas
+      shadows={false}
+      dpr={[1, 1.25]}
+      performance={{ min: 0.5 }}
+      gl={{ powerPreference: 'high-performance', antialias: true }}
+    >
       <SceneAtmosphere theme={sceneTheme} />
       <PerspectiveCamera makeDefault position={[30 * S, 25 * S, 30 * S]} fov={50} />
       <SceneLighting theme={sceneTheme} />
@@ -34,6 +40,7 @@ export function Scene3DCanvas() {
       <CameraManager controlsRef={controlsRef} />
       <FloorDropHandler />
       <ProductDropHandler />
+      <PosmDropHandler />
       <SelectionPopup />
       <Area />
     </Canvas>
