@@ -1560,7 +1560,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      // Products stay empty — attach SKUs later via bin-inventory/attach
+      // Omit `products` entirely — sending `products: []` is treated as
+      // "products provided but empty" and the API rejects with face-fill errors.
+      // Empty bins are allowed; attach SKUs later via bin-inventory/attach.
       const payload: Record<string, unknown> = {
         rackRowId,
         binName: binName?.trim() || null,
@@ -1570,7 +1572,6 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         depth: binDepth,
         slotIndex: existingCount,
         slotCount: n,
-        products: [],
       };
 
       const res = await fetch('/api/bins/add-by-row', {

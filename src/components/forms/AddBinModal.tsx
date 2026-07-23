@@ -70,7 +70,7 @@ export function AddBinModal({
       open={open}
       onClose={onClose}
       title="Add Bin"
-      subtitle="Provide bin name and dimensions (W × D × H in meters). Preview updates on the selected row."
+      subtitle="Name and size the bin (W × D × H in meters). You can leave it empty and attach SKUs afterward."
       maxWidth="md"
       footer={
         <>

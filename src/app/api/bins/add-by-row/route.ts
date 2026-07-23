@@ -65,9 +65,12 @@ export async function POST(req: NextRequest) {
     width,
     height,
     depth,
-    // Empty — attach SKUs afterward via /bin-inventory/attach
-    products: Array.isArray(body.products) ? body.products : [],
   };
+  // Only forward products when the client sent a non-empty list.
+  // Omitting / null = empty bin (SKUs attached later). `[]` can be rejected as BinEmpty.
+  if (Array.isArray(body.products) && body.products.length > 0) {
+    payload.products = body.products;
+  }
   if (body.slotIndex != null) payload.slotIndex = body.slotIndex;
   if (body.slotCount != null) payload.slotCount = body.slotCount;
   if (body.xStart != null) payload.xStart = body.xStart;
