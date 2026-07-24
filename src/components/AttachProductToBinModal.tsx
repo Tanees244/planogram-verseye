@@ -30,6 +30,11 @@ import {
   remainingFaceFacings,
   suggestedFaceFacings,
 } from '@/utils/faceFill'
+import {
+  resolveIsStackable,
+  suggestedStackableFrontFacings,
+  setStackableSkuId,
+} from '@/utils/stackableSku'
 import { FacingShelfPreview } from '@/components/FacingShelfPreview'
 import { FacingBin3DPreview } from '@/components/FacingBin3DPreview'
 import { usePlanogramStore } from '@/store/planogramStore'
@@ -64,6 +69,8 @@ interface CatalogSku {
     is3D?: boolean | null
   }> | null
   status?: string
+  isHero?: boolean
+  isStackable?: boolean
 }
 
 interface CategoryOption {
@@ -154,6 +161,7 @@ export default function AttachProductToBinModal({
     depth: String(DEFAULT_PRODUCT_DEPTH),
     height: String(DEFAULT_PRODUCT_HEIGHT),
     isHero: false,
+    isStackable: true,
   })
   const [overrideDims, setOverrideDims] = useState({
     width: String(DEFAULT_PRODUCT_WIDTH),
@@ -220,6 +228,9 @@ export default function AttachProductToBinModal({
           modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
           attachments: Array.isArray(s.attachments) ? s.attachments : null,
           status: s.status,
+          isHero: Boolean(s.isHero ?? s.heroSku),
+          isStackable:
+            s.isStackable === false || s.stackable === false ? false : true,
         })),
       )
     } catch {
@@ -366,14 +377,44 @@ export default function AttachProductToBinModal({
       ? shelfRemaining
       : undefined
 
-  const frontFaceMax =
+  const selectedIsStackable =
+    mode === 'create'
+      ? createForm.isStackable
+      : resolveIsStackable(selectedSkuId, {
+          isStackable: selectedSku?.isStackable,
+        })
+
+  const stackableFrontFull =
+    selectedIsStackable &&
+    binWidthM > 0 &&
+    binHeightM > 0 &&
+    capacityFacingWidthM > 0 &&
+    capacityFacingHeightM > 0
+      ? suggestedStackableFrontFacings(
+          binWidthM,
+          binHeightM,
+          capacityFacingWidthM,
+          capacityFacingHeightM,
+        )
+      : null
+
+  const frontFaceLinearMax =
     binWidthM > 0 && capacityFacingWidthM > 0
       ? remainingFaceFacings(binWidthM, capacityFacingWidthM, usedWidthM)
       : null
-  const frontFaceFull =
+  const frontFaceLinearFull =
     binWidthM > 0 && capacityFacingWidthM > 0
       ? suggestedFaceFacings(binWidthM, capacityFacingWidthM)
       : null
+
+  const frontFaceMax =
+    selectedIsStackable && stackableFrontFull != null && stackableFrontFull > 0
+      ? Math.max(0, stackableFrontFull - Math.max(0, Math.floor(usedWidthM / Math.max(capacityFacingWidthM, 0.001))))
+      : frontFaceLinearMax
+  const frontFaceFull =
+    selectedIsStackable && stackableFrontFull != null && stackableFrontFull > 0
+      ? stackableFrontFull
+      : frontFaceLinearFull
 
   const applyAutofill = (includeDepth: boolean) => {
     if (includeDepth) {
@@ -452,6 +493,8 @@ export default function AttachProductToBinModal({
           : (selectedSku?.modelUrl ?? null),
       modelStorageKey: mode === 'create' ? null : (selectedSku?.modelStorageKey ?? null),
       color: fits ? '#2C5282' : '#ef4444',
+      skuId: mode === 'browse' ? selectedSkuId : null,
+      isStackable: selectedIsStackable,
     })
     return () => setAttachFacingPreview(null)
   }, [
@@ -667,6 +710,8 @@ export default function AttachProductToBinModal({
           // Forwarded when backend supports it; FE also stores locally.
           isHero: createForm.isHero,
           heroSku: createForm.isHero,
+          isStackable: createForm.isStackable,
+          stackable: createForm.isStackable,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -686,6 +731,7 @@ export default function AttachProductToBinModal({
         const { setHeroSkuId } = await import('@/utils/heroSku')
         setHeroSkuId(skuId, true)
       }
+      setStackableSkuId(skuId, createForm.isStackable)
       const { rememberUserEnteredName } = await import('@/utils/userEnteredNames')
       rememberUserEnteredName('sku', createForm.name.trim())
 
@@ -714,6 +760,7 @@ export default function AttachProductToBinModal({
         depth: String(DEFAULT_PRODUCT_DEPTH),
         height: String(DEFAULT_PRODUCT_HEIGHT),
         isHero: false,
+        isStackable: true,
       })
       clearImage()
       clearModel()
@@ -859,7 +906,9 @@ export default function AttachProductToBinModal({
             frontFaceMax != null
               ? fillDepthToo
                 ? `Depth fill: up to ${maxAttachQty ?? frontFaceMax} units (W×D×H). Front face alone fits ${frontFaceMax}.`
-                : `Front fill: ${frontFaceMax} facing${frontFaceMax === 1 ? '' : 's'} across the bin (${(capacityFacingWidthM * 100).toFixed(0)} cm each)`
+                : `Front fill: ${frontFaceMax} facing${frontFaceMax === 1 ? '' : 's'}${
+                    selectedIsStackable ? ' (stackable: across × up)' : ` across the bin (${(capacityFacingWidthM * 100).toFixed(0)} cm each)`
+                  }`
               : facingWidthM > 0
                 ? 'Select a SKU with dimensions to calculate capacity'
                 : 'Number of front facings left-to-right across the bin'
@@ -1105,6 +1154,18 @@ export default function AttachProductToBinModal({
               <span className="text-xs text-amber-950 leading-snug">
                 <span className="font-semibold">Hero SKU</span> — only place on eye-level rows
                 (≈1.2–1.6 m from floor).
+              </span>
+            </label>
+            <label className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-sky-300"
+                checked={createForm.isStackable}
+                onChange={(e) => setCreateForm({ ...createForm, isStackable: e.target.checked })}
+              />
+              <span className="text-xs text-sky-950 leading-snug">
+                <span className="font-semibold">Stackable</span> — front face shows vertical stacks
+                (fill across × up).
               </span>
             </label>
 

@@ -4,6 +4,7 @@ import type { FixtureType } from "@/components/fixtures/types";
 import { FIXTURE_LIBRARY } from "@/components/fixtures/types";
 import type { CustomRackConfig } from "@/components/fixtures/customRackTypes";
 import type { Dimensions3, RackPlacement, RackShell, RackSurfacePosm, ZoneFootprint, ZoneVolume } from "@/types/rackBlueprint";
+import type { ShelfFacingUtilization } from "@/types/shelfUtilization";
 import {
   cloneCustomRackConfig,
   createBlankCustomRack,
@@ -14,9 +15,11 @@ import {
 import {
   getRotatedFootprintHalf,
   isRackInsideFloor,
+  rackOverlapsOthers,
   snapRackToWall,
+  snapToGrid,
 } from "@/utils/rackPlacement";
-import { buildCreateRackPayload, buildUpdateRackPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { buildCreateRackPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
 import { canAddRowToSide, innerFromCustomConfig, nextRowYStart, reanchorSideRows } from "@/utils/rowStack";
 import { getFixtureSeedLayout } from "@/utils/fixtureSeed";
 import { boundsFromRacks, summarizeRacks } from "@/lib/planogram-formats/serialize";
@@ -78,6 +81,8 @@ export interface Product {
   quantity?: number;
   /** Hero / eye-facing SKU (client policy + optional API field). */
   isHero?: boolean;
+  /** Stackable — front face shows vertical stacks (client policy). */
+  isStackable?: boolean;
 }
 
 export interface PendingProductParams {
@@ -97,6 +102,8 @@ export interface PendingProductParams {
   color?: string;
   /** Hero / eye-facing — placement restricted to eye-level rows. */
   isHero?: boolean;
+  /** Stackable — pack stacks on the front face. */
+  isStackable?: boolean;
 }
 
 /** Live ghost facings while Attach Product modal quantity/dims change. */
@@ -110,6 +117,8 @@ export interface AttachFacingPreview {
   modelUrl?: string | null;
   modelStorageKey?: string | null;
   color?: string;
+  skuId?: string | null;
+  isStackable?: boolean;
 }
 
 /** Ghost bin on the selected row while Add Bin modal is open. */
@@ -187,6 +196,8 @@ export interface Row {
   dividerPosm?: RackSurfacePosm | null;
   yStart?: number | null;
   yEnd?: number | null;
+  /** Server-provided facing utilization for this row (when structure includes it). */
+  utilization?: ShelfFacingUtilization | null;
 }
 
 export interface RackSide {
@@ -286,6 +297,10 @@ export interface PlanogramState {
   selectedId: string | null;
   selectedType: "area" | "rack" | "row" | "bin" | "product" | null;
   isPlacingRack: boolean;
+  /** True while HTML-dragging a fixture from the palette (shows floor grid). */
+  fixtureDragActive: boolean;
+  fixtureDragType: FixtureType | null;
+  setFixtureDragActive: (active: boolean, type?: FixtureType | null) => void;
   pendingRackParams: PendingRackParams | null;
   placingFixtureType: FixtureType | null;
   isPlacingProduct: boolean;
@@ -434,6 +449,10 @@ export interface PlanogramState {
     rackId: string,
     options?: { suppressLoading?: boolean; reflowSkus?: boolean },
   ) => Promise<{ success: boolean; message?: string }>;
+  /** Persist floor placement/rotation only (PUT) — skips face-fill gate. */
+  saveRackPlacementToServer: (
+    rackId: string,
+  ) => Promise<{ success: boolean; message?: string }>;
   /** Persist all server-backed racks in the current store layout. */
   saveStoreLayoutToServer: () => Promise<{
     success: boolean;
@@ -497,6 +516,10 @@ export interface PlanogramState {
   clearClipboard: () => void;
   /** Local Exact Face Fill: redistribute bin widths + front facing qty on a rack. */
   applyFaceFillToRack: (rackId: string) => { success: boolean; message?: string };
+  /** After reflow/AI: auto-create bins on empty rows, then face-fill (no empty shelf gaps). */
+  ensureBinsAndFaceFillAfterReflow: (
+    rackId: string,
+  ) => Promise<{ success: boolean; message?: string }>;
   /** Copy shell + row divider POSM from source rack onto a target (by side/row index). */
   copyPosmFromRackToRack: (
     sourceRackId: string,
@@ -673,7 +696,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   },
   viewMode: "advanced",
   sceneTheme: "day",
-  setSceneTheme: (theme) => set({ sceneTheme: theme }),
+  /** Night mode removed (performance); always stay on day. */
+  setSceneTheme: () => set({ sceneTheme: "day" }),
   roofVisible: true,
   setRoofVisible: (visible) => set({ roofVisible: visible }),
   fixturePaletteCollapsed: false,
@@ -683,6 +707,17 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   selectedId: null,
   selectedType: null,
   isPlacingRack: false,
+  fixtureDragActive: false,
+  fixtureDragType: null,
+  setFixtureDragActive: (active, type) =>
+    set((s) => ({
+      fixtureDragActive: active,
+      fixtureDragType: active
+        ? type !== undefined
+          ? type
+          : s.fixtureDragType
+        : null,
+    })),
   pendingRackParams: null,
   placingFixtureType: null,
   isPlacingProduct: false,
@@ -796,9 +831,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     // Default: fill the front face (linear facings), not depth.
+    // Stackable SKUs fill across × stack height on the front face.
     let qty = quantity != null ? Math.max(1, Math.floor(Number(quantity) || 1)) : 0;
     if (!(qty >= 1)) {
       let binWidth = 0;
+      let binHeight = 0;
       let usedWidth = 0;
       let found = false;
       outer: for (const rack of state.area.racks) {
@@ -807,6 +844,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             const bin = row.bins.find((b) => b.id === binId);
             if (!bin) continue;
             binWidth = Number(bin.width) || 0;
+            binHeight = Number(bin.height) || 0;
             usedWidth = bin.products.reduce((sum, p) => {
               const w = Number(p.width);
               const q = Math.max(1, Math.floor(Number(p.quantity) || 1));
@@ -820,11 +858,31 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (!found) {
         return { success: false, message: 'Bin not found' };
       }
-      const { remainingFaceFacings, suggestedFaceFacings } = await import('@/utils/faceFill');
-      qty =
-        usedWidth > 0.001
-          ? remainingFaceFacings(binWidth, pending.width, usedWidth)
-          : suggestedFaceFacings(binWidth, pending.width);
+      const { resolveIsStackable, suggestedStackableFrontFacings } = await import(
+        '@/utils/stackableSku'
+      );
+      const stackable = resolveIsStackable(pending.id, {
+        isStackable: pending.isStackable,
+      });
+      if (stackable && binHeight > 0) {
+        const full = suggestedStackableFrontFacings(
+          binWidth,
+          binHeight,
+          pending.width,
+          pending.height,
+        );
+        const usedSlots = Math.max(
+          0,
+          Math.floor(usedWidth / Math.max(pending.width, 0.001)),
+        );
+        qty = Math.max(0, full - usedSlots);
+      } else {
+        const { remainingFaceFacings, suggestedFaceFacings } = await import('@/utils/faceFill');
+        qty =
+          usedWidth > 0.001
+            ? remainingFaceFacings(binWidth, pending.width, usedWidth)
+            : suggestedFaceFacings(binWidth, pending.width);
+      }
       if (!(qty >= 1)) {
         return {
           success: false,
@@ -848,6 +906,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         modelUrl: pending.modelUrl ?? undefined,
         modelStorageKey: pending.modelStorageKey ?? undefined,
         isHero: pending.isHero,
+        isStackable: pending.isStackable,
       },
       qty,
     );
@@ -1076,6 +1135,17 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       )
     ) {
       const msg = `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m).`;
+      set({ addRackError: msg });
+      return { success: false, message: msg };
+    }
+
+    if (
+      rackOverlapsOthers(
+        { x: placeX, z: placeZ, width, depth, rotationY },
+        state.area.racks,
+      )
+    ) {
+      const msg = 'Rack would overlap another rack. Choose a different position.';
       set({ addRackError: msg });
       return { success: false, message: msg };
     }
@@ -2131,7 +2201,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       });
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || data?.isRequestSuccess === false) {
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
         const message = data?.message || `Failed to save layout (${res.status})`;
         if (!options?.suppressLoading) {
           set({ isSavingLayout: false, saveLayoutError: message });
@@ -2149,6 +2219,44 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         set({ isSavingLayout: false, saveLayoutError: message });
       }
       return { success: false, message };
+    }
+  },
+  saveRackPlacementToServer: async (rackId) => {
+    const state = get();
+    const rack = state.area.racks.find((r) => r.id === rackId);
+    if (!rack) return { success: false, message: 'Rack not found' };
+
+    const serverRackId = rack.rackId || rack.id;
+    if (!UUID_RE.test(serverRackId)) {
+      return { success: false, message: 'Rack has no server id yet' };
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers['Authorization'] = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const payload = buildUpdateRackPlacementPayload(rack);
+      const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
+        return {
+          success: false,
+          message: data?.message || `Failed to save placement (${res.status})`,
+        };
+      }
+      return { success: true, message: data?.message || 'Placement saved' };
+    } catch {
+      return { success: false, message: 'Network error while saving placement' };
     }
   },
   saveStoreLayoutToServer: async () => {
@@ -2348,34 +2456,46 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return state;
     });
   },
-  updateRackPosition: (rackId, position) =>
+  updateRackPosition: (rackId, position) => {
+    let moved = false;
     set((state) => {
       const rack = state.area.racks.find((r) => r.id === rackId);
       if (!rack) return state;
 
-      const halfW = state.area.width / 2;
-      const halfD = state.area.depth / 2;
-      const minX = position.x - rack.width / 2;
-      const maxX = position.x + rack.width / 2;
-      const minZ = position.z - rack.depth / 2;
-      const maxZ = position.z + rack.depth / 2;
+      const x = snapToGrid(position.x);
+      const z = snapToGrid(position.z);
+      const rotY = rack.rotation?.y ?? 0;
 
-      if (minX < -halfW || maxX > halfW || minZ < -halfD || maxZ > halfD) {
+      if (
+        !isRackInsideFloor(
+          x,
+          z,
+          rack.width,
+          rack.depth,
+          rotY,
+          state.area.width,
+          state.area.depth,
+        )
+      ) {
         return {
           ...state,
           moveRackError: `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m). Choose a position inside the floor.`,
         };
       }
 
-      const overlaps = state.area.racks.some((other) => {
-        if (other.id === rackId) return false;
-        const ox1 = other.position.x - other.width / 2;
-        const ox2 = other.position.x + other.width / 2;
-        const oz1 = other.position.z - other.depth / 2;
-        const oz2 = other.position.z + other.depth / 2;
-        return minX < ox2 && maxX > ox1 && minZ < oz2 && maxZ > oz1;
-      });
-      if (overlaps) {
+      if (
+        rackOverlapsOthers(
+          {
+            x,
+            z,
+            width: rack.width,
+            depth: rack.depth,
+            rotationY: rotY,
+            excludeId: rackId,
+          },
+          state.area.racks,
+        )
+      ) {
         return {
           ...state,
           moveRackError:
@@ -2383,6 +2503,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         };
       }
 
+      const nextPos = { x, y: 0, z };
+      moved = true;
       return {
         ...state,
         moveRackError: null,
@@ -2392,22 +2514,24 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             r.id === rackId
               ? {
                 ...r,
-                position,
-                quadrant: getQuadrantFromPosition(position.x, position.z),
-                // Keep placement in sync so saves don't revert to the old spot
+                position: nextPos,
+                quadrant: getQuadrantFromPosition(nextPos.x, nextPos.z),
                 placement: {
-                  position: { ...position },
+                  position: { ...nextPos },
                   rotation: r.rotation ? { ...r.rotation } : { x: 0, y: 0, z: 0 },
                   snapMode: r.placement?.snapMode ?? 'wall',
-                  quadrant: getQuadrantFromPosition(position.x, position.z),
+                  quadrant: getQuadrantFromPosition(nextPos.x, nextPos.z),
                 },
               }
               : r,
           ),
         },
       };
-    }),
-  setRackRotationY: (rackId, rotationY) =>
+    });
+    if (moved) void get().saveRackPlacementToServer(rackId);
+  },
+  setRackRotationY: (rackId, rotationY) => {
+    let rotated = false;
     set((state) => {
       const rack = state.area.racks.find((r) => r.id === rackId);
       if (!rack) return state;
@@ -2416,6 +2540,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       while (y > Math.PI) y -= Math.PI * 2;
       while (y < -Math.PI) y += Math.PI * 2;
       const rotation = { x: rack.rotation?.x ?? 0, y, z: rack.rotation?.z ?? 0 };
+      rotated = true;
       return {
         ...state,
         moveRackError: null,
@@ -2437,7 +2562,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           ),
         },
       };
-    }),
+    });
+    if (rotated) void get().saveRackPlacementToServer(rackId);
+  },
   rotateRack: (rackId, deltaDegrees = 90) => {
     const state = get();
     const rack = state.area.racks.find((r) => r.id === rackId);
@@ -2535,7 +2662,15 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
         return { success: false, message: data?.message || 'Failed to delete row' };
       }
-      get().deleteRow(rowId);
+      // Server renumbers remaining rows / totalRows — refetch instead of local splice only.
+      if (get().selectedStoreId) {
+        const reload = await get().reloadStoreLayout();
+        if (!reload.success) {
+          get().deleteRow(rowId);
+        }
+      } else {
+        get().deleteRow(rowId);
+      }
       return { success: true, message: data?.message || 'Row deleted' };
     } catch {
       return { success: false, message: 'Network or server error' };
@@ -2768,6 +2903,48 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       },
     }));
     return { success: true, message: 'Front face filled locally' };
+  },
+  /** After reflow/AI: create bins on empty rows (equal-width span), then face-fill. */
+  ensureBinsAndFaceFillAfterReflow: async (rackId) => {
+    const state = get();
+    const rack = state.area.racks.find((r) => r.id === rackId || r.rackId === rackId);
+    if (!rack) return { success: false, message: 'Rack not found' };
+
+    for (const side of rack.sides) {
+      for (const row of side.rows) {
+        if ((row.bins?.length ?? 0) > 0) continue;
+        const span =
+          (typeof row.width === 'number' && row.width > 0 && row.width) ||
+          (typeof row.span === 'number' && row.span > 0 && row.span) ||
+          clampRowSpanToInner(rack);
+        // Prefer 2–4 bins so AI facing shares have slots; single SKU can still fill one.
+        const binCount = Math.min(4, Math.max(1, Math.round(span / 0.45)));
+        const binW = Math.max(0.1, Math.round((span / binCount) * 1000) / 1000);
+        for (let i = 0; i < binCount; i++) {
+          const res = await get().addBinToServer(
+            row.id,
+            undefined,
+            undefined,
+            row.height,
+            `Bin ${i + 1}`,
+            {
+              width: binW,
+              depth: clampBinDepthToInner(rack, null, row.id),
+              height: clampBinHeightToRow(row.height),
+            },
+            { quiet: true },
+          );
+          if (!res.success) {
+            return {
+              success: false,
+              message: res.message ?? 'Failed to auto-create bins for empty row',
+            };
+          }
+        }
+      }
+    }
+
+    return get().applyFaceFillToRack(rackId);
   },
   copyPosmFromRackToRack: async (sourceRackId, targetRackId) => {
     const state = get();

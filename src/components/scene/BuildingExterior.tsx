@@ -36,11 +36,9 @@ function StoreSign({ position }: { position: [number, number, number] }) {
 
 /** Almarai-style warehouse shell — click roof to open for interior editing. */
 export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExteriorProps) {
-  const theme = usePlanogramStore((s) => s.sceneTheme)
   const roofVisible = usePlanogramStore((s) => s.roofVisible)
   const setRoofVisible = usePlanogramStore((s) => s.setRoofVisible)
-  const cfg = SCENE_THEMES[theme]
-  const isNight = theme === 'night'
+  const cfg = SCENE_THEMES.day
 
   const [roofHovered, setRoofHovered] = useState(false)
 
@@ -52,10 +50,10 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
   const floor2H = 3.5 * S
   const totalH = floor1H + floor2H
   const wallT = 0.45 * S
-  const white = isNight ? '#c8cdd4' : '#f2f4f7'
-  const glass = isNight ? '#4a7aa8' : '#6ba3d4'
-  const glassEmissive = isNight ? '#2a5080' : '#000000'
-  const roofColor = isNight ? '#889099' : '#e8ecef'
+  const white = '#f5f7fa'
+  const glass = '#6ba3d4'
+  const glassEmissive = '#000000'
+  const roofColor = '#e8ecef'
 
   const removeRoof = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
@@ -107,7 +105,7 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
         <meshStandardMaterial
           color={glass}
           emissive={glassEmissive}
-          emissiveIntensity={isNight ? 1.0 : 0.05}
+          emissiveIntensity={0.05}
           transparent
           opacity={0.65}
           metalness={0.3}
@@ -123,15 +121,6 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
       <Suspense fallback={null}>
         <StoreSign position={[0, floor1H + floor2H * 0.55, halfD + margin + 2.62 * S]} />
       </Suspense>
-      {isNight && (
-        <pointLight
-          position={[0, floor1H + floor2H * 0.55, halfD + margin + 4]}
-          intensity={4}
-          distance={25}
-          color="#ffffff"
-          decay={1}
-        />
-      )}
 
       {/* Upper floor – continuous glass band on all sides */}
       {[
@@ -147,7 +136,7 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
           <meshStandardMaterial
             color={glass}
             emissive={glassEmissive}
-            emissiveIntensity={isNight ? 1.1 : 0.04}
+            emissiveIntensity={0.04}
             transparent
             opacity={0.55}
             metalness={0.4}
@@ -180,7 +169,7 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
             <meshStandardMaterial
               color={glass}
               emissive={glassEmissive}
-              emissiveIntensity={isNight ? 0.85 : 0.03}
+              emissiveIntensity={0.03}
               transparent
               opacity={0.5}
             />

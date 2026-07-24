@@ -7,8 +7,16 @@ export interface RackPlacement {
   snapped: boolean
 }
 
+/** Floor grid spacing (meters) for place/move alignment. */
+export const FLOOR_GRID_SIZE_M = 0.25
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n))
+}
+
+export function snapToGrid(value: number, grid = FLOOR_GRID_SIZE_M): number {
+  if (!(grid > 0)) return value
+  return Math.round(value / grid) * grid
 }
 
 /** Footprint half-extents after Y rotation (for bounds checks). */
@@ -25,9 +33,74 @@ export function getRotatedFootprintHalf(
   }
 }
 
+export type FootprintRect = { minX: number; maxX: number; minZ: number; maxZ: number }
+
+export function rackFootprintRect(
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+  rotationY = 0,
+): FootprintRect {
+  const { halfW, halfD } = getRotatedFootprintHalf(width, depth, rotationY)
+  return {
+    minX: x - halfW,
+    maxX: x + halfW,
+    minZ: z - halfD,
+    maxZ: z + halfD,
+  }
+}
+
+export function footprintsOverlap(a: FootprintRect, b: FootprintRect, gap = 0.02): boolean {
+  return (
+    a.minX < b.maxX - gap &&
+    a.maxX > b.minX + gap &&
+    a.minZ < b.maxZ - gap &&
+    a.maxZ > b.minZ + gap
+  )
+}
+
+/** True if a candidate footprint overlaps any existing rack (optional exclude id). */
+export function rackOverlapsOthers(
+  candidate: {
+    x: number
+    z: number
+    width: number
+    depth: number
+    rotationY?: number
+    excludeId?: string | null
+  },
+  racks: Array<{
+    id: string
+    position: { x: number; z: number }
+    width: number
+    depth: number
+    rotation?: { y?: number } | null
+  }>,
+): boolean {
+  const a = rackFootprintRect(
+    candidate.x,
+    candidate.z,
+    candidate.width,
+    candidate.depth,
+    candidate.rotationY ?? 0,
+  )
+  return racks.some((other) => {
+    if (candidate.excludeId && other.id === candidate.excludeId) return false
+    const b = rackFootprintRect(
+      other.position.x,
+      other.position.z,
+      other.width,
+      other.depth,
+      other.rotation?.y ?? 0,
+    )
+    return footprintsOverlap(a, b)
+  })
+}
+
 /**
  * Snap a rack against the nearest sales-floor wall and rotate it to face inward.
- * Back of rack (-Z local) sits on the wall; front faces the store.
+ * When not near a wall, snap X/Z to the floor grid for aisle alignment.
  */
 export function snapRackToWall(
   point: { x: number; z: number },
@@ -49,13 +122,18 @@ export function snapRackToWall(
   const min = Math.min(distBack, distFront, distLeft, distRight)
 
   if (min > snapThreshold) {
-    return { x: point.x, z: point.z, rotationY: 0, snapped: false }
+    return {
+      x: snapToGrid(point.x),
+      z: snapToGrid(point.z),
+      rotationY: 0,
+      snapped: false,
+    }
   }
 
   if (min === distBack) {
     const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, 0)
     return {
-      x: clamp(point.x, -halfW + hw, halfW - hw),
+      x: snapToGrid(clamp(point.x, -halfW + hw, halfW - hw)),
       z: -halfD + hd + margin,
       rotationY: 0,
       snapped: true,
@@ -65,7 +143,7 @@ export function snapRackToWall(
   if (min === distFront) {
     const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, Math.PI)
     return {
-      x: clamp(point.x, -halfW + hw, halfW - hw),
+      x: snapToGrid(clamp(point.x, -halfW + hw, halfW - hw)),
       z: halfD - hd - margin,
       rotationY: Math.PI,
       snapped: true,
@@ -77,7 +155,7 @@ export function snapRackToWall(
     const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
     return {
       x: -halfW + hw + margin,
-      z: clamp(point.z, -halfD + hd, halfD - hd),
+      z: snapToGrid(clamp(point.z, -halfD + hd, halfD - hd)),
       rotationY: rot,
       snapped: true,
     }
@@ -87,7 +165,7 @@ export function snapRackToWall(
   const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
   return {
     x: halfW - hw - margin,
-    z: clamp(point.z, -halfD + hd, halfD - hd),
+    z: snapToGrid(clamp(point.z, -halfD + hd, halfD - hd)),
     rotationY: rot,
     snapped: true,
   }

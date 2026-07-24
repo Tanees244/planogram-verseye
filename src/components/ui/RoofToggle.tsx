@@ -25,10 +25,10 @@ export function RoofToggle({
         embedded
           ? 'text-gray-300 hover:text-white hover:bg-white/10'
           : cn(
-              'shadow-lg backdrop-blur-sm border',
+              'shadow-lg border',
               dark
-                ? 'bg-black/70 border-white/10 text-gray-200 hover:bg-black/85'
-                : 'bg-white/95 border-gray-200 text-gray-700 hover:bg-gray-50',
+                ? 'bg-[#111827] border-slate-600 text-gray-200 hover:bg-[#152033]'
+                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50',
             ),
         className,
       )}
@@ -54,7 +54,7 @@ export function RoofHint() {
   if (!roofVisible) return null
 
   return (
-    <div className="px-4 py-2 rounded-xl bg-brand/90 text-white text-sm font-medium shadow-lg backdrop-blur-sm border border-white/20 animate-pulse">
+    <div className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-medium shadow-lg border border-brand-dark animate-pulse">
       Click the roof to enter and edit your layout
     </div>
   )

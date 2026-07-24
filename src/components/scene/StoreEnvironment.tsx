@@ -1,6 +1,5 @@
 'use client'
 
-import { usePlanogramStore } from '@/store/planogramStore'
 import { SCENE_THEMES } from '@/constants/sceneTheme'
 import { BUILDING_HEIGHT, WAREHOUSE_SCALE } from '@/constants/warehouse'
 import { BuildingExterior } from '@/components/scene/BuildingExterior'
@@ -14,174 +13,158 @@ interface StoreEnvironmentProps {
 
 const BUILDING_H = BUILDING_HEIGHT
 
-/** Paved forecourt, landscaping, interior lights + Almarai-style building shell. */
+/** Daytime retail lot: grass, plaza, landscaping + Almarai-style shell. */
 export function StoreEnvironment({ halfW, halfD, width, depth }: StoreEnvironmentProps) {
-  const theme = usePlanogramStore((s) => s.sceneTheme)
-  const roofVisible = usePlanogramStore((s) => s.roofVisible)
-  const cfg = SCENE_THEMES[theme]
-  const isNight = theme === 'night'
-
+  const cfg = SCENE_THEMES.day
   const S = WAREHOUSE_SCALE
   const pad = 28 * S
   const groundW = width + pad * 2
   const groundD = depth + pad * 2
 
-  const lampPositions: [number, number][] = [
-    [-halfW - 8, halfD + 10],
-    [halfW + 8, halfD + 10],
-    [-halfW - 8, -halfD - 8],
-    [halfW + 8, -halfD - 8],
-    [-halfW, halfD + 14],
-    [0, halfD + 14],
-    [halfW, halfD + 14],
-    [-halfW - 4, halfD + 6],
-    [halfW + 4, halfD + 6],
-  ]
-
-  const entranceLights: [number, number, number][] = [
-    [-4, 6, halfD + 8],
-    [4, 6, halfD + 8],
-    [0, 7, halfD + 10],
+  const treeSpots: [number, number, number][] = [
+    [-halfW - 8, 0, halfD + 10],
+    [-halfW - 11, 0, halfD + 6],
+    [-halfW - 6, 0, halfD + 14],
+    [halfW + 9, 0, halfD + 9],
+    [halfW + 12, 0, halfD + 5],
+    [halfW + 7, 0, halfD + 13],
   ]
 
   return (
     <group>
-      {/* Grass beyond paving */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]} receiveShadow>
-        <planeGeometry args={[groundW + 40, groundD + 40]} />
-        <meshStandardMaterial color={isNight ? '#2a4a2a' : '#5a8f5a'} roughness={0.95} />
+      {/* Deep lawn */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+        <planeGeometry args={[groundW + 48, groundD + 48]} />
+        <meshStandardMaterial color="#3d8f4a" roughness={0.95} />
       </mesh>
 
-      {/* Paved forecourt (interlocking stone look) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, halfD + 6]} receiveShadow>
-        <planeGeometry args={[width + 20, 18]} />
-        <meshStandardMaterial color={isNight ? '#5a5e64' : '#9aa0a8'} roughness={0.88} />
+      {/* Lighter lawn ring near plaza */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, halfD + 16]} receiveShadow>
+        <planeGeometry args={[width + 36, 14]} />
+        <meshStandardMaterial color="#58a85f" roughness={0.9} />
       </mesh>
-      {/* Paver grid lines */}
-      {Array.from({ length: 8 }, (_, i) => i - 4).map((i) => (
-        <mesh key={`paver-x-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[i * 2.5, 0.005, halfD + 6]}>
-          <planeGeometry args={[0.04, 18]} />
-          <meshStandardMaterial color={isNight ? '#4a4e54' : '#8a9098'} />
+
+      {/* Concrete plaza */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.018, halfD + 7]} receiveShadow>
+        <planeGeometry args={[width + 24, 20]} />
+        <meshStandardMaterial color="#c5ccd6" roughness={0.78} metalness={0.04} />
+      </mesh>
+
+      {/* Plaza tile joints */}
+      {Array.from({ length: 11 }, (_, i) => i - 5).map((i) => (
+        <mesh key={`px-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[i * 2.2, 0.008, halfD + 7]}>
+          <planeGeometry args={[0.05, 20]} />
+          <meshStandardMaterial color="#9aa3b0" />
+        </mesh>
+      ))}
+      {Array.from({ length: 8 }, (_, i) => i - 3.5).map((i) => (
+        <mesh key={`pz-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, halfD + 7 + i * 2.4]}>
+          <planeGeometry args={[width + 24, 0.045]} />
+          <meshStandardMaterial color="#9aa3b0" />
         </mesh>
       ))}
 
-      {/* Main asphalt / lot behind building */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, -halfD / 2]} receiveShadow>
-        <planeGeometry args={[groundW, groundD * 0.6]} />
-        <meshStandardMaterial color={cfg.asphaltColor} roughness={0.92} metalness={0.05} />
+      {/* Drive aisle asphalt */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.028, -halfD * 0.35]} receiveShadow>
+        <planeGeometry args={[groundW, groundD * 0.7]} />
+        <meshStandardMaterial color={cfg.asphaltColor} roughness={0.88} metalness={0.06} />
       </mesh>
 
-      {/* Yellow / black curb stripes (front) */}
-      {Array.from({ length: 12 }, (_, i) => i - 6).map((i) => (
+      {/* Center dashed lane marking */}
+      {Array.from({ length: 14 }, (_, i) => i - 7).map((i) => (
+        <mesh
+          key={`lane-${i}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[i * 2.4, -0.01, -halfD * 0.35]}
+        >
+          <planeGeometry args={[1.1, 0.18]} />
+          <meshStandardMaterial color="#f8fafc" />
+        </mesh>
+      ))}
+
+      {/* Front curb zebra */}
+      {Array.from({ length: 14 }, (_, i) => i - 7).map((i) => (
         <mesh
           key={`curb-${i}`}
           rotation={[-Math.PI / 2, 0, 0]}
-          position={[i * 1.8, 0.01, halfD + 14]}
+          position={[i * 1.65, 0.012, halfD + 16.5]}
         >
-          <planeGeometry args={[0.85, 0.35]} />
-          <meshStandardMaterial color={i % 2 === 0 ? '#f1c40f' : '#1a1a1a'} />
+          <planeGeometry args={[0.75, 0.4]} />
+          <meshStandardMaterial color={i % 2 === 0 ? '#f1c40f' : '#111827'} />
         </mesh>
       ))}
 
-      {/* Landscaping bushes */}
+      {/* Planter boxes */}
       {(
         [
-          [-halfW - 4, halfD + 12],
-          [halfW + 3, halfD + 11],
-          [-halfW - 6, halfD + 8],
-          [halfW + 6, halfD + 9],
+          [-halfW - 3.5, halfD + 12],
+          [halfW + 3.5, halfD + 12],
+          [-halfW - 5, halfD + 8],
+          [halfW + 5, halfD + 8],
         ] as [number, number][]
       ).map(([x, z], i) => (
-        <mesh key={`bush-${i}`} position={[x, 0.5, z]} castShadow>
-          <sphereGeometry args={[0.7 + (i % 2) * 0.2, 10, 10]} />
-          <meshStandardMaterial color={isNight ? '#1e5a1e' : '#3d8b3d'} roughness={0.9} />
-        </mesh>
+        <group key={`planter-${i}`} position={[x, 0, z]}>
+          <mesh position={[0, 0.28, 0]} castShadow>
+            <boxGeometry args={[1.6, 0.55, 1.6]} />
+            <meshStandardMaterial color="#8b7355" roughness={0.85} />
+          </mesh>
+          <mesh position={[0, 0.85, 0]} castShadow>
+            <sphereGeometry args={[0.55 + (i % 2) * 0.12, 12, 12]} />
+            <meshStandardMaterial color="#2f8f3a" roughness={0.88} />
+          </mesh>
+        </group>
       ))}
 
-      {/* Small tree */}
-      <group position={[halfW + 10, 0, halfD + 8]}>
-        <mesh position={[0, 1.2, 0]}>
-          <cylinderGeometry args={[0.12, 0.18, 2.4, 8]} />
-          <meshStandardMaterial color="#6b4226" roughness={0.9} />
-        </mesh>
-        <mesh position={[0, 3, 0]}>
-          <sphereGeometry args={[1.1, 10, 10]} />
-          <meshStandardMaterial color={isNight ? '#1e5a1e' : '#4a9a4a'} roughness={0.85} />
-        </mesh>
-      </group>
+      {/* Tree cluster */}
+      {treeSpots.map(([x, , z], i) => (
+        <group key={`tree-${i}`} position={[x, 0, z]} scale={0.85 + (i % 3) * 0.12}>
+          <mesh position={[0, 1.35, 0]}>
+            <cylinderGeometry args={[0.14, 0.22, 2.7, 8]} />
+            <meshStandardMaterial color="#6b4226" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, 3.2, 0]}>
+            <sphereGeometry args={[1.25, 12, 12]} />
+            <meshStandardMaterial color="#3f9e48" roughness={0.8} />
+          </mesh>
+          <mesh position={[0.55, 2.7, 0.3]}>
+            <sphereGeometry args={[0.7, 10, 10]} />
+            <meshStandardMaterial color="#4db356" roughness={0.82} />
+          </mesh>
+        </group>
+      ))}
 
-      {/* Almarai-style building */}
       <BuildingExterior halfW={halfW} halfD={halfD} width={width} depth={depth} />
 
-      {/* Interior ceiling lights at night (always on — glow through windows / open roof) */}
-      {isNight &&
-        (() => {
-          const cols = roofVisible ? 4 : 5
-          const rows = roofVisible ? 4 : 5
-          const lights: [number, number][] = []
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const x = -width * 0.4 + (c / (cols - 1)) * width * 0.8
-              const z = -depth * 0.4 + (r / (rows - 1)) * depth * 0.8
-              lights.push([x, z])
-            }
-          }
-          const intensity = roofVisible ? cfg.ceilingLightIntensity * 0.45 : cfg.ceilingLightIntensity
-          return lights.map(([x, z], i) => (
-            <group key={`ceil-${i}`} position={[x, BUILDING_H - 0.4, z]}>
-              {!roofVisible && (
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <circleGeometry args={[0.45, 16]} />
-                  <meshStandardMaterial color="#fffef5" emissive="#fff8e0" emissiveIntensity={2.5} />
-                </mesh>
-              )}
-              <pointLight intensity={intensity} distance={width * 1.4} color="#fff4d6" decay={1} />
-            </group>
-          ))
-        })()}
+      {/* Soft interior fill */}
+      <pointLight
+        position={[0, BUILDING_H - 1.2, 0]}
+        intensity={0.45}
+        distance={width * 1.7}
+        color="#fff8ef"
+        decay={2}
+      />
+      <pointLight
+        position={[0, 5.5, halfD * 0.2]}
+        intensity={0.28}
+        distance={width}
+        color="#e8f1ff"
+        decay={2}
+      />
 
-      {isNight && (
-        <>
-          <pointLight position={[0, BUILDING_H - 0.5, 0]} intensity={3} distance={width * 2} color="#dce4f4" decay={1} />
-          <pointLight position={[0, 4, halfD + 6]} intensity={4} distance={35} color="#ffe8c0" decay={1} />
-        </>
-      )}
-
-      {/* Entrance flood lights */}
-      {isNight &&
-        entranceLights.map(([x, y, z], i) => (
-          <group key={`entrance-${i}`} position={[x, y, z]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[0.25, 12]} />
-              <meshStandardMaterial color="#fff8e0" emissive="#ffb347" emissiveIntensity={3} />
-            </mesh>
-            <pointLight intensity={5} distance={35} color="#ffe8c8" decay={1} />
-            <pointLight position={[0, -2, 2]} intensity={2.5} distance={22} color="#ffd699" decay={1} />
-          </group>
-        ))}
-
-      {/* Street lamps */}
-      {isNight &&
-        lampPositions.map(([x, z], i) => (
-          <group key={`lamp-${i}`} position={[x, 0, z]}>
-            <mesh position={[0, 3, 0]}>
-              <cylinderGeometry args={[0.1, 0.12, 6, 8]} />
-              <meshStandardMaterial color="#3a3f47" metalness={0.6} roughness={0.4} />
-            </mesh>
-            <mesh position={[0, 6.2, 0]}>
-              <sphereGeometry args={[0.25, 12, 12]} />
-              <meshStandardMaterial color="#ffe082" emissive="#ffb300" emissiveIntensity={2} />
-            </mesh>
-            <pointLight position={[0, 6, 0]} intensity={cfg.streetLightIntensity} distance={55} color="#ffd699" decay={1} />
-            <pointLight position={[0, 3, 0]} intensity={cfg.streetLightIntensity * 0.4} distance={25} color="#ffe082" decay={1} />
-          </group>
-        ))}
-
-      {/* Sales floor curb */}
-      <mesh position={[0, 0.06, 0]}>
-        <boxGeometry args={[width + 0.3, 0.12, depth + 0.3]} />
-        <meshStandardMaterial color={isNight ? '#525860' : '#d1d5db'} roughness={0.8} />
-      </mesh>
+      {/* Sales-floor perimeter frame only (not a solid slab — that hid the grid) */}
+      {(
+        [
+          [0, 0.06, halfD + 0.12, width + 0.35, 0.12, 0.24],
+          [0, 0.06, -halfD - 0.12, width + 0.35, 0.12, 0.24],
+          [halfW + 0.12, 0.06, 0, 0.24, 0.12, depth + 0.35],
+          [-halfW - 0.12, 0.06, 0, 0.24, 0.12, depth + 0.35],
+        ] as [number, number, number, number, number, number][]
+      ).map(([x, y, z, w, h, d], i) => (
+        <mesh key={`floor-edge-${i}`} position={[x, y, z]}>
+          <boxGeometry args={[w, h, d]} />
+          <meshStandardMaterial color="#cbd5e1" roughness={0.65} metalness={0.08} />
+        </mesh>
+      ))}
     </group>
   )
 }

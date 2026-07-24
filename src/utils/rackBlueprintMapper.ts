@@ -569,6 +569,11 @@ export function buildUpdateRackPayload(
     outer,
     inner,
     placement,
+    // Top-level placement mirrors (API accepts both nested + flat fields).
+    positionX: placement.position.x,
+    positionY: placement.position.y ?? 0,
+    positionZ: placement.position.z,
+    rotationY: placement.rotation?.y ?? 0,
     width: outer.width,
     depth: outer.depth,
     height: outer.height,
@@ -615,4 +620,24 @@ export function buildUpdateRackPayload(
   }
 
   return payload;
+}
+
+/** Placement-only PUT body — used after move/rotate so face-fill rules do not block. */
+export function buildUpdateRackPlacementPayload(rack: Rack): Record<string, unknown> {
+  const serverRackId = rack.rackId || rack.id;
+  const position = { ...rack.position };
+  const rotation = rack.rotation ? { ...rack.rotation } : { x: 0, y: 0, z: 0 };
+  return {
+    rackId: serverRackId,
+    positionX: position.x,
+    positionY: position.y ?? 0,
+    positionZ: position.z,
+    rotationY: rotation.y ?? 0,
+    placement: {
+      position,
+      rotation,
+      snapMode: rack.placement?.snapMode ?? 'wall',
+      quadrant: rack.quadrant ?? rack.placement?.quadrant ?? null,
+    },
+  };
 }

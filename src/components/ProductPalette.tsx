@@ -21,11 +21,12 @@ import { safeDim } from '@/utils/safeDimensions'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
 import { SkuThumb } from '@/components/SkuThumb'
+import { PANEL_SHELL } from '@/lib/uiShell'
 
 export const PRODUCT_DRAG_MIME = 'application/planogram-sku'
 
 const COLLAPSE_KEY = 'planogram.productPaletteCollapsed'
-const shell = 'rounded-xl shadow-lg backdrop-blur-sm bg-black/70 border border-white/10'
+const shell = PANEL_SHELL
 
 interface CatalogSkuRow {
   id: string
@@ -48,6 +49,7 @@ interface CatalogSkuRow {
   height?: number | null
   depth?: number | null
   isHero?: boolean
+  isStackable?: boolean
 }
 
 function authHeaders(): Record<string, string> {
@@ -93,6 +95,7 @@ function skuToPending(sku: CatalogSkuRow): PendingProductParams {
     depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
     color: '#10b981',
     isHero: Boolean(sku.isHero),
+    isStackable: Boolean(sku.isStackable),
   }
 }
 
@@ -156,6 +159,7 @@ export function ProductPalette() {
       }
       const list = json?.data?.products ?? json?.data ?? []
       const { markHeroFromFlags, isHeroSkuId } = await import('@/utils/heroSku')
+      const { markStackableFromFlags, resolveIsStackable } = await import('@/utils/stackableSku')
       setSkus(
         (Array.isArray(list) ? list : []).map((s: any) => {
           const id = String(s.id ?? s.skuId ?? '')
@@ -163,6 +167,10 @@ export function ProductPalette() {
             isHero: s.isHero,
             heroSku: s.heroSku,
             isEyeFacing: s.isEyeFacing,
+          })
+          markStackableFromFlags(id, {
+            isStackable: s.isStackable,
+            stackable: s.stackable,
           })
           return {
             id,
@@ -181,6 +189,10 @@ export function ProductPalette() {
             height: s.height ?? null,
             depth: s.depth ?? null,
             isHero: Boolean(s.isHero || s.heroSku || s.isEyeFacing || isHeroSkuId(id)),
+            isStackable: resolveIsStackable(id, {
+              isStackable: s.isStackable,
+              stackable: s.stackable,
+            }),
           }
         }),
       )
@@ -220,7 +232,7 @@ export function ProductPalette() {
         className={cn(
           shell,
           'relative flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left',
-          'hover:bg-black/85 transition-colors group',
+          'hover:bg-[#152033] transition-colors group',
         )}
         title="Open product library"
       >
@@ -243,13 +255,13 @@ export function ProductPalette() {
 
   return (
     <div className={cn(shell, 'relative w-full flex-1 min-h-0 flex flex-col overflow-hidden text-gray-100')}>
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/10 shrink-0 bg-black/30">
-        <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white shrink-0">
+      <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-emerald-400/25 shrink-0 bg-gradient-to-r from-emerald-500/35 via-emerald-600/15 to-transparent">
+        <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-500 text-white shrink-0 shadow-md shadow-emerald-500/50">
           <FiPackage size={16} />
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Product Library</h2>
-          <p className="text-[10px] text-gray-400 truncate">Drag or click, then hover a bin to preview</p>
+          <p className="text-[10px] text-emerald-100/70 truncate">Drag onto a bin · hero & stack badges</p>
         </div>
         <button
           type="button"
@@ -340,20 +352,20 @@ export function ProductPalette() {
                   startProductPlacement(skuToPending(sku))
                 }}
                 className={cn(
-                  'flex items-center gap-2.5 p-2 rounded-lg border cursor-grab active:cursor-grabbing transition-all',
-                  'border-transparent hover:bg-white/10 hover:border-white/10',
-                  active && 'bg-emerald-500/20 border-emerald-500/40',
-                  isDragging && 'opacity-50',
+                  'flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all',
+                  'bg-white/[0.04] border-white/10 hover:bg-emerald-500/15 hover:border-emerald-400/35',
+                  active && 'bg-emerald-500/25 border-emerald-400/50 shadow-lg shadow-emerald-500/15',
+                  isDragging && 'opacity-50 scale-[0.98]',
                   !selectedStoreId && 'opacity-45 cursor-not-allowed',
                 )}
               >
                 <SkuThumb
                   sku={sku}
                   className={cn(
-                    'w-9 h-9 rounded-lg',
-                    active ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-300',
+                    'w-10 h-10 rounded-xl',
+                    active ? 'bg-emerald-600 text-white' : 'bg-gradient-to-br from-emerald-500/20 to-white/10 text-emerald-100',
                   )}
-                  size={15}
+                  size={16}
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1">
@@ -363,9 +375,14 @@ export function ProductPalette() {
                         Hero
                       </span>
                     )}
-                    <FiMove size={10} className="text-gray-500 shrink-0 opacity-60" />
+                    {sku.isStackable === false && (
+                      <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-slate-500/30 text-slate-200 border border-slate-400/35">
+                        No stack
+                      </span>
+                    )}
+                    <FiMove size={10} className="text-emerald-300/70 shrink-0" />
                   </div>
-                  <p className="text-[10px] text-gray-500 truncate mt-0.5">{metaLine(sku)}</p>
+                  <p className="text-[10px] text-slate-400 truncate mt-0.5">{metaLine(sku)}</p>
                   {(sku.width == null || sku.height == null || sku.depth == null) && (
                     <p className="text-[10px] text-amber-300/90 mt-0.5">
                       No catalog dims — will use defaults on place

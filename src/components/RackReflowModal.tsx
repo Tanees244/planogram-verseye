@@ -25,7 +25,9 @@ export function RackReflowModal({
 }) {
   const saveRackLayout = usePlanogramStore((s) => s.saveRackLayoutToServer)
   const reloadStoreLayout = usePlanogramStore((s) => s.reloadStoreLayout)
-  const applyFaceFillToRack = usePlanogramStore((s) => s.applyFaceFillToRack)
+  const ensureBinsAndFaceFillAfterReflow = usePlanogramStore(
+    (s) => s.ensureBinsAndFaceFillAfterReflow,
+  )
   const serverRackId = rack.rackId || rack.id
 
   const [preview, setPreview] = useState<RackReflowResult | null>(null)
@@ -70,7 +72,7 @@ export function RackReflowModal({
       }
       if (res.data) setPreview(res.data)
       await reloadStoreLayout()
-      applyFaceFillToRack(rack.id)
+      await ensureBinsAndFaceFillAfterReflow(rack.id)
     } finally {
       setApplying(false)
     }
@@ -86,7 +88,7 @@ export function RackReflowModal({
         return
       }
       await reloadStoreLayout()
-      applyFaceFillToRack(rack.id)
+      await ensureBinsAndFaceFillAfterReflow(rack.id)
       onClose()
     } finally {
       setApplying(false)

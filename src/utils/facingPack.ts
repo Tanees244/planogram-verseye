@@ -120,6 +120,11 @@ export function packFacingsInBin(options: {
   lipHeight?: number
   /** Max slots to materialize for rendering (default FACING_PACK_VISUAL_LIMIT). */
   visualLimit?: number
+  /**
+   * `depthFirst` (default): across → depth → stack.
+   * `stackFirst`: across → stack up → depth — stackable SKUs show stacks on the front face.
+   */
+  packOrder?: 'depthFirst' | 'stackFirst'
 }): FacingPackResult {
   const wallThick = options.wallThick ?? 0
   const lipHeight = options.lipHeight ?? 0
@@ -196,16 +201,29 @@ export function packFacingsInBin(options: {
   const slots: FacingPackSlot[] = []
   const limit = Math.max(0, options.visualLimit ?? FACING_PACK_VISUAL_LIMIT)
   const renderCount = Math.min(qty, limit)
+  const stackFirst = options.packOrder === 'stackFirst'
   for (let i = 0; i < renderCount; i++) {
     const globalIndex = occupied + i
     const overflow = i >= freeMax
     const idx = occupied > 0 ? globalIndex : i
     const gridCols = Math.max(1, useCols)
-    const fp = gridCols * depthRows
-    const layer = Math.floor(idx / Math.max(fp, 1))
-    const rem = idx % Math.max(fp, 1)
-    const col = rem % gridCols
-    const depthRow = Math.floor(rem / gridCols)
+    let col: number
+    let depthRow: number
+    let layer: number
+    if (stackFirst) {
+      // across → stack → depth (front face shows vertical stacks)
+      const frontPlane = gridCols * Math.max(1, stackLayers)
+      depthRow = Math.floor(idx / Math.max(frontPlane, 1))
+      const rem = idx % Math.max(frontPlane, 1)
+      col = rem % gridCols
+      layer = Math.floor(rem / gridCols)
+    } else {
+      const fp = gridCols * depthRows
+      layer = Math.floor(idx / Math.max(fp, 1))
+      const rem = idx % Math.max(fp, 1)
+      col = rem % gridCols
+      depthRow = Math.floor(rem / gridCols)
+    }
     const clampedLayer = Math.min(Math.max(0, layer), Math.max(stackLayers - 1, 0))
     const clampedDepth = Math.min(Math.max(0, depthRow), Math.max(depthRows - 1, 0))
     const x = startX + col * fw + fw / 2

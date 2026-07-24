@@ -24,6 +24,8 @@ import {
 } from '@/utils/rackBlueprintMapper'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { ensureRowAnchors } from '@/utils/rowStack'
+import { normalizeShelfFacingUtilization } from '@/types/shelfUtilization'
+import { resolveIsStackable } from '@/utils/stackableSku'
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
@@ -132,6 +134,17 @@ export function normalizeSkus(skus: any[]): any[] {
         modelFromAttachments?.objectKey ??
         undefined,
       position: normalizeProductPosition(p.position),
+      isStackable: resolveIsStackable(id, {
+        isStackable:
+          typeof p.isStackable === 'boolean'
+            ? p.isStackable
+            : typeof p.stackable === 'boolean'
+              ? p.stackable
+              : typeof p.sku?.isStackable === 'boolean'
+                ? p.sku.isStackable
+                : null,
+      }),
+      isHero: Boolean(p.isHero ?? p.heroSku ?? p.sku?.isHero),
     }
   })
 }
@@ -330,6 +343,9 @@ export function normalizeRack(rawInput: any): Rack {
           yStart: r.yStart != null ? Number(r.yStart) : null,
           yEnd: r.yEnd != null ? Number(r.yEnd) : null,
           bins,
+          ...(normalizeShelfFacingUtilization(r.utilization)
+            ? { utilization: normalizeShelfFacingUtilization(r.utilization)! }
+            : {}),
         }
       })
       // Collapse duplicate/zero yStart anchors so shelves stack correctly in 3D

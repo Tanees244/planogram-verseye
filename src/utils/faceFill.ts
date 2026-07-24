@@ -382,6 +382,27 @@ export function fillBinFrontFacings<
   return { ...bin, products: next }
 }
 
+/**
+ * Size each bin from its SKU facing demand (width × quantity), then scale so
+ * Σ widths === rowSpan (no empty shelf gap). Used after AI / reflow.
+ */
+export function resizeBinsByFacingDemand<
+  T extends FaceFillBin & { products?: FaceFillProduct[] | null },
+>(bins: T[], rowSpan: number): T[] {
+  if (!(rowSpan > 0) || bins.length === 0) return bins
+  const demands = bins.map((b) => {
+    const occupied = binFacingOccupied(b.products)
+    const skuW = minProductFacingWidth(b.products)
+    const fromQty = occupied > 0 ? occupied : Number(b.width) > 0 ? Number(b.width) : MIN_BIN_W
+    const minW = skuW > 0 ? Math.max(MIN_BIN_W, skuW) : MIN_BIN_W
+    return Math.max(minW, fromQty)
+  })
+  return redistributeBinWidthsToSpan(
+    bins.map((b, i) => ({ ...b, width: demands[i] })),
+    rowSpan,
+  )
+}
+
 /** Redistribute bin widths to row span, then fill front facings on every bin. */
 export function applyLocalFaceFillToRow<
   T extends FaceFillRow & {
@@ -393,9 +414,11 @@ export function applyLocalFaceFillToRow<
 ): T {
   const span = rowSpanMeters(row, rack)
   if (span == null || !(span > 0)) return row
-  const bins = redistributeBinWidthsToSpan([...(row.bins ?? [])], span).map((b) =>
-    fillBinFrontFacings(b),
-  )
+  const raw = [...(row.bins ?? [])]
+  if (raw.length === 0) return { ...row, width: span, span }
+  const sized = resizeBinsByFacingDemand(raw, span).map((b) => fillBinFrontFacings(b))
+  // After qty fill, re-size once more so widths match new facing demand and still span the row.
+  const bins = resizeBinsByFacingDemand(sized, span).map((b) => fillBinFrontFacings(b))
   return {
     ...row,
     width: span,

@@ -9,9 +9,10 @@ import { Bin as BinType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
 import { ProductPlacementPreview } from "./ProductPlacementPreview";
-import { expandProductsByQuantity } from "@/utils/storeLayoutLoader";
+import { expandProductsByQuantity, resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import { packFacingsInBin, packMixedFacingsInBin, MAX_GLB_FACINGS_PER_BIN } from "@/utils/facingPack";
 import { safeDim } from "@/utils/safeDimensions";
+import { isStackableSkuId } from "@/utils/stackableSku";
 
 interface BinProps {
   bin: BinType;
@@ -102,6 +103,13 @@ export function Bin({
   }[] = []
 
   if (uniformPack && firstDim && facingDims.length > 0) {
+    const stackable = facings.some(
+      (p) =>
+        p.isStackable === true ||
+        (p.isStackable !== false &&
+          typeof window !== 'undefined' &&
+          isStackableSkuId(resolveProductFacingId(p.id))),
+    )
     const pack = packFacingsInBin({
       binWidth: actualBinWidth,
       binHeight: actualBinHeight,
@@ -114,6 +122,7 @@ export function Bin({
       quantity: facingDims.length,
       wallThick,
       lipHeight,
+      packOrder: stackable ? 'stackFirst' : 'depthFirst',
     })
     packedPositions = pack.slots.map((slot) => ({
       x: slot.x,
@@ -210,6 +219,10 @@ export function Bin({
       })
     }
   } else if (attachPreview && attachPreview.quantity > 0) {
+    const stackable =
+      Boolean(attachPreview.isStackable) ||
+      isStackableSkuId(attachPreview.skuId) ||
+      (pendingProductParams && isStackableSkuId(pendingProductParams.id))
     const pack = packFacingsInBin({
       binWidth: actualBinWidth,
       binHeight: actualBinHeight,
@@ -223,6 +236,7 @@ export function Bin({
       occupiedFacings,
       wallThick,
       lipHeight,
+      packOrder: stackable ? 'stackFirst' : 'depthFirst',
     })
     // GLB ghosts are expensive (scene clone each) — model the front slots,
     // plain ghost boxes beyond that so large quantities still fill the bin.

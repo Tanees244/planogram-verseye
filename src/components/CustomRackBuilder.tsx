@@ -268,6 +268,8 @@ export function CustomRackBuilder() {
   const saveRackLayout = usePlanogramStore((s) => s.saveRackLayoutToServer)
   const [saving, setSaving] = useState(false)
   const [rackName, setRackName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [showInPresets, setShowInPresets] = useState(true)
 
   const dims = useMemo(() => computeCustomRackDimensions(draft), [draft])
 
@@ -312,8 +314,23 @@ export function CustomRackBuilder() {
   }
 
   const handleConfirmPlace = () => {
-    place(rackName)
+    const name = rackName.trim()
+    if (!name) {
+      setNameError('Rack name is required')
+      return
+    }
+    setNameError(null)
+    if (showInPresets) {
+      void import('@/utils/customFixturePresets').then(({ saveCustomFixturePreset }) => {
+        saveCustomFixturePreset(name, draft)
+      })
+    }
+    void import('@/utils/userEnteredNames').then(({ rememberUserEnteredName }) => {
+      rememberUserEnteredName('rack', name)
+    })
+    place(name)
     setRackName('')
+    setShowInPresets(true)
   }
 
   return (
@@ -356,20 +373,34 @@ export function CustomRackBuilder() {
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-0 overflow-hidden">
           <div className="overflow-y-auto p-4 space-y-3 border-b lg:border-b-0 lg:border-r border-white/10">
             {!editingId && (
-              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10">
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
                 <label className="block">
                   <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
-                    Rack name
+                    Rack name <span className="text-red-400">*</span>
                   </span>
                   <input
                     type="text"
                     value={rackName}
-                    onChange={(e) => setRackName(e.target.value)}
+                    onChange={(e) => {
+                      setRackName(e.target.value)
+                      if (e.target.value.trim()) setNameError(null)
+                    }}
                     placeholder="e.g. Chilled Drinks Bay"
                     maxLength={80}
-                    className="mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand"
+                    className={`mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand ${
+                      nameError ? 'border-red-400' : 'border-white/15'
+                    }`}
                   />
+                  {nameError && <p className="text-[10px] text-red-400 mt-1">{nameError}</p>}
                 </label>
+                <Toggle
+                  label="Show in preset fixtures"
+                  checked={showInPresets}
+                  onChange={setShowInPresets}
+                />
+                <p className="text-[10px] text-gray-500">
+                  Saves this custom fixture under your name in the Fixtures library.
+                </p>
               </div>
             )}
 

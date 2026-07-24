@@ -23,6 +23,10 @@ interface CreateSkuBody {
   attachmentStorageKeys?: string[] | null;
   attachments?: { storageKey: string; is3D: boolean }[] | null;
   status?: string;
+  isHero?: boolean | null;
+  isStackable?: boolean | null;
+  heroSku?: boolean | null;
+  stackable?: boolean | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -130,6 +134,9 @@ export async function POST(req: NextRequest) {
       depth: toNum(body.depth),
       attachments,
       status: body.status ?? 'active',
+      isHero: body.isHero === true || body.heroSku === true,
+      isStackable:
+        body.isStackable === false || body.stackable === false ? false : true,
     },
   });
 }

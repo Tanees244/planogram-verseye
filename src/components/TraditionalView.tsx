@@ -324,6 +324,13 @@ export function TraditionalView() {
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation()
+                                  if (
+                                    !window.confirm(
+                                      'Delete this row? All bins and products on it will be removed.',
+                                    )
+                                  ) {
+                                    return
+                                  }
                                   const res = await deleteRowFromServer(row.id)
                                   if (!res.success) toastApiError(res.message)
                                   else toast.success(res.message ?? 'Row deleted')

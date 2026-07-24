@@ -111,15 +111,32 @@ export function Product({ product, position, rowId, forceSimple = false }: Produ
   const height = safeDim(product.height, DEFAULT_PRODUCT_HEIGHT)
   const depth = safeDim(product.depth, DEFAULT_PRODUCT_DEPTH)
   const modelUrl = resolveProductModelUrl(product)
-  const useGlb = Boolean(modelUrl && !glbFailed && !forceSimple)
-
-  useEffect(() => {
-    if (modelUrl && !forceSimple) preloadProductGlb(modelUrl)
-  }, [modelUrl, forceSimple])
+  const [glbReady, setGlbReady] = useState(false)
+  const useGlb = Boolean(modelUrl && !glbFailed && !forceSimple && glbReady)
 
   useEffect(() => {
     setGlbFailed(false)
-  }, [modelUrl])
+    setGlbReady(false)
+    if (!modelUrl || forceSimple) return
+    let alive = true
+    // Lightweight preflight (HEAD) so useGLTF never throws an uncaught 502.
+    fetch(modelUrl, { method: 'HEAD', cache: 'no-store' })
+      .then((res) => {
+        if (!alive) return
+        if (res.ok) setGlbReady(true)
+        else setGlbFailed(true)
+      })
+      .catch(() => {
+        if (alive) setGlbFailed(true)
+      })
+    return () => {
+      alive = false
+    }
+  }, [modelUrl, forceSimple])
+
+  useEffect(() => {
+    if (modelUrl && !forceSimple && glbReady) preloadProductGlb(modelUrl)
+  }, [modelUrl, forceSimple, glbReady])
 
   useEffect(() => {
     if (useGlb) {

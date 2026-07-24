@@ -1,6 +1,6 @@
 /** Rack blueprint contract types (Aisleris layout API). All dimensions in meters. */
 
-
+import type { ShelfFacingUtilization } from '@/types/shelfUtilization'
 
 export type Meters = number;
 
@@ -207,6 +207,8 @@ export interface BinProduct {
 
 
 
+import type { ShelfFacingUtilization } from '@/types/shelfUtilization'
+
 export interface BlueprintRow {
 
   rowId: string;
@@ -234,6 +236,8 @@ export interface BlueprintRow {
   dividerPosm?: RackSurfacePosm | null;
 
   bins: BlueprintBin[];
+
+  utilization?: ShelfFacingUtilization | null;
 
 }
 

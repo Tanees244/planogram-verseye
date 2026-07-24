@@ -103,7 +103,7 @@ export function RackPosmPanel({
     <div
       className={cn(
         'w-full rounded-xl border p-2.5 space-y-2',
-        dark ? 'bg-black/70 border-white/10 text-gray-100' : 'bg-white border-gray-200 text-gray-800',
+        dark ? 'bg-[#111827] border-slate-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800',
       )}
     >
       <p

@@ -25,6 +25,11 @@ import {
   type FixtureType,
 } from '@/components/fixtures/types'
 import { cn } from '@/lib/cn'
+import {
+  listCustomFixturePresets,
+  type CustomFixturePreset,
+} from '@/utils/customFixturePresets'
+import { PANEL_SHELL, PANEL_HEADER } from '@/lib/uiShell'
 
 const FIXTURE_ICONS: Record<FixtureType, React.ComponentType<{ size?: number; className?: string }>> = {
   GONDOLA: FiGrid,
@@ -43,7 +48,7 @@ const FIXTURE_ICONS: Record<FixtureType, React.ComponentType<{ size?: number; cl
 const DRAG_MIME = 'application/fixture-type'
 const COLLAPSE_KEY = 'planogram.fixturePaletteCollapsed'
 
-const shell = 'rounded-xl shadow-lg backdrop-blur-sm bg-black/70 border border-white/10'
+const shell = PANEL_SHELL
 
 export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean }) {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
@@ -52,14 +57,22 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
   const pendingRackParams = usePlanogramStore((s) => s.pendingRackParams)
   const startFixturePlacement = usePlanogramStore((s) => s.startFixturePlacement)
   const openCustomRackBuilder = usePlanogramStore((s) => s.openCustomRackBuilder)
+  const setCustomRackDraft = usePlanogramStore((s) => s.setCustomRackDraft)
+  const placeCustomRackFromBuilder = usePlanogramStore((s) => s.placeCustomRackFromBuilder)
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const addRackError = usePlanogramStore((s) => s.addRackError)
   const setFixturePaletteCollapsed = usePlanogramStore((s) => s.setFixturePaletteCollapsed)
   const nextRackName = usePlanogramStore((s) => s.nextRackName)
   const setNextRackName = usePlanogramStore((s) => s.setNextRackName)
+  const setFixtureDragActive = usePlanogramStore((s) => s.setFixtureDragActive)
 
   const [dragging, setDragging] = useState<FixtureType | null>(null)
   const [collapsed, setCollapsed] = useState(false)
+  const [customPresets, setCustomPresets] = useState<CustomFixturePreset[]>([])
+
+  useEffect(() => {
+    setCustomPresets(listCustomFixturePresets())
+  }, [collapsed, isPlacingRack])
 
   useEffect(() => {
     try {
@@ -90,9 +103,13 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
     e.dataTransfer.setData(DRAG_MIME, type)
     e.dataTransfer.effectAllowed = 'copy'
     setDragging(type)
+    setFixtureDragActive(true, type)
   }
 
-  const onDragEnd = () => setDragging(null)
+  const onDragEnd = () => {
+    setDragging(null)
+    setFixtureDragActive(false)
+  }
 
   if (collapsed) {
     return (
@@ -102,7 +119,7 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
         className={cn(
           shell,
           'relative flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left',
-          'hover:bg-black/85 transition-colors group',
+          'hover:bg-[#152033] transition-colors group',
         )}
         title="Open fixture library"
       >
@@ -132,13 +149,13 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
       )}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0 bg-black/30">
-        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0">
+      <div className={cn(PANEL_HEADER)}>
+        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0 shadow-md shadow-brand/40">
           <FiGrid size={14} />
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Fixture Library</h2>
-          <p className="text-[10px] text-gray-400 truncate">Presets · custom builder</p>
+          <p className="text-[10px] text-gray-400 truncate">Drag onto floor · snaps to grid</p>
         </div>
         <button
           type="button"
@@ -218,19 +235,56 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
           onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}
           disabled={!selectedStoreId}
           className={cn(
-            'w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left',
-            'border-brand/40 bg-brand/20 hover:bg-brand/30',
+            'w-full flex items-center gap-2.5 p-2.5 rounded-xl border transition-all text-left',
+            'border-sky-400/40 bg-gradient-to-r from-brand/40 to-sky-600/25 hover:from-brand/50 hover:to-sky-500/30 shadow-lg shadow-brand/20',
             !selectedStoreId && 'opacity-45 cursor-not-allowed',
           )}
         >
-          <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand text-white shrink-0">
-            <FiSliders size={14} />
+          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand text-white shrink-0 shadow-md shadow-brand/40">
+            <FiSliders size={15} />
           </span>
           <div className="min-w-0">
             <span className="text-xs font-semibold text-white block">Build Custom Rack</span>
-            <span className="text-[10px] text-gray-400">Configure in modal · confirm to place</span>
+            <span className="text-[10px] text-sky-100/80">Configure in modal · confirm to place</span>
           </div>
         </button>
+
+        {customPresets.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 px-1 py-0.5">
+              <div className="flex-1 h-px bg-white/10" />
+              <span className="text-[9px] text-gray-500 uppercase tracking-wider">My custom</span>
+              <div className="flex-1 h-px bg-white/10" />
+            </div>
+            {customPresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                disabled={!selectedStoreId}
+                onClick={() => {
+                  if (!selectedStoreId) return
+                  setCustomRackDraft(preset.config)
+                  placeCustomRackFromBuilder(preset.name)
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 p-2 rounded-lg border transition-all text-left',
+                  'border-transparent hover:bg-white/10 hover:border-white/10',
+                  !selectedStoreId && 'opacity-45 cursor-not-allowed',
+                )}
+              >
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-600/30 text-emerald-200 shrink-0">
+                  <FiStar size={14} />
+                </span>
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold text-white block truncate">{preset.name}</span>
+                  <span className="text-[10px] text-gray-400">
+                    {preset.config.outerWidth.toFixed(1)}×{preset.config.outerDepth.toFixed(1)} m custom
+                  </span>
+                </div>
+              </button>
+            ))}
+          </>
+        )}
 
         <div className="flex items-center gap-2 px-1 py-0.5">
           <div className="flex-1 h-px bg-white/10" />
@@ -255,28 +309,30 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
                 startFixturePlacement(type)
               }}
               className={cn(
-                'flex items-center gap-2 p-2 rounded-lg border cursor-grab active:cursor-grabbing transition-all',
-                'border-transparent hover:bg-white/10 hover:border-white/10',
-                active && 'bg-brand/25 border-brand/40',
-                isDragging && 'opacity-50',
+                'flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all',
+                'bg-white/[0.04] border-white/10 hover:bg-sky-500/15 hover:border-sky-400/35',
+                active && 'bg-brand/30 border-brand/50 shadow-lg shadow-brand/20',
+                isDragging && 'opacity-50 scale-[0.98]',
                 !selectedStoreId && 'opacity-45 cursor-not-allowed',
               )}
               title={def.description}
             >
               <div
                 className={cn(
-                  'shrink-0 w-7 h-7 rounded-lg flex items-center justify-center',
-                  active ? 'bg-brand text-white' : 'bg-white/10 text-gray-300',
+                  'shrink-0 w-9 h-9 rounded-xl flex items-center justify-center',
+                  active
+                    ? 'bg-brand text-white shadow-md shadow-brand/40'
+                    : 'bg-gradient-to-br from-sky-500/25 to-white/10 text-sky-200',
                 )}
               >
-                <Icon size={14} />
+                <Icon size={16} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
                   <span className="text-xs font-semibold text-white truncate">{def.label}</span>
-                  <FiMove size={10} className="text-gray-500 shrink-0 opacity-60" />
+                  <FiMove size={10} className="text-sky-300/70 shrink-0" />
                 </div>
-                <p className="text-[10px] text-gray-500 font-mono mt-0.5">
+                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                   {def.defaultWidth}×{def.defaultDepth}×{def.defaultHeight} m
                   {def.defaultSided === 'two' ? ' · 2-sided' : ''} · shelves ready
                 </p>

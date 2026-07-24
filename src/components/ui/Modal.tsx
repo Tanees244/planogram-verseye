@@ -41,29 +41,30 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-md"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          'bg-white w-full rounded-xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200',
+          'bg-white w-full rounded-2xl shadow-2xl shadow-black/25 flex flex-col max-h-[90vh] overflow-hidden',
+          'ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-200',
           maxW[maxWidth],
           className,
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-gray-100 shrink-0">
+        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-100 shrink-0 bg-gradient-to-r from-brand/[0.07] via-white to-white">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-            {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">{title}</h2>
+            {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
           </div>
           {!hideClose && (
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 -mr-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="p-1.5 -mr-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               aria-label="Close"
             >
               <FiX size={20} />
@@ -74,7 +75,7 @@ export function Modal({
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
         {footer && (
-          <div className="shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/60 flex flex-wrap items-center justify-end gap-3">
+          <div className="shrink-0 px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex flex-wrap items-center justify-end gap-3">
             {footer}
           </div>
         )}

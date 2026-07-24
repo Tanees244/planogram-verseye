@@ -178,7 +178,7 @@ export function RackRowHeightsPanel({
     : rack.width * 0.85
 
   const shell = dark
-    ? 'bg-black/70 border-white/10 text-gray-100'
+    ? 'bg-[#111827] border-slate-600 text-gray-100'
     : 'bg-white border-gray-200 text-gray-800'
 
   return (

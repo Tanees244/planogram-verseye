@@ -8,7 +8,6 @@ import { Area } from "@/components/Area";
 import { CameraManager } from "@/components/CameraManager";
 import { SelectionPopup } from "@/components/SelectionPopup";
 import { SceneAtmosphere, SceneLighting } from "@/components/scene/SceneAtmosphere";
-import { usePlanogramStore } from "@/store/planogramStore";
 import { WAREHOUSE_SCALE } from "@/constants/warehouse";
 import { FloorDropHandler } from "@/components/scene/FloorDropHandler";
 import { ProductDropHandler } from "@/components/scene/ProductDropHandler";
@@ -18,7 +17,8 @@ const S = WAREHOUSE_SCALE;
 
 export function Scene3DCanvas() {
   const controlsRef = useRef(null);
-  const sceneTheme = usePlanogramStore((s) => s.sceneTheme);
+  // Night mode removed for performance — always day lighting.
+  const sceneTheme = "day" as const;
 
   return (
     <Canvas

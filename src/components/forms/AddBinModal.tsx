@@ -5,11 +5,20 @@ import { Btn, FormField, Input } from '@/components/ui/form'
 import { Spinner } from '@/components/Spinner'
 import { BinCreatePreview } from '@/components/BinCreatePreview'
 
+function cmToM(cm: number): number {
+  return cm / 100
+}
+
+function mToCm(m: number): number {
+  return m * 100
+}
+
 interface AddBinModalProps {
   open: boolean
   onClose: () => void
   binName: string
   onBinNameChange: (v: string) => void
+  /** Width/depth/height input strings in centimeters. */
   binWidth?: string
   binDepth?: string
   binHeight?: string
@@ -48,29 +57,45 @@ export function AddBinModal({
   onSubmit,
   isSubmitting,
 }: AddBinModalProps) {
-  const depthCap =
+  const depthCapM =
     maxBinDepthM && maxBinDepthM > 0
       ? maxBinDepthM
       : rowDepthM && rowDepthM > 0
         ? rowDepthM
         : 0.35
-  const defaultW = rowWidthM && rowWidthM > 0 ? Math.max(0.1, (rowWidthM - occupiedWidthM) || rowWidthM * 0.25) : 0.35
-  const defaultD = depthCap
-  const defaultH = rowHeightM && rowHeightM > 0 ? Math.min(rowHeightM * 0.9, rowHeightM - 0.05) : 0.35
+  const defaultWM =
+    rowWidthM && rowWidthM > 0
+      ? Math.max(0.1, (rowWidthM - occupiedWidthM) || rowWidthM * 0.25)
+      : 0.35
+  const defaultDM = depthCapM
+  const defaultHM =
+    rowHeightM && rowHeightM > 0 ? Math.min(rowHeightM * 0.9, rowHeightM - 0.05) : 0.35
 
-  const previewW = parseFloat(binWidth ?? '') || defaultW
-  const previewD = Math.min(parseFloat(binDepth ?? '') || defaultD, depthCap)
-  const previewH = parseFloat(binHeight ?? '') || defaultH
+  const defaultWCm = Math.round(mToCm(defaultWM))
+  const defaultDCm = Math.round(mToCm(defaultDM))
+  const defaultHCm = Math.round(mToCm(defaultHM))
+  const depthCapCm = Math.round(mToCm(depthCapM) * 10) / 10
+
+  const parsedWCm = parseFloat(binWidth ?? '')
+  const parsedDCm = parseFloat(binDepth ?? '')
+  const parsedHCm = parseFloat(binHeight ?? '')
+
+  const previewW = cmToM(Number.isFinite(parsedWCm) && parsedWCm > 0 ? parsedWCm : defaultWCm)
+  const previewD = Math.min(
+    cmToM(Number.isFinite(parsedDCm) && parsedDCm > 0 ? parsedDCm : defaultDCm),
+    depthCapM,
+  )
+  const previewH = cmToM(Number.isFinite(parsedHCm) && parsedHCm > 0 ? parsedHCm : defaultHCm)
   const showPreview = Boolean(rowWidthM && rowDepthM && rowHeightM)
   const depthOverflow =
-    Boolean(binDepth && parseFloat(binDepth) > depthCap + 1e-6)
+    Number.isFinite(parsedDCm) && parsedDCm > depthCapCm + 0.05
 
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Add Bin"
-      subtitle="Name and size the bin (W × D × H in meters). You can leave it empty and attach SKUs afterward."
+      subtitle="Name and size the bin (W × D × H in centimeters). You can leave it empty and attach SKUs afterward."
       maxWidth="md"
       footer={
         <>
@@ -92,20 +117,22 @@ export function AddBinModal({
             </p>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-700">
               <span>
-                Row: <strong>{rowWidthM!.toFixed(2)}</strong> W ×{' '}
-                <strong>{depthCap.toFixed(2)}</strong> D ×{' '}
-                <strong>{rowHeightM!.toFixed(2)}</strong> H m
+                Row:{' '}
+                <strong>{Math.round(mToCm(rowWidthM!))}</strong> W ×{' '}
+                <strong>{Math.round(mToCm(depthCapM))}</strong> D ×{' '}
+                <strong>{Math.round(mToCm(rowHeightM!))}</strong> H cm
               </span>
               <span className={occupiedWidthM > 0.001 ? '' : 'text-gray-500'}>
                 Free width:{' '}
                 <strong className="text-[#2C5282]">
-                  {Math.max(0, rowWidthM! - occupiedWidthM).toFixed(2)} m
+                  {Math.round(mToCm(Math.max(0, rowWidthM! - occupiedWidthM)))} cm
                 </strong>
                 {occupiedWidthM > 0.001 &&
-                  ` (${occupiedWidthM.toFixed(2)} m used by existing bins)`}
+                  ` (${Math.round(mToCm(occupiedWidthM))} cm used by existing bins)`}
               </span>
               <span className="text-gray-500">
-                Max bin depth: <strong className="text-[#2C5282]">{depthCap.toFixed(2)} m</strong>
+                Max bin depth:{' '}
+                <strong className="text-[#2C5282]">{depthCapCm} cm</strong>
               </span>
             </div>
           </div>
@@ -121,35 +148,35 @@ export function AddBinModal({
           />
         </FormField>
         <div className="grid grid-cols-3 gap-4 pt-1">
-          <FormField label="Width (m)">
+          <FormField label="Width (cm)">
             <Input
               inputMode="decimal"
               value={binWidth ?? ''}
-              placeholder={defaultW.toFixed(2)}
+              placeholder={String(defaultWCm)}
               onChange={(e) => onBinWidthChange?.(e.target.value)}
             />
           </FormField>
           <FormField
-            label="Depth (m)"
+            label="Depth (cm)"
             error={
               depthOverflow
-                ? `Max ${depthCap.toFixed(2)} m for this rack`
+                ? `Max ${depthCapCm} cm for this rack`
                 : undefined
             }
           >
             <Input
               inputMode="decimal"
               value={binDepth ?? ''}
-              placeholder={defaultD.toFixed(2)}
+              placeholder={String(defaultDCm)}
               error={depthOverflow}
               onChange={(e) => onBinDepthChange?.(e.target.value)}
             />
           </FormField>
-          <FormField label="Height (m)">
+          <FormField label="Height (cm)">
             <Input
               inputMode="decimal"
               value={binHeight ?? ''}
-              placeholder={defaultH.toFixed(2)}
+              placeholder={String(defaultHCm)}
               onChange={(e) => onBinHeightChange?.(e.target.value)}
             />
           </FormField>
@@ -158,7 +185,7 @@ export function AddBinModal({
         {showPreview && (
           <BinCreatePreview
             rowWidthM={rowWidthM!}
-            rowDepthM={depthCap}
+            rowDepthM={depthCapM}
             rowHeightM={rowHeightM!}
             binWidthM={previewW}
             binDepthM={previewD}

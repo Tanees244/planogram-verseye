@@ -138,6 +138,9 @@ export function MultiRackReflowModal({
   const reloadStoreLayout = usePlanogramStore((s) => s.reloadStoreLayout)
   const copyPosmFromRackToRack = usePlanogramStore((s) => s.copyPosmFromRackToRack)
   const applyFaceFillToRack = usePlanogramStore((s) => s.applyFaceFillToRack)
+  const ensureBinsAndFaceFillAfterReflow = usePlanogramStore(
+    (s) => s.ensureBinsAndFaceFillAfterReflow,
+  )
   const sourceRackId = rack.rackId || rack.id
 
   const [step, setStep] = useState<Step>('select')
@@ -318,15 +321,25 @@ export function MultiRackReflowModal({
         const posm = await copyPosmFromRackToRack(rack.id, t.rackId)
         if (!posm.success && posm.message) warnings.push(posm.message)
         applyFaceFillToRack(t.rackId)
+        void ensureBinsAndFaceFillAfterReflow(t.rackId)
       }
       applyFaceFillToRack(rack.id)
+      void ensureBinsAndFaceFillAfterReflow(rack.id)
       if (warnings.length) {
         setError(`Reflow applied. POSM copy notes: ${warnings.slice(0, 2).join(' · ')}`)
       }
     } finally {
       setBusy(false)
     }
-  }, [selectedIds, sourceRackId, reloadStoreLayout, copyPosmFromRackToRack, applyFaceFillToRack, rack.id])
+  }, [
+    selectedIds,
+    sourceRackId,
+    reloadStoreLayout,
+    copyPosmFromRackToRack,
+    applyFaceFillToRack,
+    ensureBinsAndFaceFillAfterReflow,
+    rack.id,
+  ])
 
   const targets = (step === 'results' ? result?.targets : preview?.targets) ?? []
   const canApply =

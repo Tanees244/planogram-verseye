@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { FiChevronDown, FiSettings, FiUpload, FiX } from 'react-icons/fi'
-import { DayNightToggle } from '@/components/ui/DayNightToggle'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
+import { PANEL_SHELL } from '@/lib/uiShell'
 import { usePlanogramExport } from '@/utils/planogramExport'
 
 const OPEN_KEY = 'planogram.sceneTopBarOpen'
@@ -14,7 +14,7 @@ const OPEN_KEY = 'planogram.sceneTopBarOpen'
 const MOVE_HINT =
   'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus · Shift+click bin/product → row · Dense bins: only front facings show full 3D models (rest are boxes) for performance'
 
-const shell = 'rounded-xl shadow-lg backdrop-blur-sm bg-black/70 border border-white/10'
+const shell = PANEL_SHELL
 
 function ControlsButton({ vertical }: { vertical?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -45,7 +45,7 @@ function ControlsButton({ vertical }: { vertical?: boolean }) {
       {open && (
         <div
           className={cn(
-            'px-4 py-3 bg-black/90 backdrop-blur-sm text-gray-200 rounded-xl text-sm border border-white/20 shadow-xl z-[110]',
+            'px-4 py-3 bg-[#1e293b] text-gray-200 rounded-xl text-sm border border-slate-600 shadow-xl z-[110]',
             vertical ? 'mt-2 w-full' : 'absolute top-full right-0 mt-2 min-w-[320px]',
           )}
         >
@@ -92,7 +92,7 @@ export function SceneTopBar({ className }: { className?: string }) {
           onClick={() => toggleOpen(true)}
           className={cn(
             shell,
-            'flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left hover:bg-black/85 transition-colors group',
+            'flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left hover:bg-[#152033] transition-colors group',
           )}
           title="Open scene & store menu"
         >
@@ -102,7 +102,7 @@ export function SceneTopBar({ className }: { className?: string }) {
           <span className="flex flex-col min-w-0">
             <span className="text-sm font-semibold text-white leading-tight">Scene & store</span>
             <span className="text-[10px] text-gray-400 leading-tight truncate max-w-[140px]">
-              {selectedStoreName || 'Day · roof · export'}
+              {selectedStoreName || 'Roof · import · export'}
             </span>
           </span>
           <FiChevronDown size={16} className="text-gray-400 shrink-0 group-hover:text-white transition-colors" />
@@ -116,9 +116,9 @@ export function SceneTopBar({ className }: { className?: string }) {
 
   return (
     <div className={cn('flex flex-col items-end gap-2', className)}>
-      <div className={cn(shell, 'w-[240px] flex flex-col gap-2 p-2.5 text-gray-100')}>
-        <div className="flex items-center justify-between gap-2 px-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+      <div className={cn(shell, 'w-[248px] flex flex-col gap-2 p-2.5 text-gray-100')}>
+        <div className="flex items-center justify-between gap-2 px-0.5 pb-0.5 border-b border-white/10 mb-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-light/90">
             Scene & store
           </span>
           <button
@@ -132,7 +132,6 @@ export function SceneTopBar({ className }: { className?: string }) {
           </button>
         </div>
 
-        <DayNightToggle dark embedded className="w-full" />
         <RoofToggle dark embedded className="w-full justify-center" />
         <ControlsButton vertical />
         <Link

@@ -90,8 +90,8 @@ function StoreBadge({ dark = false, align = 'center' }: { dark?: boolean; align?
 
   const badge = (
     <div
-      className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-md text-sm ${dark ? 'bg-black/70 backdrop-blur-sm text-gray-100' : 'bg-white border border-gray-200 text-gray-800'
-        }`}
+      className={`flex items-center gap-3 px-3 py-2 rounded-xl shadow-md text-sm ${dark ? 'bg-[#111827] border border-slate-600 text-gray-100' : 'bg-white border border-gray-200 text-gray-800'
+      }`}
     >
       {(isLoadingStoreLayout || isSavingLayout) && (
         <span className="w-4 h-4 border-2 border-brand/20 border-t-brand rounded-full animate-spin shrink-0" />

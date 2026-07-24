@@ -98,6 +98,11 @@ export async function PUT(
   if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim();
   if (typeof body.code === 'string' && body.code.trim()) patch.code = body.code.trim();
   if (typeof body.status === 'string') patch.status = body.status;
+  // Nullable flags: omit = unchanged; true/false = set (server recomputes placed bin capacity).
+  if (body.isHero === true || body.heroSku === true) patch.isHero = true;
+  else if (body.isHero === false || body.heroSku === false) patch.isHero = false;
+  if (body.isStackable === true || body.stackable === true) patch.isStackable = true;
+  else if (body.isStackable === false || body.stackable === false) patch.isStackable = false;
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(

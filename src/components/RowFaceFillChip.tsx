@@ -12,7 +12,7 @@ const LABELS: Record<RowFaceFillState, string> = {
   row_gap: 'Unused shelf width',
   bin_gap: 'Add facings',
   overfill: 'Overfilled',
-  empty: 'No bins',
+  empty: 'Add bins',
 }
 
 const STYLES: Record<RowFaceFillState, string> = {

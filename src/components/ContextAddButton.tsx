@@ -138,9 +138,20 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     const freeW = Math.max(0.1, rowW - occupied)
     const rowD = maxBinDepthM(rack, selectedId)
     const rowH = Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING
-    const width = parseFloat(binWidthInput) || Math.min(freeW, Math.max(0.15, freeW || rowW * 0.25))
-    const depth = parseFloat(binDepthInput) || rowD
-    const height = parseFloat(binHeightInput) || Math.min(rowH * 0.9, Math.max(0.15, rowH - 0.05))
+    // Inputs are in cm; convert to meters for the 3D ghost.
+    const widthCm = parseFloat(binWidthInput)
+    const depthCm = parseFloat(binDepthInput)
+    const heightCm = parseFloat(binHeightInput)
+    const width =
+      Number.isFinite(widthCm) && widthCm > 0
+        ? widthCm / 100
+        : Math.min(freeW, Math.max(0.15, freeW || rowW * 0.25))
+    const depth =
+      Number.isFinite(depthCm) && depthCm > 0 ? depthCm / 100 : rowD
+    const height =
+      Number.isFinite(heightCm) && heightCm > 0
+        ? heightCm / 100
+        : Math.min(rowH * 0.9, Math.max(0.15, rowH - 0.05))
     setPendingBinPreview({ rowId: selectedId, width, depth, height })
     return () => setPendingBinPreview(null)
   }, [
@@ -306,7 +317,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <div
               className={cn(
                 'w-full rounded-xl border p-2.5',
-                isSidebar ? 'bg-black/70 border-white/10' : 'bg-white border-gray-200',
+                isSidebar ? 'bg-[#111827] border-slate-600' : 'bg-white border-gray-200',
               )}
             >
               <ShelfUtilizationMeter rack={rack} dark={isSidebar} />
@@ -343,7 +354,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               className={cn(
                 'rounded-xl border p-2 space-y-2',
                 isSidebar
-                  ? 'w-full bg-black/40 border-white/10'
+                  ? 'w-full bg-[#1e293b] border-slate-600'
                   : 'bg-white border-gray-200',
               )}
             >
@@ -664,21 +675,31 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       setAddingBin(true);
       try {
         const maxDepth = rack ? maxBinDepthM(rack, selectedId) : undefined;
-        const parsedDepth = parseFloat(binDepthInput);
+        const parsedDepthCm = parseFloat(binDepthInput);
+        const parsedDepthM =
+          Number.isFinite(parsedDepthCm) && parsedDepthCm > 0
+            ? parsedDepthCm / 100
+            : undefined;
         if (
           maxDepth != null &&
-          Number.isFinite(parsedDepth) &&
-          parsedDepth > maxDepth + 1e-6
+          parsedDepthM != null &&
+          parsedDepthM > maxDepth + 1e-6
         ) {
           setBinNameError(
-            `Bin depth (${parsedDepth.toFixed(3)}m) exceeds the available space (${maxDepth.toFixed(2)}m).`,
+            `Bin depth (${Math.round(parsedDepthCm)} cm) exceeds the available space (${Math.round(maxDepth * 100)} cm).`,
           );
           return;
         }
+        const widthCm = parseFloat(binWidthInput);
+        const heightCm = parseFloat(binHeightInput);
         const parsedDims = {
-          width: parseFloat(binWidthInput) || undefined,
-          depth: Number.isFinite(parsedDepth) && parsedDepth > 0 ? parsedDepth : undefined,
-          height: parseFloat(binHeightInput) || undefined,
+          width:
+            Number.isFinite(widthCm) && widthCm > 0 ? widthCm / 100 : undefined,
+          depth: parsedDepthM,
+          height:
+            Number.isFinite(heightCm) && heightCm > 0
+              ? heightCm / 100
+              : undefined,
         };
         const res = await addBinToServer(
           selectedId,
@@ -716,7 +737,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <div
               className={cn(
                 'w-full rounded-xl border p-2.5',
-                isSidebar ? 'bg-black/70 border-white/10' : 'bg-white border-gray-200',
+                isSidebar ? 'bg-[#111827] border-slate-600' : 'bg-white border-gray-200',
               )}
             >
               <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -786,6 +807,13 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               variant="danger"
               fullWidth
               onClick={async () => {
+                if (
+                  !window.confirm(
+                    'Delete this row? All bins and products on it will be removed.',
+                  )
+                ) {
+                  return
+                }
                 const res = await deleteRowFromServer(selectedId)
                 if (!res.success) toastApiError(res.message)
                 else toast.success(res.message ?? 'Row deleted')
@@ -799,6 +827,13 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               size={"sm"}
               className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
               onClick={async () => {
+                if (
+                  !window.confirm(
+                    'Delete this row? All bins and products on it will be removed.',
+                  )
+                ) {
+                  return
+                }
                 const res = await deleteRowFromServer(selectedId)
                 if (!res.success) toastApiError(res.message)
                 else toast.success(res.message ?? 'Row deleted')
