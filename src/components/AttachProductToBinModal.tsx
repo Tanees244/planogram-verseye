@@ -38,12 +38,13 @@ import {
 import { FacingShelfPreview } from '@/components/FacingShelfPreview'
 import { FacingBin3DPreview } from '@/components/FacingBin3DPreview'
 import { usePlanogramStore } from '@/store/planogramStore'
+import { getUserEnteredNames } from '@/utils/userEnteredNames'
 
 interface AttachProductToBinModalProps {
   isOpen: boolean
   onClose: () => void
   binId: string
-  onSuccess: (product: Product, quantity: number) => void
+  onSuccess: (product: Product, quantity: number) => void | Promise<void>
   inventoryRefreshKey?: number
   logPayload?: boolean
 }
@@ -148,7 +149,7 @@ export default function AttachProductToBinModal({
   const [search, setSearch] = useState('')
   const [skus, setSkus] = useState<CatalogSku[]>([])
   const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null)
-  const [quantityInput, setQuantityInput] = useState('1')
+  const [quantityInput, setQuantityInput] = useState('')
   /** When true, Auto-fill uses full W×D×H pack; default is front-face only. */
   const [fillDepthToo, setFillDepthToo] = useState(false)
   const [categories, setCategories] = useState<CategoryOption[]>([])
@@ -163,6 +164,7 @@ export default function AttachProductToBinModal({
     isHero: false,
     isStackable: true,
   })
+  const [skuNameSuggestions, setSkuNameSuggestions] = useState<string[]>([])
   const [overrideDims, setOverrideDims] = useState({
     width: String(DEFAULT_PRODUCT_WIDTH),
     depth: String(DEFAULT_PRODUCT_DEPTH),
@@ -261,11 +263,15 @@ export default function AttachProductToBinModal({
   }, [])
 
   useEffect(() => {
+    if (mode === 'create') setSkuNameSuggestions(getUserEnteredNames('sku'))
+  }, [mode])
+
+  useEffect(() => {
     if (!isOpen) return
     setMode('browse')
     setError(null)
     setSelectedSkuId(null)
-    setQuantityInput('1')
+    setQuantityInput('')
     setFillDepthToo(false)
     setSearch('')
     setImageFile(null)
@@ -339,12 +345,14 @@ export default function AttachProductToBinModal({
   const occupiedFacingWidthM = resolveOccupiedFacingWidthM(inventory, racks, binId)
   const stockFacingWidthM =
     occupiedFacingWidthM && occupiedFacingWidthM > 0 ? occupiedFacingWidthM : facingWidthM
-  const capacityFacingWidthM = facingWidthM > 0 ? facingWidthM : stockFacingWidthM
+  // Capacity for attach qty only uses the selected/create SKU — never invent a
+  // default from existing stock while no product is chosen.
+  const capacityFacingWidthM = facingWidthM > 0 ? facingWidthM : 0
   const capacityFacingDepthM = facingDepthM > 0 ? facingDepthM : capacityFacingWidthM
   const capacityFacingHeightM = facingHeightM > 0 ? facingHeightM : capacityFacingWidthM
   // Width already occupied on shelf — use real facing width × qty, not API maxQuantity
   const usedWidthM = usedShelfWidthM(inventory, {
-    facingWidthM: stockFacingWidthM,
+    facingWidthM: stockFacingWidthM > 0 ? stockFacingWidthM : facingWidthM,
     racks,
     binId,
   })
@@ -432,20 +440,26 @@ export default function AttachProductToBinModal({
     }
   }
 
-  // Default quantity to front-face fill when SKU dims + bin are known.
+  // Default quantity to front-face fill only after a SKU (or create dims) is known.
   useEffect(() => {
-    if (!isOpen || !(binWidthM > 0) || !(capacityFacingWidthM > 0)) return
+    if (!isOpen) return
+    const hasProduct = mode === 'create' || Boolean(selectedSkuId)
+    if (!hasProduct || !(binWidthM > 0) || !(facingWidthM > 0)) {
+      if (!hasProduct) setQuantityInput('')
+      return
+    }
     const q =
       frontFaceMax != null && frontFaceMax > 0
         ? frontFaceMax
-        : suggestedFaceFacings(binWidthM, capacityFacingWidthM)
+        : suggestedFaceFacings(binWidthM, facingWidthM)
     if (q > 0) setQuantityInput(String(q))
   }, [
     isOpen,
+    mode,
     selectedSkuId,
     binWidthM,
-    capacityFacingWidthM,
-    // intentionally not depending on every usedWidth tick — set when SKU/bin ready
+    facingWidthM,
+    frontFaceMax,
     inventory?.binId,
   ])
 
@@ -574,7 +588,7 @@ export default function AttachProductToBinModal({
         height: h,
         depth: d,
       })
-      onSuccess(product, parsedQuantity)
+      await onSuccess(product, parsedQuantity)
       onClose()
     } finally {
       setSubmitting(false)
@@ -751,7 +765,7 @@ export default function AttachProductToBinModal({
         modelStorageKey: created.modelStorageKey ?? modelStorageKey ?? null,
       })
 
-      onSuccess(product, parsedQuantity)
+      await onSuccess(product, parsedQuantity)
       setCreateForm({
         name: '',
         code: '',
@@ -784,13 +798,16 @@ export default function AttachProductToBinModal({
   return (
     <Modal
       open={isOpen}
-      onClose={onClose}
+      onClose={() => {
+        if (submitting || uploadingImage || uploadingModel) return
+        onClose()
+      }}
       title="Attach Product"
       subtitle="Select a catalog SKU or create a new one, then attach to this bin."
       maxWidth="lg"
       footer={
         <>
-          <Btn variant="secondary" onClick={onClose}>
+          <Btn variant="secondary" onClick={onClose} disabled={submitting || uploadingImage || uploadingModel}>
             Cancel
           </Btn>
           <Btn
@@ -812,7 +829,33 @@ export default function AttachProductToBinModal({
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-4 relative">
+        {(submitting || uploadingImage || uploadingModel) && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-white/70 backdrop-blur-[1px]"
+            role="status"
+            aria-live="polite"
+            aria-label="Attaching product"
+          >
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+              <Spinner />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">
+                  {uploadingImage
+                    ? 'Uploading image…'
+                    : uploadingModel
+                      ? 'Uploading 3D model…'
+                      : 'Attaching product…'}
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  {submitting && !uploadingImage && !uploadingModel
+                    ? 'Saving to bin inventory and refreshing layout'
+                    : 'Please wait'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex bg-gray-100 p-1 rounded-xl">
           <button
             type="button"
@@ -903,7 +946,9 @@ export default function AttachProductToBinModal({
           label="Quantity (front facings)"
           required
           hint={
-            frontFaceMax != null
+            !selectedSkuId && mode === 'browse'
+              ? 'Select a SKU first — quantity is calculated from its size'
+              : frontFaceMax != null
               ? fillDepthToo
                 ? `Depth fill: up to ${maxAttachQty ?? frontFaceMax} units (W×D×H). Front face alone fits ${frontFaceMax}.`
                 : `Front fill: ${frontFaceMax} facing${frontFaceMax === 1 ? '' : 's'}${
@@ -931,8 +976,9 @@ export default function AttachProductToBinModal({
               }
             }}
             onBlur={() => {
+              if (!selectedSkuId && mode === 'browse') return
               if (!quantityOk) {
-                setQuantityInput('1')
+                setQuantityInput('')
                 return
               }
               const cap = fillDepthToo ? maxAttachQty : frontFaceMax ?? maxAttachQty
@@ -980,6 +1026,7 @@ export default function AttachProductToBinModal({
               facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
               quantity={quantityOk ? parsedQuantity : 0}
               occupiedFacings={placedFacings}
+              packOrder={selectedIsStackable ? 'stackFirst' : 'depthFirst'}
               label="3D bin preview"
             />
             <FacingShelfPreview
@@ -991,6 +1038,7 @@ export default function AttachProductToBinModal({
               facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
               quantity={quantityOk ? parsedQuantity : 0}
               occupiedFacings={placedFacings}
+              packOrder={selectedIsStackable ? 'stackFirst' : 'depthFirst'}
               label="Front & top packing"
             />
           </div>
@@ -1041,7 +1089,18 @@ export default function AttachProductToBinModal({
                           size={16}
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{sku.name}</p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{sku.name}</p>
+                            {sku.isStackable === false ? (
+                              <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                No stack
+                              </span>
+                            ) : (
+                              <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                Stackable
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500 truncate">
                             {[sku.code, sku.brandName, sku.categoryName].filter(Boolean).join(' · ') ||
                               sku.id.slice(0, 8)}
@@ -1112,13 +1171,19 @@ export default function AttachProductToBinModal({
           </div>
         ) : (
           <form onSubmit={handleCreateAndAttach} className="space-y-3">
-            <FormField label="Product Name" required>
+            <FormField label="Product Name" required hint="Suggestions are names you typed before">
               <Input
                 required
                 value={createForm.name}
+                list="create-sku-name-suggestions"
                 onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                 placeholder="e.g. Sliced White Bread"
               />
+              <datalist id="create-sku-name-suggestions">
+                {skuNameSuggestions.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </FormField>
             <FormField label="SKU Code" required>
               <Input

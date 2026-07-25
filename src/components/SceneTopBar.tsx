@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { FiChevronDown, FiSettings, FiUpload, FiX } from 'react-icons/fi'
+import { FiChevronDown, FiDownload, FiSettings, FiUpload, FiX } from 'react-icons/fi'
 import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
@@ -12,9 +12,12 @@ import { usePlanogramExport } from '@/utils/planogramExport'
 const OPEN_KEY = 'planogram.sceneTopBarOpen'
 
 const MOVE_HINT =
-  'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus · Shift+click bin/product → row · Dense bins: only front facings show full 3D models (rest are boxes) for performance'
+  'Move: Left-drag orbit · Right-drag pan · Scroll zoom · Click objects to focus · Shift+click bin/product → row · Dense bins: up to 24 front facings show full 3D models (deeper facings are boxes) for performance'
 
 const shell = PANEL_SHELL
+
+const menuBtn =
+  'w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors'
 
 function ControlsButton({ vertical }: { vertical?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -56,6 +59,72 @@ function ControlsButton({ vertical }: { vertical?: boolean }) {
   )
 }
 
+function StoreExportMenu() {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const { exportStore, exportStoreCsv, exportStoreXlsx, exportSceneImage, exportStorePdf, exportStorePptx } =
+    usePlanogramExport()
+
+  useEffect(() => {
+    if (!open) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  const run = (action: () => void | Promise<void>) => {
+    setOpen(false)
+    void action()
+  }
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(menuBtn, 'inline-flex items-center justify-between gap-2')}
+        aria-expanded={open}
+        title="Export store in a chosen format"
+      >
+        <span className="inline-flex items-center gap-2">
+          <FiDownload size={14} />
+          Export
+        </span>
+        <FiChevronDown
+          size={14}
+          className={cn('shrink-0 transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-0.5 p-1 rounded-xl bg-[#1e293b] border border-slate-600 shadow-xl z-[110]">
+          {(
+            [
+              { label: 'PLM', onClick: () => exportStore('plm') },
+              { label: 'PSA', onClick: () => exportStore('psa') },
+              { label: 'Excel (.xlsx)', onClick: () => void exportStoreXlsx() },
+              { label: 'CSV', onClick: () => exportStoreCsv() },
+              { label: 'PNG', onClick: () => exportSceneImage() },
+              { label: 'PDF', onClick: () => void exportStorePdf() },
+              { label: 'PowerPoint', onClick: () => void exportStorePptx() },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={() => run(item.onClick)}
+              className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-left text-gray-200 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Unified top-right menu: scene controls + store actions (collapsed by default, opens vertically). */
 export function SceneTopBar({ className }: { className?: string }) {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
@@ -63,8 +132,6 @@ export function SceneTopBar({ className }: { className?: string }) {
   const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
   const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
-  const { exportStore, exportStoreCsv, exportSceneImage, exportStorePdf, exportStorePptx } =
-    usePlanogramExport()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -92,7 +159,7 @@ export function SceneTopBar({ className }: { className?: string }) {
           onClick={() => toggleOpen(true)}
           className={cn(
             shell,
-            'flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left hover:bg-[#152033] transition-colors group',
+            'flex items-center gap-2.5 pl-3 pr-3.5 py-2.5 text-left hover:bg-[#152033] hover:border-slate-500 transition-all duration-200 group hover:-translate-y-0.5',
           )}
           title="Open scene & store menu"
         >
@@ -116,7 +183,12 @@ export function SceneTopBar({ className }: { className?: string }) {
 
   return (
     <div className={cn('flex flex-col items-end gap-2', className)}>
-      <div className={cn(shell, 'w-[248px] flex flex-col gap-2 p-2.5 text-gray-100')}>
+      <div
+        className={cn(
+          shell,
+          'w-[248px] flex flex-col gap-2 p-2.5 text-gray-100 animate-in fade-in slide-in-from-top-2 duration-200',
+        )}
+      >
         <div className="flex items-center justify-between gap-2 px-0.5 pb-0.5 border-b border-white/10 mb-0.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-light/90">
             Scene & store
@@ -164,52 +236,11 @@ export function SceneTopBar({ className }: { className?: string }) {
                   <button
                     type="button"
                     onClick={() => setSelectedStore(null)}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+                    className={menuBtn}
                   >
                     Change store
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => exportStore('plm')}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export store PLM
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportStore('psa')}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export store PSA
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportStoreCsv()}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export CSV (Excel)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => exportSceneImage()}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export PNG
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void exportStorePdf()}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void exportStorePptx()}
-                    className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  >
-                    Export PowerPoint
-                  </button>
+                  <StoreExportMenu />
                 </div>
               )}
             </div>

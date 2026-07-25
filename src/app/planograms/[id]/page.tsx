@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback, use } from 'react'
+import { useEffect, useState, useCallback, use, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { FiArrowLeft, FiLayers, FiPackage, FiBox, FiTrash2 } from 'react-icons/fi'
+import { FiArrowLeft, FiLayers, FiPackage, FiBox, FiTrash2, FiUpload } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { formatPlanogramDateTime, type ShelfDetail } from '@/types/shelf'
+import { PlanogramElevation2D, type ElevationRow } from '@/components/PlanogramThumb'
 
 interface SkuRow {
   skuId?: string
@@ -54,7 +55,9 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
   )
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
+  const [uploadingIdeal, setUploadingIdeal] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const idealFileRef = useRef<HTMLInputElement>(null)
 
   const fetchDetail = useCallback(async () => {
     setLoading(true)
@@ -92,46 +95,21 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
           images: shelf.images ?? d.images,
           hasLayout: shelf.hasLayout,
           hasPlanogram: shelf.hasPlanogram,
+          hasIdealImage: shelf.hasIdealImage ?? d.hasIdealImage,
+          isConfigured: shelf.isConfigured ?? d.isConfigured,
         })
         return
       }
 
-      // Fallback: shelf detail, then legacy catalog planogram.
+      // Fallback: shelf detail only (catalog planograms API retired).
       const res = await fetch(`/api/layout/shelves/${encodeURIComponent(id)}`, {
         headers: authHeaders(),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || json?.isRequestSuccess === false || json?.success === false) {
-        const legacy = await fetch(`/api/catalog/planograms/${encodeURIComponent(id)}`, {
-          headers: authHeaders(),
-        })
-        const legacyJson = await legacy.json().catch(() => ({}))
-        if (!legacy.ok || legacyJson?.isRequestSuccess === false) {
-          setError(
-            blueprintJson?.message ||
-              json?.message ||
-              legacyJson?.message ||
-              'Failed to load planogram',
-          )
-          return
-        }
-        const d = legacyJson?.data ?? legacyJson
-        setDetail({
-          id: d.id,
-          storeId: d.storeId,
-          name: d.name ?? 'Planogram',
-          storeName: d.storeName,
-          description: d.description,
-          categoryId: d.categoryId,
-          shelfType: d.shelfType,
-          fixtureType: d.fixtureType ?? null,
-          publishedAt: d.publishedAt ?? null,
-          lastUpdated: d.lastUpdated ?? d.updatedAt ?? null,
-          rackCode: d.rackCode ?? null,
-          rackId: d.rackId ?? d.shelfId ?? null,
-          rows: d.rows,
-          images: d.images,
-        })
+        setError(
+          blueprintJson?.message || json?.message || 'Failed to load planogram',
+        )
         return
       }
       const d = json?.data ?? json
@@ -153,6 +131,8 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
         images: d.images,
         hasLayout: d.hasLayout,
         hasPlanogram: d.hasPlanogram,
+        hasIdealImage: d.hasIdealImage,
+        isConfigured: d.isConfigured,
       })
     } catch {
       setError('Could not connect to server. Please try again.')
@@ -188,6 +168,41 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
     }
   }
 
+  const uploadIdealImage = async (file: File) => {
+    setUploadingIdeal(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const headers: Record<string, string> = {}
+      try {
+        const t = getPlanogramTokenFromCookie()
+        if (t) headers.Authorization = `Bearer ${t}`
+      } catch {
+        /* ignore */
+      }
+      const res = await fetch(
+        `/api/layout/shelves/${encodeURIComponent(id)}/planogram/ideal-image`,
+        { method: 'PUT', headers, body: form },
+      )
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json?.isRequestSuccess === false || json?.success === false) {
+        window.alert(json?.message || 'Failed to upload ideal image')
+        return
+      }
+      setDetail((prev) =>
+        prev
+          ? { ...prev, hasIdealImage: true, isConfigured: prev.isConfigured ?? true }
+          : prev,
+      )
+      void fetchDetail()
+    } catch {
+      window.alert('Could not connect to server. Please try again.')
+    } finally {
+      setUploadingIdeal(false)
+      if (idealFileRef.current) idealFileRef.current.value = ''
+    }
+  }
+
   const rows: PlanogramRow[] = detail ? (asArray(detail.rows) as PlanogramRow[]) : []
   const images: Record<string, unknown>[] = detail
     ? (asArray(detail.images) as Record<string, unknown>[])
@@ -214,15 +229,36 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
             )}
           </div>
           {detail && (
-            <button
-              type="button"
-              onClick={() => void removeShelf()}
-              disabled={deleting}
-              className="ml-auto inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
-            >
-              <FiTrash2 />
-              {deleting ? 'Deleting…' : 'Delete'}
-            </button>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <input
+                ref={idealFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void uploadIdealImage(file)
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => idealFileRef.current?.click()}
+                disabled={uploadingIdeal}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
+              >
+                <FiUpload />
+                {uploadingIdeal ? 'Uploading…' : 'Upload ideal image'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeShelf()}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-wait disabled:opacity-50"
+              >
+                <FiTrash2 />
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -253,8 +289,31 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                 <Meta label="Last updated" value={formatPlanogramDateTime(detail.lastUpdated)} />
                 <Meta label="Store" value={detail.storeName ?? detail.storeId} />
                 <Meta label="Rows" value={String(rows.length)} />
+                <Meta
+                  label="Status"
+                  value={
+                    detail.isConfigured
+                      ? 'Configured'
+                      : detail.hasIdealImage === false
+                        ? 'Needs ideal image'
+                        : detail.hasIdealImage
+                          ? 'Has ideal image'
+                          : undefined
+                  }
+                />
               </div>
             </div>
+
+            {rows.length > 0 && (
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                <h2 className="font-semibold text-gray-900 mb-4">2D planogram</h2>
+                <PlanogramElevation2D
+                  rows={rows as ElevationRow[]}
+                  title={detail.name}
+                  className="aspect-[16/9] max-h-[420px]"
+                />
+              </div>
+            )}
 
             {images.length > 0 && (
               <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">

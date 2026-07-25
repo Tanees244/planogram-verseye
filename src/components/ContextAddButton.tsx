@@ -5,6 +5,7 @@ import {
   type Rack,
   type RackSide,
   type Row,
+  type Bin,
 } from "@/store/planogramStore";
 import { useState, useEffect, useCallback } from "react";
 
@@ -15,7 +16,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiDownload, FiMaximize2, FiGitMerge, FiCopy, FiClipboard } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2, FiGitMerge, FiCopy, FiClipboard } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -30,6 +31,7 @@ import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeights
 import { RackPosmPanel } from '@/components/RackPosmPanel'
 import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
 import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
+import { BinItemTagPosmPanel } from '@/components/BinItemTagPosmPanel'
 import { RowFaceFillChip } from '@/components/RowFaceFillChip'
 import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
@@ -45,7 +47,7 @@ import {
 } from '@/constants/dimensions'
 import { maxBinDepthM } from '@/utils/rackBlueprintMapper'
 import { cn } from '@/lib/cn'
-import { usePlanogramExport } from '@/utils/planogramExport'
+import { displayRackName } from '@/utils/displayRackName'
 export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
   const isSidebar = layout === 'sidebar';
   const {
@@ -99,71 +101,15 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showReflowModal, setShowReflowModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
-  const { exportRack, exportRackCsv, exportSceneImage, exportRackPdf, exportRackPptx } =
-    usePlanogramExport();
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
-  const [binNameInput, setBinNameInput] = useState("");
-  const [binWidthInput, setBinWidthInput] = useState("");
-  const [binDepthInput, setBinDepthInput] = useState("");
-  const [binHeightInput, setBinHeightInput] = useState("");
   const [binNameError, setBinNameError] = useState<string | null>(null);
 
-  // Sync ghost bin onto selected row while Add Bin modal is open
+  // Clear ghost when modal closes
   useEffect(() => {
-    if (!showBinModal || selectedType !== 'row' || !selectedId) {
-      setPendingBinPreview(null)
-      return
-    }
-    const rack = area.racks.find((r: Rack) =>
-      r.sides.some((s: RackSide) => s.rows.some((row: Row) => row.id === selectedId)),
-    )
-    const row = rack?.sides
-      .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedId))
-      ?.rows.find((r: Row) => r.id === selectedId)
-    if (!row || !rack) {
-      setPendingBinPreview(null)
-      return
-    }
-    const rowW =
-      (typeof row.width === 'number' && row.width > 0
-        ? row.width
-        : typeof row.span === 'number' && row.span > 0
-          ? row.span
-          : rack.customConfig
-            ? computeCustomRackDimensions(rack.customConfig).innerWidth
-            : rack.width * 0.85) || DEFAULT_RACK_WIDTH
-    const occupied = row.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0)
-    const freeW = Math.max(0.1, rowW - occupied)
-    const rowD = maxBinDepthM(rack, selectedId)
-    const rowH = Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING
-    // Inputs are in cm; convert to meters for the 3D ghost.
-    const widthCm = parseFloat(binWidthInput)
-    const depthCm = parseFloat(binDepthInput)
-    const heightCm = parseFloat(binHeightInput)
-    const width =
-      Number.isFinite(widthCm) && widthCm > 0
-        ? widthCm / 100
-        : Math.min(freeW, Math.max(0.15, freeW || rowW * 0.25))
-    const depth =
-      Number.isFinite(depthCm) && depthCm > 0 ? depthCm / 100 : rowD
-    const height =
-      Number.isFinite(heightCm) && heightCm > 0
-        ? heightCm / 100
-        : Math.min(rowH * 0.9, Math.max(0.15, rowH - 0.05))
-    setPendingBinPreview({ rowId: selectedId, width, depth, height })
-    return () => setPendingBinPreview(null)
-  }, [
-    showBinModal,
-    selectedType,
-    selectedId,
-    binWidthInput,
-    binDepthInput,
-    binHeightInput,
-    area.racks,
-    setPendingBinPreview,
-  ])
+    if (!showBinModal) setPendingBinPreview(null)
+  }, [showBinModal, setPendingBinPreview])
 
   // Location state for the Add Rack form
   const [locations, setLocations] = useState<Location[]>([]);
@@ -325,8 +271,10 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           )}
           <ActionBar
             label="Rack selected"
+            subtitle={rack ? displayRackName(rack) : undefined}
             layout={layout}
             className={isSidebar ? 'flex-1 min-h-0' : undefined}
+            onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
           >
             {isCustom && (
               <ActionBtn
@@ -337,9 +285,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
                 Customize
               </ActionBtn>
             )}
-            <ActionBtn fullWidth={isSidebar} onClick={() => setShowRowModal(true)}>
-              <span className="text-lg leading-none">+</span> Add Row
-            </ActionBtn>
             <ActionBtn
               variant="secondary"
               fullWidth={isSidebar}
@@ -458,55 +403,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               onClick={() => setShowPublishModal(true)}
               title="Clone rack to other stores"
             >
-              <FiShare2 /> Publish to stores
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => rack && exportRack(rack, 'plm')}
-              title="Export rack as .plm (Planogram Layout Model)"
-            >
-              <FiDownload /> Export PLM
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => rack && exportRack(rack, 'psa')}
-              title="Export rack as .psa (JDA Space Planning compatible)"
-            >
-              <FiDownload /> Export PSA
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => rack && exportRackCsv(rack)}
-              title="Export SKU table as CSV for Excel"
-            >
-              <FiDownload /> Export CSV
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => exportSceneImage(rack?.rackCode ?? 'planogram')}
-              title="Capture 3D scene as PNG"
-            >
-              <FiDownload /> Export PNG
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => rack && void exportRackPdf(rack)}
-              title="Export PDF report"
-            >
-              <FiDownload /> Export PDF
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
-              onClick={() => rack && void exportRackPptx(rack)}
-              title="Export PowerPoint deck"
-            >
-              <FiDownload /> Export PPTX
+              <FiShare2 /> Copy to stores
             </ActionBtn>
             {isSidebar ? (
               <ActionBtn
@@ -578,7 +475,27 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               {saveLayoutError}
             </div>
           )}
-          {rack && <RackRowHeightsPanel rack={rack} onSelectRow={(id) => setSelected(id, 'row')} />}
+          {rack && (
+            <RackRowHeightsPanel
+              rack={rack}
+              onSelectRow={(id) => setSelected(id, 'row')}
+              onAddRow={() => {
+                const bodyH = rack.customConfig
+                  ? computeCustomRackDimensions(rack.customConfig).innerHeight
+                  : Number(rack.outer?.height ?? rack.height) || 1.5
+                const used = (rack.sides[0]?.rows ?? []).reduce(
+                  (s, r) => s + (Number(r.height) || 0),
+                  0,
+                )
+                const remaining = Math.max(0.1, bodyH - used)
+                setRowForm({
+                  height: String(Number(remaining.toFixed(3))),
+                  count: '1',
+                })
+                setShowRowModal(true)
+              }}
+            />
+          )}
           {rack && <RackSideZonesPanel rack={rack} dark={isSidebar} />}
         </div>
 
@@ -589,6 +506,20 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           onHeightChange={(v) => setRowForm({ ...rowForm, height: v })}
           count={rowForm.count}
           onCountChange={(v) => setRowForm({ ...rowForm, count: v })}
+          availableHeightM={
+            rack
+              ? (() => {
+                  const bodyH = rack.customConfig
+                    ? computeCustomRackDimensions(rack.customConfig).innerHeight
+                    : Number(rack.outer?.height ?? rack.height) || 1.5
+                  const used = (rack.sides[0]?.rows ?? []).reduce(
+                    (s, r) => s + (Number(r.height) || 0),
+                    0,
+                  )
+                  return Math.max(0.1, bodyH - used)
+                })()
+              : undefined
+          }
           isSubmitting={addingRow}
           onSubmit={async () => {
             if (!selectedId) return;
@@ -663,67 +594,55 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           ? rack.width * 0.85
           : undefined;
 
-    const handleAddBin = async () => {
+    const handleSaveBins = async (
+      bins: { name: string; widthM: number; depthM: number; heightM: number }[],
+    ) => {
       if (!selectedId) {
-        setBinNameError("No row selected");
-        return;
+        setBinNameError('No row selected')
+        return
       }
-      if (!binNameInput || !binNameInput.trim()) {
-        setBinNameError("Bin name is required");
-        return;
+      if (!bins.length) {
+        setBinNameError('Add at least one bin box')
+        return
       }
-      setAddingBin(true);
+      setAddingBin(true)
+      setBinNameError(null)
       try {
-        const maxDepth = rack ? maxBinDepthM(rack, selectedId) : undefined;
-        const parsedDepthCm = parseFloat(binDepthInput);
-        const parsedDepthM =
-          Number.isFinite(parsedDepthCm) && parsedDepthCm > 0
-            ? parsedDepthCm / 100
-            : undefined;
-        if (
-          maxDepth != null &&
-          parsedDepthM != null &&
-          parsedDepthM > maxDepth + 1e-6
-        ) {
-          setBinNameError(
-            `Bin depth (${Math.round(parsedDepthCm)} cm) exceeds the available space (${Math.round(maxDepth * 100)} cm).`,
-          );
-          return;
+        for (const bin of bins) {
+          const res = await addBinToServer(
+            selectedId,
+            rowExtent1,
+            rowExtent2,
+            rowHeightForBin,
+            bin.name,
+            { width: bin.widthM, depth: bin.depthM, height: bin.heightM },
+            { quiet: true },
+          )
+          if (!res.success) {
+            setBinNameError(res.message ?? 'Failed to add bin')
+            return
+          }
         }
-        const widthCm = parseFloat(binWidthInput);
-        const heightCm = parseFloat(binHeightInput);
-        const parsedDims = {
-          width:
-            Number.isFinite(widthCm) && widthCm > 0 ? widthCm / 100 : undefined,
-          depth: parsedDepthM,
-          height:
-            Number.isFinite(heightCm) && heightCm > 0
-              ? heightCm / 100
-              : undefined,
-        };
-        const res = await addBinToServer(
-          selectedId,
-          rowExtent1,
-          rowExtent2,
-          rowHeightForBin,
-          binNameInput.trim(),
-          parsedDims,
-        );
-        if (!res.success) {
-          setBinNameError(res.message);
-        } else {
-          setShowBinModal(false);
-          setBinNameInput("");
-          setBinWidthInput("");
-          setBinDepthInput("");
-          setBinHeightInput("");
-          setBinNameError(null);
-          setPendingBinPreview(null);
-        }
+        setShowBinModal(false)
+        setPendingBinPreview(null)
+        toast.success(
+          bins.length === 1
+            ? 'Bin created'
+            : `${bins.length} bins created on this row`,
+        )
       } finally {
-        setAddingBin(false);
+        setAddingBin(false)
       }
-    };
+    }
+
+    const rowWidthM =
+      (typeof row?.width === 'number' && row.width > 0
+        ? row.width
+        : typeof row?.span === 'number' && row.span > 0
+          ? row.span
+          : rowMaxWidth) || DEFAULT_RACK_WIDTH
+    const occupiedWidthM =
+      row?.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0) ?? 0
 
     return (
       <>
@@ -761,7 +680,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             </div>
           )}
           {row && <RowDividerPosmPanel row={row} dark={isSidebar} />}
-          <ActionBar label="Row selected" layout={layout}>
+          <ActionBar
+            label="Row selected"
+            subtitle="Shelf row actions"
+            layout={layout}
+            onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
+          >
           <ActionBtn
             fullWidth={isSidebar}
             variant="secondary"
@@ -792,10 +716,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
           <ActionBtn
             fullWidth={isSidebar}
             onClick={() => {
-              setBinNameInput("");
-              setBinWidthInput("");
-              setBinDepthInput("");
-              setBinHeightInput("");
               setBinNameError(null);
               setShowBinModal(true);
             }}
@@ -853,28 +773,20 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               setPendingBinPreview(null)
             }
           }}
-          binName={binNameInput}
-          binWidth={binWidthInput}
-          binDepth={binDepthInput}
-          binHeight={binHeightInput}
-          onBinNameChange={(v) => { setBinNameInput(v); setBinNameError(null); }}
-          onBinWidthChange={setBinWidthInput}
-          onBinDepthChange={setBinDepthInput}
-          onBinHeightChange={setBinHeightInput}
-          rowWidthM={
-            (typeof row?.width === 'number' && row.width > 0
-              ? row.width
-              : typeof row?.span === 'number' && row.span > 0
-                ? row.span
-                : rowMaxWidth) || DEFAULT_RACK_WIDTH
-          }
+          rowWidthM={rowWidthM}
           rowDepthM={rack ? maxBinDepthM(rack, selectedId) : DEFAULT_RACK_DEPTH}
           rowHeightM={Number(row?.height) > 0 ? Number(row?.height) : GROCERY_SHELF_SPACING}
-          occupiedWidthM={row?.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0) ?? 0}
+          occupiedWidthM={occupiedWidthM}
+          existingBins={(row?.bins ?? []).map((b) => ({
+            id: b.id,
+            name: b.binName || 'Bin',
+            widthM: Number(b.width) || 0.1,
+            heightM: Number(b.height) || undefined,
+          }))}
           maxBinDepthM={rack ? maxBinDepthM(rack, selectedId) : undefined}
           error={binNameError}
           isSubmitting={addingBin}
-          onSubmit={handleAddBin}
+          onSaveBins={handleSaveBins}
         />
       </>
     );
@@ -882,16 +794,36 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
 
   // Bin selected
   if (selectedType === "bin") {
+    let selectedBin: Bin | null = null;
+    for (const r of area.racks) {
+      for (const s of r.sides) {
+        for (const row of s.rows) {
+          const found = row.bins.find((b: Bin) => b.id === selectedId);
+          if (found) {
+            selectedBin = found;
+            break;
+          }
+        }
+        if (selectedBin) break;
+      }
+      if (selectedBin) break;
+    }
     return (
       <>
         <div className="space-y-2 w-full">
+          {selectedBin && <BinItemTagPosmPanel bin={selectedBin} dark={isSidebar} />}
           <BinInventoryPanel
             binId={selectedId}
             dark={isSidebar}
             refreshKey={inventoryRefreshKey}
             onInventoryChange={() => setInventoryRefreshKey((k) => k + 1)}
           />
-          <ActionBar label="Bin selected" layout={layout}>
+          <ActionBar
+            label="Bin selected"
+            subtitle="Inventory & attach"
+            layout={layout}
+            onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
+          >
             <ActionBtn fullWidth={isSidebar} onClick={() => setShowProductModal(true)}>
               <span className="text-lg leading-none">+</span> Attach Product
             </ActionBtn>
@@ -936,7 +868,12 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   if (selectedType === "product") {
     const deleteProductFromServer = usePlanogramStore.getState().deleteProductFromServer;
     return (
-      <ActionBar label="Product selected" layout={layout}>
+      <ActionBar
+        label="Product selected"
+        subtitle="SKU actions"
+        layout={layout}
+        onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
+      >
         {isSidebar ? (
           <ActionBtn
             variant="danger"

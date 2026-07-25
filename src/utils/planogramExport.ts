@@ -4,6 +4,7 @@ import type { Rack } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
 import {
   downloadTextFile,
+  downloadBlob,
   exportPlanogramContent,
   extensionForFormat,
   sanitizeFilename,
@@ -107,6 +108,84 @@ export function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
   }
   downloadTextFile(lines.join('\n'), sanitizeFilename(baseName, 'csv'), 'text/csv;charset=utf-8')
   toast.success('Exported CSV (open in Excel)')
+}
+
+/** Native Excel workbook (.xlsx). */
+export async function exportRacksToXlsx(racks: Rack[], baseName = 'planogram') {
+  if (racks.length === 0) {
+    toast.error('Nothing to export')
+    return
+  }
+  try {
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Aisleris'
+    const sheet = wb.addWorksheet('Planogram')
+    sheet.columns = [
+      { header: 'Rack name', key: 'rackName', width: 22 },
+      { header: 'Rack code', key: 'rackCode', width: 14 },
+      { header: 'Side', key: 'side', width: 10 },
+      { header: 'Row', key: 'row', width: 8 },
+      { header: 'Bin', key: 'bin', width: 16 },
+      { header: 'SKU id', key: 'skuId', width: 36 },
+      { header: 'SKU name', key: 'skuName', width: 28 },
+      { header: 'Front facings', key: 'facings', width: 12 },
+      { header: 'Width m', key: 'width', width: 10 },
+      { header: 'Depth m', key: 'depth', width: 10 },
+      { header: 'Height m', key: 'height', width: 10 },
+    ]
+    sheet.getRow(1).font = { bold: true }
+
+    for (const rack of racks) {
+      const rackName = rack.blueprintName || rack.rackCode || rack.id
+      rack.sides.forEach((side, si) => {
+        side.rows.forEach((row, ri) => {
+          row.bins.forEach((bin) => {
+            if (bin.products.length === 0) {
+              sheet.addRow({
+                rackName,
+                rackCode: rack.rackCode,
+                side: side.sideCode ?? `S${si + 1}`,
+                row: ri + 1,
+                bin: bin.binName || '',
+                skuId: '',
+                skuName: '',
+                facings: 0,
+                width: bin.width,
+                depth: bin.depth,
+                height: bin.height,
+              })
+              return
+            }
+            for (const p of bin.products) {
+              sheet.addRow({
+                rackName,
+                rackCode: rack.rackCode,
+                side: side.sideCode ?? `S${si + 1}`,
+                row: ri + 1,
+                bin: bin.binName || '',
+                skuId: p.id,
+                skuName: p.name,
+                facings: Math.max(1, Math.floor(Number(p.quantity) || 1)),
+                width: p.width,
+                depth: p.depth,
+                height: p.height,
+              })
+            }
+          })
+        })
+      })
+    }
+
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    downloadBlob(blob, sanitizeFilename(baseName, 'xlsx'))
+    toast.success('Exported Excel (.xlsx)')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Excel export failed')
+  }
 }
 
 /** Capture the main WebGL canvas as PNG. */
@@ -373,6 +452,75 @@ export async function exportRacksToPptx(racks: Rack[], baseName = 'planogram') {
   }
 }
 
+/**
+ * Download the shelf planogram ideal image (PNG/JPEG) when the API exposes idealImageUrl.
+ * Falls back gracefully if the field is missing.
+ *
+ * TODO: When backend documents a dedicated GET /planogram payload shape, prefer that
+ * endpoint over shelf detail for idealImageUrl resolution.
+ */
+export async function downloadIdealImageFromShelf(
+  shelfId: string,
+  options?: { filename?: string },
+): Promise<{ success: boolean; message?: string }> {
+  if (!shelfId) {
+    toast.error('No shelf id')
+    return { success: false, message: 'No shelf id' }
+  }
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils')
+      const t = getPlanogramTokenFromCookie()
+      if (t) headers.Authorization = `Bearer ${t}`
+    } catch {
+      /* ignore */
+    }
+
+    const res = await fetch(`/api/layout/shelves/${encodeURIComponent(shelfId)}`, {
+      headers,
+      cache: 'no-store',
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || json?.isRequestSuccess === false) {
+      const msg = json?.message || 'Failed to load planogram'
+      toast.error(msg)
+      return { success: false, message: msg }
+    }
+    const data = json?.data ?? json
+    const url =
+      data?.idealImageUrl ??
+      data?.ideal_image_url ??
+      data?.planogram?.idealImageUrl ??
+      data?.images?.find?.((i: { type?: string; url?: string }) => i?.type === 'ideal')?.url
+
+    if (!url || typeof url !== 'string') {
+      const msg = 'No ideal image URL on this planogram'
+      toast.error(msg)
+      return { success: false, message: msg }
+    }
+
+    const imgRes = await fetch(url, {
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    if (!imgRes.ok) {
+      toast.error(`Failed to download ideal image (${imgRes.status})`)
+      return { success: false, message: `HTTP ${imgRes.status}` }
+    }
+    const blob = await imgRes.blob()
+    const ct = blob.type || imgRes.headers.get('content-type') || 'image/png'
+    const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg' : ct.includes('webp') ? 'webp' : 'png'
+    downloadBlob(blob, sanitizeFilename(options?.filename ?? data?.name ?? 'ideal-planogram', ext))
+    toast.success('Downloaded ideal image')
+    return { success: true }
+  } catch {
+    toast.error('Network error downloading ideal image')
+    return { success: false, message: 'Network error' }
+  }
+}
+
 export function usePlanogramExport() {
   const area = usePlanogramStore((s) => s.area)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
@@ -401,6 +549,12 @@ export function usePlanogramExport() {
     },
     exportRackCsv(rack: Rack) {
       exportRacksToCsv([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
+    },
+    exportStoreXlsx() {
+      return exportRacksToXlsx(area.racks, selectedStoreName ?? 'store-planogram')
+    },
+    exportRackXlsx(rack: Rack) {
+      return exportRacksToXlsx([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
     },
     exportSceneImage(name?: string) {
       exportScenePng(name ?? selectedStoreName ?? 'planogram-scene')

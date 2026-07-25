@@ -36,6 +36,8 @@ import {
   GROCERY_SHELF_SPACING,
 } from '@/constants/dimensions'
 import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
+import { displayRackName } from '@/utils/displayRackName'
+import { PRODUCT_MOVE_MIME } from '@/components/ProductPalette'
 
 export function TraditionalView() {
   const {
@@ -59,6 +61,10 @@ export function TraditionalView() {
     addRackToServer,
     isAddingRack,
     attachProductToBin,
+    moveBinInventoryToBin,
+    isAttachingProduct,
+    isLoadingStoreLayout,
+    selectedStoreName,
   } = usePlanogramStore()
 
   const [expandedRacks, setExpandedRacks] = useState<Set<string>>(new Set())
@@ -73,7 +79,6 @@ export function TraditionalView() {
   const [selectedBinId, setSelectedBinId] = useState<string | null>(null)
   const [showProductMgmtModal, setShowProductMgmtModal] = useState(false)
   const [showAttachProductModal, setShowAttachProductModal] = useState(false)
-  const [binNameInput, setBinNameInput] = useState('')
   const [binNameError, setBinNameError] = useState<string | null>(null)
   const [addingRow, setAddingRow] = useState(false)
   const [addingBin, setAddingBin] = useState(false)
@@ -172,7 +177,43 @@ export function TraditionalView() {
   }
 
   return (
-    <div className="w-screen min-h-screen bg-gray-50/80">
+    <div className="w-screen min-h-screen bg-gray-50/80 relative">
+      {isAttachingProduct && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/25 backdrop-blur-[1px]"
+          role="status"
+          aria-live="polite"
+          aria-label="Attaching product"
+        >
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-5 py-4 text-gray-900 shadow-2xl">
+            <Spinner />
+            <div>
+              <p className="text-sm font-semibold">Attaching product…</p>
+              <p className="text-[11px] text-gray-500">Updating bin inventory and refreshing layout</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {isLoadingStoreLayout && !isAttachingProduct && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/25 backdrop-blur-[1px]"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading store racks"
+        >
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-5 py-4 text-gray-900 shadow-2xl min-w-[260px]">
+            <Spinner />
+            <div>
+              <p className="text-sm font-semibold">Loading store racks…</p>
+              <p className="text-[11px] text-gray-500 truncate max-w-[240px]">
+                {selectedStoreName
+                  ? `Fetching fixtures for ${selectedStoreName}`
+                  : 'Fetching fixtures, shelves, bins, and products'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Top toolbar */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200 px-6 py-4 flex flex-wrap items-center justify-end gap-3 shadow-sm">
         <Link href="/planograms" className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-brand border border-brand/20 rounded-lg hover:bg-brand/5 transition-colors">
@@ -246,7 +287,10 @@ export function TraditionalView() {
                     <FiChevronRight className="text-xl text-gray-400" />
                   )}
                   <FiLayers className="text-xl text-[#2C5282]" />
-                  <span className="text-base font-semibold text-gray-800">Rack {rack.rackCode}</span>
+                  <span className="text-base font-semibold text-gray-800">{displayRackName(rack)}</span>
+                  {rack.blueprintName?.trim() && rack.rackCode ? (
+                    <span className="text-xs text-gray-500 font-mono">{rack.rackCode}</span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -353,7 +397,33 @@ export function TraditionalView() {
                                 </span>
                               </div>
                               {row.bins.map((bin) => (
-                                <div key={bin.id} className="mb-2 pl-2">
+                                <div
+                                  key={bin.id}
+                                  className="mb-2 pl-2"
+                                  onDragOver={(e) => {
+                                    if (!e.dataTransfer.types.includes(PRODUCT_MOVE_MIME)) return
+                                    e.preventDefault()
+                                    e.dataTransfer.dropEffect = 'move'
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    const raw = e.dataTransfer.getData(PRODUCT_MOVE_MIME)
+                                    if (!raw) return
+                                    let payload: { sourceBinId?: string }
+                                    try {
+                                      payload = JSON.parse(raw)
+                                    } catch {
+                                      return
+                                    }
+                                    if (!payload.sourceBinId || payload.sourceBinId === bin.id) return
+                                    void (async () => {
+                                      const res = await moveBinInventoryToBin(payload.sourceBinId!, bin.id)
+                                      if (res.success) toast.success(res.message ?? 'Moved SKU')
+                                      else toast.error(res.message ?? 'Move failed')
+                                    })()
+                                  }}
+                                >
                                   <div
                                     className={`p-3 bg-white border border-gray-200 rounded-lg cursor-pointer flex items-center justify-between transition-all hover:shadow-sm ${expandedBins.has(bin.id) ? 'border-brand/30 bg-brand/10' : ''
                                       }`}
@@ -416,7 +486,16 @@ export function TraditionalView() {
                                           return (
                                           <div
                                             key={product.id}
-                                            className="p-2.5 mb-2 bg-white border border-gray-200 rounded-lg flex items-center justify-between hover:shadow-sm transition-all"
+                                            draggable
+                                            onDragStart={(e) => {
+                                              e.dataTransfer.setData(
+                                                PRODUCT_MOVE_MIME,
+                                                JSON.stringify({ mode: 'move', sourceBinId: bin.id }),
+                                              )
+                                              e.dataTransfer.effectAllowed = 'move'
+                                            }}
+                                            className="p-2.5 mb-2 bg-white border border-gray-200 rounded-lg flex items-center justify-between hover:shadow-sm transition-all cursor-grab active:cursor-grabbing"
+                                            title="Drag onto another bin to move this SKU"
                                           >
                                             <div className="flex items-center gap-3">
                                               {product.imageUrl ? (
@@ -565,8 +644,6 @@ export function TraditionalView() {
       <AddBinModal
         open={showAddBinModal}
         onClose={() => setShowAddBinModal(false)}
-        binName={binNameInput}
-        onBinNameChange={(v) => { setBinNameInput(v); setBinNameError(null) }}
         {...(() => {
           if (!selectedRowId) return {}
           const rack = area.racks.find((r: Rack) =>
@@ -588,23 +665,51 @@ export function TraditionalView() {
               (sum: number, b: Bin) => sum + (Number(b.width) || 0),
               0,
             ),
+            existingBins: row.bins.map((b: Bin) => ({
+              id: b.id,
+              name: b.binName || 'Bin',
+              widthM: Number(b.width) || 0.1,
+              heightM: Number(b.height) || undefined,
+            })),
           }
         })()}
         error={binNameError}
         isSubmitting={addingBin}
-        onSubmit={async () => {
+        onSaveBins={async (bins) => {
           if (!selectedRowId) return
-          if (!binNameInput.trim()) { setBinNameError('Bin name is required'); return }
+          if (!bins.length) {
+            setBinNameError('Add at least one bin box')
+            return
+          }
           setAddingBin(true)
+          setBinNameError(null)
           try {
-            const res = await addBinToServer(selectedRowId, undefined, undefined, undefined, binNameInput.trim())
-            if (!res.success) setBinNameError(res.message)
-            else {
-              if ((res as any).binId) setSelectedBinId((res as any).binId)
-              setShowAddBinModal(false)
-              setBinNameInput('')
-              setBinNameError(null)
+            let lastBinId: string | undefined
+            for (const bin of bins) {
+              const res = await addBinToServer(
+                selectedRowId,
+                undefined,
+                undefined,
+                undefined,
+                bin.name,
+                { width: bin.widthM, depth: bin.depthM, height: bin.heightM },
+                { quiet: true },
+              )
+              if (!res.success) {
+                setBinNameError(res.message ?? 'Failed to add bin')
+                return
+              }
+              if ((res as { binId?: string }).binId) {
+                lastBinId = (res as { binId?: string }).binId
+              }
             }
+            if (lastBinId) setSelectedBinId(lastBinId)
+            setShowAddBinModal(false)
+            toast.success(
+              bins.length === 1
+                ? 'Bin created'
+                : `${bins.length} bins created on this row`,
+            )
           } finally {
             setAddingBin(false)
           }

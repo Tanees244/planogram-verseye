@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FiImage, FiPlus } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { uploadCatalogFile } from '@/utils/catalogUpload'
 import { Spinner } from '@/components/Spinner'
 import { cn } from '@/lib/cn'
 import type { PosmItemListItem } from '@/types/rackBlueprint'
+import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
 
 const POSM_TYPES = ['ShelfTalker', 'Standee', 'Flyer'] as const
 
@@ -41,6 +42,11 @@ export function CreatePosmForm({
   const [preview, setPreview] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    if (open) setNameSuggestions(getUserEnteredNames('posm'))
+  }, [open])
 
   const reset = () => {
     setName('')
@@ -125,6 +131,7 @@ export function CreatePosmForm({
         return
       }
 
+      rememberUserEnteredName('posm', name.trim())
       onCreated(created)
       reset()
       setOpen(false)
@@ -180,7 +187,13 @@ export function CreatePosmForm({
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Summer Promo Header"
           maxLength={80}
+          list="posm-name-suggestions"
         />
+        <datalist id="posm-name-suggestions">
+          {nameSuggestions.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
       </label>
 
       <div className="grid grid-cols-2 gap-2">

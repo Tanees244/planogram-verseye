@@ -7,7 +7,6 @@ import { Mesh } from "three";
 import { Edges } from "@react-three/drei";
 import { Row as RowType, usePlanogramStore } from "@/store/planogramStore";
 import { Bin } from "./Bin";
-import { RowDividerPosmMesh } from "./RowDividerPosmMesh";
 import { safeDim } from "@/utils/safeDimensions";
 
 interface RowProps {
@@ -176,7 +175,8 @@ export function Row({
       {(() => {
         let xCursor = -safeRackWidth / 2
         const maxBinH = Math.max(0.08, rowHeight - 0.08)
-        const existing = row.bins.map((bin) => {
+        const anyBinTag = row.bins.some((b) => b.itemTagPosm || b.itemTagPosmItemId)
+        const existing = row.bins.map((bin, binIndex) => {
           const n = Math.max(row.bins.length, 1)
           const fallbackWidth = safeRackWidth / n
           const slotWidth = safeDim(bin.width, fallbackWidth)
@@ -190,6 +190,9 @@ export function Row({
           const xOffset = xCursor + slotWidth / 2
           xCursor += slotWidth
           const binY = -rowHeight / 2 + binHeightUse / 2 + 0.03
+          // Legacy row.dividerPosm: show on first bin only when no bin has its own tag.
+          const legacyFallback =
+            !anyBinTag && binIndex === 0 ? row.dividerPosm : null
           return (
             <Bin
               key={bin.id}
@@ -199,6 +202,7 @@ export function Row({
               binHeight={binHeightUse}
               binDepth={binDepth}
               binWidth={binWidth}
+              fallbackPosm={legacyFallback}
             />
           )
         })
@@ -242,13 +246,6 @@ export function Row({
         )
       })()}
 
-      <RowDividerPosmMesh
-        posm={row.dividerPosm}
-        rowWidth={safeRackWidth}
-        rowHeight={rowHeight}
-        shelfZ={z - safeRackDepth / 2}
-        onSelect={selectRow}
-      />
     </group>
   );
 }

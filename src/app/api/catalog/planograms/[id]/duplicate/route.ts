@@ -1,9 +1,14 @@
-import type { NextRequest } from 'next/server';
-import { proxyLayout } from '@/app/api/utils/layoutProxy';
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  return proxyLayout(req, `/api/v1/catalog/planograms/${encodeURIComponent(id)}/duplicate`, {
-    method: 'POST',
-  });
+/** Legacy catalog duplicate — retired. */
+export async function POST(_req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
+  return NextResponse.json(
+    {
+      isRequestSuccess: false,
+      message: 'Catalog planograms API is retired. Use /api/layout/shelves instead.',
+      statusCode: 410,
+    },
+    { status: 410 },
+  )
 }

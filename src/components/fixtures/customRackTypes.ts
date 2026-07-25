@@ -247,7 +247,7 @@ export function createBlankCustomRack(): CustomRackConfig {
       color: '#ecf0f1',
     },
     walls: { back: true, left: true, right: true, frontGlass: false },
-    shelfCount: 0,
+    shelfCount: 3,
     shelfThickness: 0.03,
     accentColor: '#2C5282',
     isDoubleSided: false,

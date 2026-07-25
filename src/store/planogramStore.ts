@@ -7,6 +7,7 @@ import type { Dimensions3, RackPlacement, RackShell, RackSurfacePosm, ZoneFootpr
 import type { ShelfFacingUtilization } from "@/types/shelfUtilization";
 import {
   cloneCustomRackConfig,
+  computeCustomRackDimensions,
   createBlankCustomRack,
   createEndCapPreset,
   createRefrigeratedPreset,
@@ -177,6 +178,9 @@ export interface Bin {
   height: number;
   products: Product[];
   binName?: string;
+  /** Item-tag / shelf-talker POSM assigned to this bin (replaces row.dividerPosm). */
+  itemTagPosmItemId?: string | null;
+  itemTagPosm?: RackSurfacePosm | null;
 }
 
 export type RowSided = "one" | "two";
@@ -233,6 +237,8 @@ export interface Rack {
   height?: string;
   fixtureType?: FixtureType;
   customConfig?: CustomRackConfig;
+  /** Preferred user-facing label when the API provides it. */
+  displayName?: string | null;
   blueprintName?: string | null;
   /** Server-set on successful publish (ISO UTC). Never send from client. */
   publishedAt?: string | null;
@@ -305,6 +311,8 @@ export interface PlanogramState {
   placingFixtureType: FixtureType | null;
   isPlacingProduct: boolean;
   pendingProductParams: PendingProductParams | null;
+  /** True while attach API / layout reload is in progress. */
+  isAttachingProduct: boolean;
   /** Bin under cursor during SKU drag-over (for highlight + slot preview). */
   productDropHover: { binId: string; fits: boolean; reason?: string } | null;
   setProductDropHover: (
@@ -537,6 +545,13 @@ export interface PlanogramState {
     posmItemId: string | null,
     hydrated?: RackSurfacePosm | null,
   ) => Promise<{ success: boolean; message?: string }>;
+  /** Assign item-tag POSM to a bin (preferred over row divider POSM). */
+  assignBinItemTagPosm: (
+    rackId: string,
+    binId: string,
+    posmItemId: string | null,
+    hydrated?: RackSurfacePosm | null,
+  ) => Promise<{ success: boolean; message?: string }>;
   loadFromJSON: (
     jsonData: any,
     onProgress?: (progress: number) => void,
@@ -722,6 +737,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   placingFixtureType: null,
   isPlacingProduct: false,
   pendingProductParams: null,
+  isAttachingProduct: false,
   productDropHover: null,
   movingInventoryFromBinId: null,
   clipboard: null,
@@ -1179,6 +1195,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
 
       const rackDisplayName =
         finalDims?.rackName?.trim() || state.nextRackName?.trim() || undefined;
+      if (rackDisplayName) {
+        try {
+          const { rememberUserEnteredName } = await import('@/utils/userEnteredNames');
+          rememberUserEnteredName('rack', rackDisplayName);
+        } catch {
+          /* ignore */
+        }
+      }
       const payload = buildCreateRackPayload({
         storeId: globalLocationId || finalDims?.globalLocationId || state.selectedStoreId || '',
         rackCode: finalDims?.rackCode || `RACK-${Date.now()}`,
@@ -1312,6 +1336,41 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             success: true,
             message: data.message || 'Rack added with shelves and bins',
           };
+        }
+
+        // Custom racks: seed equal-height rows from builder shelfCount
+        if (fixtureType === 'CUSTOM' && finalDims?.customConfig) {
+          const cfg = finalDims.customConfig;
+          const n = Math.max(0, Math.min(20, Math.floor(Number(cfg.shelfCount) || 0)));
+          if (n > 0) {
+            // Must use usable cavity height (innerHeight), same as canAddRowToSide —
+            // bodyH / n overflows after a few rows because walls take vertical space.
+            const usable = Math.max(0.1, computeCustomRackDimensions(cfg).innerHeight);
+            const rowH = Math.max(0.1, Number((usable / n).toFixed(4)));
+            set({ isAddingRack: true });
+            let added = 0;
+            let lastMsg: string | undefined;
+            for (let i = 0; i < n; i++) {
+              const rowRes = await get().addRowToServer(rack.id, rowH, undefined, {
+                quiet: true,
+              });
+              if (!rowRes.success) {
+                lastMsg = rowRes.message;
+                break;
+              }
+              added += 1;
+            }
+            set({ isAddingRack: false });
+            return {
+              success: true,
+              message:
+                added === n
+                  ? data.message || `Rack added with ${n} rows`
+                  : `${data.message || 'Rack added'} — created ${added} of ${n} rows${
+                      lastMsg ? `: ${lastMsg}` : ''
+                    }`,
+            };
+          }
         }
 
         set({ isAddingRack: false });
@@ -1993,6 +2052,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const serverBinId = resolveEntityId(binId);
     const skuId = resolveEntityId(product.id);
 
+    set({ isAttachingProduct: true, addProductError: null });
+    try {
     // Hero SKUs → eye-level rows only
     try {
       const { heroPlacementBlocked, isHeroSkuId, setHeroSkuId } = await import('@/utils/heroSku');
@@ -2121,6 +2182,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         ? 'Product attached to inventory'
         : 'Product added locally (bin or SKU has no server id yet)',
     };
+    } finally {
+      set({ isAttachingProduct: false });
+    }
   },
   reloadStoreLayout: async () => {
     const { selectedStoreId, area } = get();
@@ -2128,6 +2192,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: false, message: 'No store selected' };
     }
 
+    set({ isLoadingStoreLayout: true });
     try {
       const { fetchStoreLayoutRacks, mergeRackPositions, gridPlaceRacks } = await import(
         '@/utils/storeLayoutLoader'
@@ -2149,6 +2214,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: true };
     } catch {
       return { success: false, message: 'Failed to reload store layout' };
+    } finally {
+      set({ isLoadingStoreLayout: false });
     }
   },
   saveRackLayoutToServer: async (rackId, options) => {
@@ -2202,7 +2269,30 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
-        const message = data?.message || `Failed to save layout (${res.status})`;
+        // Prefer structured face-fill errors from the API when present.
+        let message = data?.message || `Failed to save layout (${res.status})`;
+        const apiErrors = Array.isArray(data?.errors) ? data.errors : [];
+        if (apiErrors.length > 0) {
+          const mapped: import('@/utils/faceFill').FaceFillIssue[] = apiErrors.map(
+            (e: { message?: string; code?: string; rowId?: string; binId?: string }) => ({
+              severity: 'error' as const,
+              code: (e?.code as import('@/utils/faceFill').FaceFillIssue['code']) || 'BinFaceUnderfilled',
+              message: String(e?.message || e?.code || 'Face-fill validation failed'),
+              rowId: e?.rowId,
+              binId: e?.binId,
+            }),
+          );
+          const formatted = formatFaceFillIssues(mapped);
+          if (formatted) {
+            message = formatted;
+          } else {
+            const joined = apiErrors
+              .map((e: { message?: string }) => e?.message)
+              .filter(Boolean)
+              .join(' · ');
+            if (joined) message = joined;
+          }
+        }
         if (!options?.suppressLoading) {
           set({ isSavingLayout: false, saveLayoutError: message });
         }
@@ -2633,8 +2723,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           })),
         })),
       },
-      selectedId: null,
-      selectedType: null,
+      selectedId: state.selectedId === rowId ? 'area' : state.selectedId,
+      selectedType: state.selectedId === rowId ? ('area' as const) : state.selectedType,
     })),
   deleteRowFromServer: async (rowId) => {
     const serverRowId = resolveEntityId(rowId);
@@ -2654,19 +2744,23 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
+      // DELETE /api/rack-rows/{id} → DELETE /api/v1/layout/rack-rows/{id}
       const res = await fetch(`/api/rack-rows/${encodeURIComponent(serverRowId)}`, {
         method: 'DELETE',
         headers,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
-        return { success: false, message: data?.message || 'Failed to delete row' };
+        const message = extractApiErrorMessage(data, 'Failed to delete row');
+        return { success: false, message };
       }
       // Server renumbers remaining rows / totalRows — refetch instead of local splice only.
       if (get().selectedStoreId) {
         const reload = await get().reloadStoreLayout();
         if (!reload.success) {
           get().deleteRow(rowId);
+        } else if (get().selectedId === rowId) {
+          get().setSelected('area', 'area');
         }
       } else {
         get().deleteRow(rowId);
@@ -2965,6 +3059,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       leftWallPosmItemId: shell?.leftWallPosmItemId ?? shell?.leftWallPosm?.id ?? null,
       rightWallPosmItemId: shell?.rightWallPosmItemId ?? shell?.rightWallPosm?.id ?? null,
       rowPosmItems: [],
+      binPosmItems: [],
     };
 
     const catalog: Record<string, RackSurfacePosm> = {};
@@ -2984,12 +3079,25 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       for (let ri = 0; ri < rowCount; ri++) {
         const sRow = sSide.rows[ri];
         const tRow = tSide.rows[ri];
-        const posmId = sRow.dividerPosmItemId ?? sRow.dividerPosm?.id ?? null;
-        if (!posmId) continue;
-        const rowKey = resolveEntityId(tRow.id) ?? tRow.id;
-        payload.rowPosmItems = payload.rowPosmItems ?? [];
-        payload.rowPosmItems.push({ rowId: rowKey, dividerPosmItemId: posmId });
-        if (sRow.dividerPosm) catalog[posmId] = sRow.dividerPosm;
+        const rowPosmId = sRow.dividerPosmItemId ?? sRow.dividerPosm?.id ?? null;
+        if (rowPosmId) {
+          const rowKey = resolveEntityId(tRow.id) ?? tRow.id;
+          payload.rowPosmItems = payload.rowPosmItems ?? [];
+          payload.rowPosmItems.push({ rowId: rowKey, dividerPosmItemId: rowPosmId });
+          if (sRow.dividerPosm) catalog[rowPosmId] = sRow.dividerPosm;
+        }
+
+        const binCount = Math.min(sRow.bins.length, tRow.bins.length);
+        for (let bi = 0; bi < binCount; bi++) {
+          const sBin = sRow.bins[bi];
+          const tBin = tRow.bins[bi];
+          const tagId = sBin.itemTagPosmItemId ?? sBin.itemTagPosm?.id ?? null;
+          if (!tagId) continue;
+          const binKey = resolveEntityId(tBin.id) ?? tBin.id;
+          payload.binPosmItems = payload.binPosmItems ?? [];
+          payload.binPosmItems.push({ binId: binKey, itemTagPosmItemId: tagId });
+          if (sBin.itemTagPosm) catalog[tagId] = sBin.itemTagPosm;
+        }
       }
     }
 
@@ -2999,7 +3107,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       payload.leftWallPosmItemId ||
       payload.rightWallPosmItemId;
     const hasRows = (payload.rowPosmItems?.length ?? 0) > 0;
-    if (!hasShell && !hasRows) {
+    const hasBins = (payload.binPosmItems?.length ?? 0) > 0;
+    if (!hasShell && !hasRows && !hasBins) {
       return { success: true, message: 'No POSM to copy' };
     }
 
@@ -3525,6 +3634,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           for (const side of rack.sides) {
             for (const row of side.rows) {
               if (row.dividerPosm?.id === id) return row.dividerPosm;
+              for (const bin of row.bins) {
+                if (bin.itemTagPosm?.id === id) return bin.itemTagPosm;
+              }
             }
           }
           const shell = rack.shell;
@@ -3659,7 +3771,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
               const byRow = new Map(
                 payload.rowPosmItems.map((rd) => [rd.rowId, rd.dividerPosmItemId]),
               );
-              sides = r.sides.map((side) => ({
+              sides = sides.map((side) => ({
                 ...side,
                 rows: side.rows.map((row) => {
                   const rowKey = resolveEntityId(row.id) ?? row.id;
@@ -3673,6 +3785,30 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                       : null,
                   };
                 }),
+              }));
+            }
+
+            if (payload.binPosmItems?.length) {
+              const byBin = new Map(
+                payload.binPosmItems.map((bd) => [bd.binId, bd.itemTagPosmItemId]),
+              );
+              sides = sides.map((side) => ({
+                ...side,
+                rows: side.rows.map((row) => ({
+                  ...row,
+                  bins: row.bins.map((bin) => {
+                    const binKey = resolveEntityId(bin.id) ?? bin.id;
+                    if (!byBin.has(binKey)) return bin;
+                    const itemId = byBin.get(binKey) ?? null;
+                    return {
+                      ...bin,
+                      itemTagPosmItemId: itemId,
+                      itemTagPosm: itemId
+                        ? hydratePosm(null, itemId, bin.itemTagPosm)
+                        : null,
+                    };
+                  }),
+                })),
               }));
             }
 
@@ -3695,6 +3831,18 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     return get().assignRackPosmItems(
       rackId,
       { rowPosmItems: [{ rowId: rackRowId, dividerPosmItemId: posmItemId }] },
+      catalog,
+    );
+  },
+  assignBinItemTagPosm: async (rackId, binId, posmItemId, hydrated) => {
+    const rackBinId = resolveEntityId(binId);
+    if (!rackBinId || !UUID_RE.test(rackBinId)) {
+      return { success: false, message: 'Bin has no server id yet' };
+    }
+    const catalog = posmItemId && hydrated ? { [posmItemId]: hydrated } : undefined;
+    return get().assignRackPosmItems(
+      rackId,
+      { binPosmItems: [{ binId: rackBinId, itemTagPosmItemId: posmItemId }] },
       catalog,
     );
   },

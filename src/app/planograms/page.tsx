@@ -45,6 +45,18 @@ function mapShelf(p: Record<string, unknown>): ShelfListItem {
     lastUpdated: (p.lastUpdated as string) ?? (p.updatedAt as string) ?? null,
     hasLayout: typeof p.hasLayout === 'boolean' ? p.hasLayout : undefined,
     hasPlanogram: typeof p.hasPlanogram === 'boolean' ? p.hasPlanogram : undefined,
+    hasIdealImage:
+      typeof p.hasIdealImage === 'boolean'
+        ? p.hasIdealImage
+        : typeof p.has_ideal_image === 'boolean'
+          ? p.has_ideal_image
+          : undefined,
+    isConfigured:
+      typeof p.isConfigured === 'boolean'
+        ? p.isConfigured
+        : typeof p.is_configured === 'boolean'
+          ? p.is_configured
+          : undefined,
   }
 }
 
@@ -263,8 +275,9 @@ export default function PlanogramsPage() {
                         {p.name}
                       </Link>
                       <p className="text-xs text-gray-500 mt-0.5 truncate">
-                        {p.rackCode ? p.rackCode : storeLabel}
-                        {p.sideCode ? ` · ${p.sideCode}` : ''}
+                        {[storeLabel, p.rackCode ? `Code ${p.rackCode}` : null, p.sideCode]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
                     </div>
                     <button
@@ -279,14 +292,24 @@ export default function PlanogramsPage() {
                     </button>
                   </div>
                   <div className="flex items-center justify-between gap-2 text-[11px] text-gray-500">
-                    <span>
+                    <span className="flex flex-wrap items-center gap-1.5">
                       {p.fixtureType ? (
                         <span className="px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700">
                           {p.fixtureType.replace(/_/g, ' ')}
                         </span>
-                      ) : (
-                        '—'
-                      )}
+                      ) : null}
+                      {p.isConfigured === true ? (
+                        <span className="px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700">
+                          Configured
+                        </span>
+                      ) : p.hasIdealImage === false || p.isConfigured === false ? (
+                        <span className="px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-800">
+                          Needs ideal image
+                        </span>
+                      ) : null}
+                      {!p.fixtureType && p.isConfigured == null && p.hasIdealImage == null
+                        ? '—'
+                        : null}
                     </span>
                     <span className="truncate">{formatPlanogramDateTime(p.lastUpdated)}</span>
                   </div>

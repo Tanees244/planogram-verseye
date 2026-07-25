@@ -40,6 +40,8 @@ interface ProductProps {
   product: ProductType
   position: [number, number, number]
   rowId?: string
+  /** Source bin — Alt/Option-click starts move-to-another-bin mode. */
+  binId?: string
   /** Force box/texture instead of GLB (LOD for dense bins). */
   forceSimple?: boolean
 }
@@ -98,12 +100,13 @@ function ProductBoxFallback({
   )
 }
 
-export function Product({ product, position, rowId, forceSimple = false }: ProductProps) {
+export function Product({ product, position, rowId, binId, forceSimple = false }: ProductProps) {
   const meshRef = useRef<Mesh>(null)
   const [hovered, setHovered] = useState(false)
   const [texture, setTexture] = useState<Texture | null>(null)
   const [glbFailed, setGlbFailed] = useState(false)
-  const { selectedId, setSelected } = usePlanogramStore()
+  const { selectedId, setSelected, startMovingBinInventory, movingInventoryFromBinId } =
+    usePlanogramStore()
   const catalogId = resolveProductFacingId(product.id)
   const isSelected = selectedId === product.id || selectedId === catalogId
 
@@ -191,10 +194,23 @@ export function Product({ product, position, rowId, forceSimple = false }: Produ
   })
 
   const handleSelect = (e: unknown) => {
-    const event = e as { stopPropagation?: () => void; shiftKey?: boolean }
+    const event = e as {
+      stopPropagation?: () => void
+      shiftKey?: boolean
+      altKey?: boolean
+    }
     event.stopPropagation?.()
     if (event.shiftKey && rowId) {
       setSelected(rowId, 'row')
+      return
+    }
+    // Alt/Option-click: start move-SKU-to-another-bin (then click target bin)
+    if (event.altKey && binId) {
+      if (movingInventoryFromBinId === binId) {
+        usePlanogramStore.getState().cancelMovingBinInventory()
+      } else {
+        startMovingBinInventory(binId)
+      }
       return
     }
     setSelected(catalogId, 'product')

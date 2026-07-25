@@ -7,69 +7,108 @@ import { useThree } from '@react-three/fiber'
 import { Vector3 } from 'three'
 import { boundsCenterAboveObject } from '@/utils/threeBounds'
 import { safePosition } from '@/utils/safeDimensions'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { displayRackName } from '@/utils/displayRackName'
+import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
+
+type PopupKind = 'product' | 'bin' | 'row' | 'rack'
+
+function cm(m: number | undefined | null) {
+  if (typeof m !== 'number' || !Number.isFinite(m)) return '—'
+  return `${(m * 100).toFixed(0)} cm`
+}
 
 export function SelectionPopup() {
   const { selectedId, selectedType, area } = usePlanogramStore()
   const { scene } = useThree()
   const [position, setPosition] = useState<Vector3 | null>(null)
   const [data, setData] = useState<any>(null)
+  const [kind, setKind] = useState<PopupKind | null>(null)
 
   useEffect(() => {
     if (!selectedId || !selectedType) {
       setPosition(null)
       setData(null)
+      setKind(null)
+      return
+    }
+
+    if (
+      selectedType !== 'product' &&
+      selectedType !== 'bin' &&
+      selectedType !== 'row' &&
+      selectedType !== 'rack'
+    ) {
+      setPosition(null)
+      setData(null)
+      setKind(null)
       return
     }
 
     let foundObj: any = null
     scene.traverse((obj) => {
-      if (obj.userData?.id === selectedId) {
-        foundObj = obj
-      }
+      if (obj.userData?.id === selectedId) foundObj = obj
     })
 
     if (foundObj) {
       const center = boundsCenterAboveObject(foundObj)
       if (center) setPosition(center)
-    } else {
-      // Fallback calculation for known types if scene graph isn't ready
-      if (selectedType === 'rack') {
-        const rack = area.racks.find((r: Rack) => r.id === selectedId)
-        if (rack) {
-          setPosition(
-            new Vector3(
-              safePosition(rack.position.x, 0),
-              3,
-              safePosition(rack.position.z, 0),
-            ),
-          )
-        }
+    } else if (selectedType === 'rack') {
+      const rack = area.racks.find((r: Rack) => r.id === selectedId)
+      if (rack) {
+        setPosition(
+          new Vector3(
+            safePosition(rack.position.x, 0),
+            Math.max(1.2, (rack.height ?? 2) * 0.55),
+            safePosition(rack.position.z, 0),
+          ),
+        )
       }
     }
 
-    // Get Data
     if (selectedType === 'product') {
-      // Search deeply
+      const catalogId = resolveProductFacingId(selectedId)
       for (const r of area.racks) {
         for (const s of r.sides) {
           for (const row of s.rows) {
             for (const b of row.bins) {
-              const p = b.products.find((prod: Product) => prod.id === selectedId)
-              if (p) setData(p)
+              const p = b.products.find(
+                (prod: Product) =>
+                  prod.id === selectedId || resolveProductFacingId(prod.id) === catalogId,
+              )
+              if (p) {
+                setData({ ...p, __binName: b.binName, __qty: p.quantity })
+                setKind('product')
+                return
+              }
             }
           }
         }
       }
     } else if (selectedType === 'rack') {
       const r = area.racks.find((rack: Rack) => rack.id === selectedId)
-      if (r) setData(r)
+      if (r) {
+        setData(r)
+        setKind('rack')
+      }
     } else if (selectedType === 'bin') {
       for (const r of area.racks) {
         for (const s of r.sides) {
           for (const row of s.rows) {
             const b = row.bins.find((bin: Bin) => bin.id === selectedId)
-            if (b) setData(b)
+            if (b) {
+              setData({
+                ...b,
+                __rackName: displayRackName(r),
+                __skuCount: b.products.length,
+                __facings: b.products.reduce(
+                  (n, p) => n + Math.max(1, Math.floor(Number(p.quantity) || 1)),
+                  0,
+                ),
+              })
+              setKind('bin')
+              return
+            }
           }
         }
       }
@@ -77,54 +116,100 @@ export function SelectionPopup() {
       for (const r of area.racks) {
         for (const s of r.sides) {
           const row = s.rows.find((row: Row) => row.id === selectedId)
-          if (row) setData(row)
+          if (row) {
+            setData({
+              ...row,
+              __rackName: displayRackName(r),
+              __binCount: row.bins.length,
+            })
+            setKind('row')
+            return
+          }
         }
       }
     }
-
   }, [selectedId, selectedType, scene, area])
 
-  // Don't show popup for area, rack, bin, or row
-  if (!position || !data || !selectedId || selectedType === 'area' || selectedType === 'rack' || selectedType === 'bin' || selectedType === 'row') return null
+  const chip = useMemo(() => {
+    if (!kind || !data) return null
+    if (kind === 'product') {
+      return {
+        eyebrow: 'Product',
+        title: data.name || 'SKU',
+        accent: data.color || '#34d399',
+        lines: [
+          `${cm(data.width)} × ${cm(data.depth)} × ${cm(data.height)}`,
+          data.__qty > 1 ? `${data.__qty} facings` : null,
+          data.brandName || null,
+        ].filter(Boolean),
+      }
+    }
+    if (kind === 'bin') {
+      return {
+        eyebrow: 'Bin',
+        title: data.binName || 'Bin',
+        accent: '#38bdf8',
+        lines: [
+          `${cm(data.width)} × ${cm(data.depth)} × ${cm(data.height)}`,
+          data.__skuCount
+            ? `${data.__skuCount} SKU · ${data.__facings} facings`
+            : 'Empty — attach a product',
+          data.__rackName || null,
+        ].filter(Boolean),
+      }
+    }
+    if (kind === 'row') {
+      return {
+        eyebrow: 'Row',
+        title: `Row · ${cm(data.height)} high`,
+        accent: '#a78bfa',
+        lines: [
+          `${data.__binCount} bin${data.__binCount === 1 ? '' : 's'}`,
+          data.__rackName || null,
+        ].filter(Boolean),
+      }
+    }
+    return {
+      eyebrow: 'Rack',
+      title: displayRackName(data),
+      accent: '#60a5fa',
+      lines: [
+        data.rackCode ? `Code ${data.rackCode}` : null,
+        `${Number(data.width).toFixed(2)} × ${Number(data.depth).toFixed(2)} m`,
+        data.fixtureType ? String(data.fixtureType).replace(/_/g, ' ') : null,
+      ].filter(Boolean),
+    }
+  }, [kind, data])
+
+  if (!position || !chip) return null
 
   return (
-    <Html position={position} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
-      <div style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        color: 'white',
-        padding: '12px',
-        borderRadius: '8px',
-        fontSize: '12px',
-        width: '200px',
-        backdropFilter: 'blur(4px)',
-        border: '1px solid rgba(255,255,255,0.2)',
-        boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
-        transform: 'translateY(-20px)',
-        transition: 'opacity 0.2s',
-      }}>
-        <div style={{
-          fontWeight: 'bold',
-          fontSize: '14px',
-          borderBottom: '1px solid rgba(255,255,255,0.2)',
-          paddingBottom: '5px',
-          marginBottom: '5px',
-          color: data.color ?? '#2C5282'
-        }}>
-          PRODUCT: {data.name || data.id?.substring(0, 8)}
+    <Html position={position} center zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+      <div className="animate-in fade-in zoom-in-95 duration-150 origin-bottom">
+        <div
+          className="min-w-[168px] max-w-[220px] rounded-xl border border-slate-500/80 bg-[#0f172a] shadow-2xl shadow-black/50 px-3 py-2.5 text-left"
+          style={{ transform: 'translateY(-14px)' }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className="h-2 w-2 rounded-full shrink-0"
+              style={{ backgroundColor: chip.accent, boxShadow: `0 0 10px ${chip.accent}` }}
+            />
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+              {chip.eyebrow}
+            </span>
+          </div>
+          <p className="text-[13px] font-semibold text-white leading-snug truncate">{chip.title}</p>
+          <div className="mt-1.5 space-y-0.5">
+            {chip.lines.map((line) => (
+              <p key={line} className="text-[10px] text-slate-300 truncate">
+                {line}
+              </p>
+            ))}
+          </div>
         </div>
-
-        {/* Popup only shown for product (we return null for area, rack, bin, row) */}
-        <div>ID: {data.id}</div>
-        <div>Dim: {typeof data.width === 'number' ? data.width.toFixed(2) : data.width}x{typeof data.height === 'number' ? data.height.toFixed(2) : data.height}x{typeof data.depth === 'number' ? data.depth.toFixed(2) : data.depth}</div>
+        <div className="mx-auto w-0 h-0 border-l-[6px] border-r-[6px] border-t-[7px] border-l-transparent border-r-transparent border-t-[#0f172a]" />
       </div>
-      <div style={{
-        width: 0,
-        height: 0,
-        borderLeft: '6px solid transparent',
-        borderRight: '6px solid transparent',
-        borderTop: '6px solid rgba(0,0,0,0.85)',
-        margin: '0 auto',
-      }} />
     </Html>
   )
 }

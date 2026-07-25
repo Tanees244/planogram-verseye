@@ -36,13 +36,13 @@ export interface FacingPackResult {
 }
 
 /** Soft cap for rendered meshes (capacity math still uses full maxFit). */
-export const FACING_PACK_VISUAL_LIMIT = 48
+export const FACING_PACK_VISUAL_LIMIT = 72
 
 /**
  * Max full GLB clones per bin. Extra facings use cheap boxes/textures.
- * Each GLB clones meshes+materials — 100 bottles = browser melt.
+ * Prefer front-row slots so more facings read clearly on the shelf face.
  */
-export const MAX_GLB_FACINGS_PER_BIN = 8
+export const MAX_GLB_FACINGS_PER_BIN = 24
 
 
 function safePositive(n: number, fallback = 0.08): number {
@@ -179,6 +179,30 @@ export function packFacingsInBin(options: {
 
   const qty = Math.max(0, Math.floor(options.quantity) || 0)
 
+  // How many vertical layers this quantity will actually occupy (for visual scale).
+  const stackFirst = options.packOrder === 'stackFirst'
+  const gridColsForQty = Math.max(1, useCols)
+  const layersForQty = stackFirst
+    ? Math.min(
+        stackLayers,
+        Math.max(
+          1,
+          Math.ceil(
+            Math.min(qty || 1, gridColsForQty * Math.max(stackLayers, 1)) / gridColsForQty,
+          ),
+        ),
+      )
+    : Math.min(
+        stackLayers,
+        Math.max(
+          1,
+          Math.ceil(
+            Math.min(qty || 1, freeMax || qty || 1) /
+              Math.max(1, gridColsForQty * depthRows),
+          ),
+        ),
+      )
+
   // Visual inset only — does not change capacity.
   const inset = Math.max(0, wallThick)
   const placeableW = Math.max(0.001, binW - inset * 2 - usedW)
@@ -188,7 +212,9 @@ export function packFacingsInBin(options: {
     1,
     placeableW / Math.max(useCols * fw, 0.001),
     placeableD / Math.max(depthRows * fd, 0.001),
-    placeableH / Math.max(stackLayers * fh, 0.001),
+    // Only reserve height for layers we actually place — don't squash products
+    // to leave empty upper stack capacity.
+    placeableH / Math.max(layersForQty * fh, 0.001),
   )
   fw *= packScale
   fh *= packScale
@@ -201,7 +227,6 @@ export function packFacingsInBin(options: {
   const slots: FacingPackSlot[] = []
   const limit = Math.max(0, options.visualLimit ?? FACING_PACK_VISUAL_LIMIT)
   const renderCount = Math.min(qty, limit)
-  const stackFirst = options.packOrder === 'stackFirst'
   for (let i = 0; i < renderCount; i++) {
     const globalIndex = occupied + i
     const overflow = i >= freeMax

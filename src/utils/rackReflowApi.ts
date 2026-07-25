@@ -6,6 +6,10 @@ import type {
   RackReflowResult,
   ReflowShellPatch,
 } from '@/types/rackReflow'
+import {
+  normalizeShelfFacingUtilization,
+  type ShelfRowUtilization,
+} from '@/types/shelfUtilization'
 import { customConfigToShell, resolveRackOuter } from '@/utils/rackBlueprintMapper'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 
@@ -77,12 +81,36 @@ function authHeaders(): Record<string, string> {
   return headers
 }
 
+function normalizeRowUtilizations(raw: unknown): ShelfRowUtilization[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const rows: ShelfRowUtilization[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    const utilRaw = r.utilization ?? r
+    const utilization = normalizeShelfFacingUtilization(utilRaw)
+    if (!utilization) continue
+    const rowId = String(r.rowId ?? r.row_id ?? r.id ?? '')
+    const rowNumberRaw = r.rowNumber ?? r.row_number
+    const rowNumber =
+      rowNumberRaw != null && Number.isFinite(Number(rowNumberRaw))
+        ? Number(rowNumberRaw)
+        : null
+    rows.push({ rowId, rowNumber, utilization })
+  }
+  return rows.length > 0 ? rows : undefined
+}
+
 function normalizeReflowResult(data: unknown): RackReflowResult {
   const raw = (data ?? {}) as Record<string, unknown>
+  const rowUtilizations = normalizeRowUtilizations(
+    raw.rowUtilizations ?? raw.row_utilizations,
+  )
   return {
     quantityChanges: Array.isArray(raw.quantityChanges) ? raw.quantityChanges : [],
     geometryChanges: Array.isArray(raw.geometryChanges) ? raw.geometryChanges : [],
     exceptions: Array.isArray(raw.exceptions) ? raw.exceptions : [],
+    ...(rowUtilizations ? { rowUtilizations } : {}),
   }
 }
 
@@ -125,6 +153,7 @@ function normalizeMultiResponse(data: unknown): MultiRackReflowResponse {
         exceptions: result.exceptions,
         warnings: Array.isArray(target.warnings) ? (target.warnings as string[]) : [],
         errors: Array.isArray(target.errors) ? (target.errors as string[]) : [],
+        ...(result.rowUtilizations ? { rowUtilizations: result.rowUtilizations } : {}),
       }
     }),
   }

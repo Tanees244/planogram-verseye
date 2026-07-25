@@ -209,6 +209,44 @@ export function CustomRackMesh({
         <meshStandardMaterial color="#f4f6f8" roughness={0.85} metalness={0.1} />
       </mesh>
 
+      {/* Preview / empty-bay shelf boards from builder row count */}
+      {(() => {
+        const n = Math.max(0, Math.min(20, Math.floor(Number(config.shelfCount) || 0)))
+        if (n <= 0) return null
+        const usable = dims.innerHeight
+        const pitch = usable / n
+        const shelfTh = Math.min(
+          Math.max(0.012, Number(config.shelfThickness) || 0.03),
+          pitch * 0.35,
+        )
+        const shelfDepth = Math.max(0.08, cavityDepth * 0.92)
+        return (
+          <group>
+            {Array.from({ length: n }, (_, i) => {
+              // Deck at the bottom of each equal-height row band
+              const y = bodyBottomY + wt * 0.35 + pitch * i + shelfTh / 2
+              return (
+                <mesh
+                  key={`shelf-${i}`}
+                  position={[0, y, cavityZ]}
+                  raycast={() => null}
+                >
+                  <boxGeometry args={[innerW * 0.98, shelfTh, shelfDepth]} />
+                  <meshStandardMaterial
+                    color={isPreview ? '#cbd5e1' : '#dfe4ea'}
+                    metalness={0.15}
+                    roughness={0.7}
+                    transparent={isPreview}
+                    opacity={isPreview ? 0.95 : 1}
+                  />
+                  <Edges color="#94a3b8" threshold={15} lineWidth={1} />
+                </mesh>
+              )
+            })}
+          </group>
+        )
+      })()}
+
       {/* Header / fascia — flush on top, anchored to front face */}
       {config.header.enabled && dims.headerH > 0 && (
         <mesh position={[0, headerCenterY, headerZ]} {...bind}>

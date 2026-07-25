@@ -1,32 +1,21 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { proxyLayout } from '@/app/api/utils/layoutProxy';
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-export async function GET(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  return proxyLayout(req, `/api/v1/catalog/planograms/${encodeURIComponent(id)}`, { method: 'GET' });
+const GONE = {
+  isRequestSuccess: false,
+  message: 'Catalog planograms API is retired. Use /api/layout/shelves instead.',
+  statusCode: 410,
 }
 
-export async function PUT(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      { isRequestSuccess: false, message: 'Invalid JSON body', statusCode: 400 },
-      { status: 400 }
-    );
-  }
-  return proxyLayout(req, `/api/v1/catalog/planograms/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body,
-  });
+/** Legacy catalog planogram by id — retired. */
+export async function GET(_req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
+  return NextResponse.json(GONE, { status: 410 })
 }
 
-export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { id } = await context.params;
-  return proxyLayout(req, `/api/v1/catalog/planograms/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-  });
+export async function PUT(_req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
+  return NextResponse.json(GONE, { status: 410 })
+}
+
+export async function DELETE(_req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
+  return NextResponse.json(GONE, { status: 410 })
 }

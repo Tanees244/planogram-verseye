@@ -6,6 +6,7 @@ import { Alert, Btn, FormField, FormGrid, Input, PillGroup, Select } from '@/com
 import { FIXTURE_LIBRARY, FIXTURE_TYPES, type FixtureType } from '@/components/fixtures/types'
 import { Spinner } from '@/components/Spinner'
 import { getUserEnteredNames } from '@/utils/userEnteredNames'
+import { MIN_RACK_DEPTH, MIN_RACK_WIDTH } from '@/constants/dimensions'
 
 export interface RackFormState {
   width: string
@@ -163,7 +164,12 @@ export function AddRackModal({
             </Select>
           </FormField>
 
-          <FormField label="Width (m)" required error={errors.width}>
+          <FormField
+            label="Width (m)"
+            required
+            error={errors.width}
+            hint={`Minimum ${MIN_RACK_WIDTH} m`}
+          >
             <Input
               inputMode="decimal"
               value={form.width}
@@ -173,12 +179,17 @@ export function AddRackModal({
             />
           </FormField>
 
-          <FormField label="Depth (m)" required error={errors.height}>
+          <FormField
+            label="Depth (m)"
+            required
+            error={errors.depth}
+            hint={`Minimum ${MIN_RACK_DEPTH} m`}
+          >
             <Input
               inputMode="decimal"
               value={form.depth}
               placeholder="1.1"
-              error={!!errors.height}
+              error={!!errors.depth}
               onChange={(e) => set({ depth: e.target.value })}
             />
           </FormField>

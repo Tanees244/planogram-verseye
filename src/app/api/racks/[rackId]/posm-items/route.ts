@@ -52,6 +52,18 @@ export async function PUT(
       }));
   }
 
+  if (Array.isArray(body.binPosmItems)) {
+    patch.binPosmItems = body.binPosmItems
+      .filter((b) => b && typeof b === 'object' && typeof (b as any).binId === 'string')
+      .map((b: any) => ({
+        binId: b.binId,
+        itemTagPosmItemId:
+          b.itemTagPosmItemId === null || b.itemTagPosmItemId === ''
+            ? null
+            : b.itemTagPosmItemId,
+      }));
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
       { isRequestSuccess: false, message: 'No POSM fields to update', statusCode: 400 },

@@ -64,7 +64,7 @@ function GlbMesh({
           mesh.material = mesh.material.clone()
         }
     })
-    fitObjectToBox(clone, width, height, depth)
+    fitObjectToBox(clone, width, height, depth, 'stretch')
     return clone
   }, [scene, width, height, depth, productId])
 

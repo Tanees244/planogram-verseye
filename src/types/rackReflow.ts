@@ -1,6 +1,7 @@
 /** Rack reflow API types (layout backend). All dimensions in meters. */
 
 import type { HeaderFooterBand, RackShell } from '@/types/rackBlueprint'
+import type { ShelfRowUtilization } from '@/types/shelfUtilization'
 
 export interface ReflowOuterPatch {
   width?: number | null
@@ -69,6 +70,8 @@ export interface RackReflowResult {
   quantityChanges: ReflowQuantityChange[]
   geometryChanges: ReflowGeometryChange[]
   exceptions: ReflowException[]
+  /** Per-row face utilization after reflow (when backend returns it). */
+  rowUtilizations?: ShelfRowUtilization[]
 }
 
 /** @deprecated Use RackReflowResult */
@@ -94,6 +97,7 @@ export interface MultiRackReflowTargetResult {
   exceptions: ReflowException[]
   warnings?: string[]
   errors?: string[]
+  rowUtilizations?: ShelfRowUtilization[]
 }
 
 export interface MultiRackReflowResponse {

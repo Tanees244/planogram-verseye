@@ -9,10 +9,12 @@ import { Bin as BinType } from "@/store/planogramStore";
 import { usePlanogramStore } from "@/store/planogramStore";
 import { Product } from "./Product";
 import { ProductPlacementPreview } from "./ProductPlacementPreview";
+import { RowDividerPosmMesh } from "./RowDividerPosmMesh";
 import { expandProductsByQuantity, resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import { packFacingsInBin, packMixedFacingsInBin, MAX_GLB_FACINGS_PER_BIN } from "@/utils/facingPack";
 import { safeDim } from "@/utils/safeDimensions";
 import { isStackableSkuId } from "@/utils/stackableSku";
+import type { RackSurfacePosm } from "@/types/rackBlueprint";
 
 interface BinProps {
   bin: BinType;
@@ -21,6 +23,8 @@ interface BinProps {
   binHeight: number;
   binDepth: number;
   binWidth: number;
+  /** Legacy row.dividerPosm when this bin has no itemTagPosm. */
+  fallbackPosm?: RackSurfacePosm | null;
 }
 
 export function Bin({
@@ -30,6 +34,7 @@ export function Bin({
   binHeight,
   binDepth,
   binWidth,
+  fallbackPosm = null,
 }: BinProps) {
   const meshRef = useRef<Mesh>(null);
   const [hovered, setHovered] = useState(false);
@@ -392,6 +397,7 @@ export function Bin({
             <Product
               key={`${bin.id}-${index}-${product.id}`}
               product={product}
+              binId={bin.id}
               rowId={rowId}
               position={productPositions[index] ?? [0, 0, 0]}
               forceSimple={!useGlb}
@@ -399,6 +405,16 @@ export function Bin({
           )
         })
       })()}
+      <RowDividerPosmMesh
+        posm={bin.itemTagPosm ?? fallbackPosm}
+        rowWidth={actualBinWidth}
+        rowHeight={actualBinHeight}
+        shelfZ={-actualBinDepth / 2}
+        onSelect={(e) => {
+          e.stopPropagation()
+          setSelected(bin.id, 'bin')
+        }}
+      />
     </group>
   );
 }

@@ -4,12 +4,10 @@ import { useEffect, useState } from 'react'
 import type { Rack } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { PosmItemSelect } from '@/components/posm/PosmItemSelect'
-import { CreatePosmForm } from '@/components/posm/CreatePosmForm'
 import { usePosmItems } from '@/components/posm/usePosmItems'
 import { Btn } from '@/components/ui/form'
 import { Spinner } from '@/components/Spinner'
 import { cn } from '@/lib/cn'
-import type { PosmItemListItem } from '@/types/rackBlueprint'
 import { resolvePosmImageUrl } from '@/utils/posmImageUrl'
 
 export function RackPosmPanel({
@@ -30,9 +28,6 @@ export function RackPosmPanel({
   const [rightId, setRightId] = useState(shell?.rightWallPosmItemId ?? '')
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [localItems, setLocalItems] = useState<PosmItemListItem[]>([])
-
-  const allItems = [...localItems, ...items.filter((i) => !localItems.some((l) => l.id === i.id))]
 
   useEffect(() => {
     setHeaderId(shell?.headerPosmItemId ?? '')
@@ -47,13 +42,6 @@ export function RackPosmPanel({
     shell?.rightWallPosmItemId,
   ])
 
-  const handleCreated = (item: PosmItemListItem) => {
-    setLocalItems((prev) => [item, ...prev.filter((p) => p.id !== item.id)])
-    // Auto-select onto header so attach is one click away
-    if (!headerId) setHeaderId(item.id)
-    void refetch()
-  }
-
   const handleSave = async () => {
     setBusy(true)
     setSaveError(null)
@@ -62,7 +50,7 @@ export function RackPosmPanel({
         string,
         { id: string; name: string; posmType: string; imageUrl?: string | null; imageStorageKey?: string | null }
       > = {}
-      for (const item of allItems) {
+      for (const item of items) {
         catalog[item.id] = {
           id: item.id,
           name: item.name,
@@ -82,6 +70,7 @@ export function RackPosmPanel({
         catalog,
       )
       if (!res.success) setSaveError(res.message ?? 'Save failed')
+      else void refetch()
     } finally {
       setBusy(false)
     }
@@ -94,7 +83,7 @@ export function RackPosmPanel({
   const leftEnabled = walls?.left !== false
   const rightEnabled = walls?.right !== false
   const previewFor = (id: string) => {
-    const item = allItems.find((p) => p.id === id)
+    const item = items.find((p) => p.id === id)
     if (!item) return null
     return resolvePosmImageUrl(item)
   }
@@ -115,20 +104,18 @@ export function RackPosmPanel({
         Rack POSM — header / footer / walls
       </p>
       <p className={cn('text-[11px] leading-snug', dark ? 'text-gray-500' : 'text-gray-400')}>
-        Create a POSM with an image below, then assign it to a surface and save.
+        Assign an existing POSM to a surface, then save.
       </p>
 
       {(error || saveError) && (
         <p className="text-[11px] text-red-400">{saveError || error}</p>
       )}
 
-      <CreatePosmForm storeId={selectedStoreId} dark={dark} onCreated={handleCreated} />
-
       <PosmItemSelect
         label="Header fascia"
         value={headerId}
         onChange={setHeaderId}
-        items={allItems}
+        items={items}
         loading={loading}
         disabled={!headerEnabled}
         dark={dark}
@@ -146,7 +133,7 @@ export function RackPosmPanel({
         label="Footer kick plate"
         value={footerId}
         onChange={setFooterId}
-        items={allItems}
+        items={items}
         loading={loading}
         disabled={!footerEnabled}
         dark={dark}
@@ -164,7 +151,7 @@ export function RackPosmPanel({
         label="Left wall"
         value={leftId}
         onChange={setLeftId}
-        items={allItems}
+        items={items}
         loading={loading}
         disabled={!leftEnabled}
         dark={dark}
@@ -181,7 +168,7 @@ export function RackPosmPanel({
         label="Right wall"
         value={rightId}
         onChange={setRightId}
-        items={allItems}
+        items={items}
         loading={loading}
         disabled={!rightEnabled}
         dark={dark}
@@ -195,7 +182,7 @@ export function RackPosmPanel({
         />
       )}
 
-      <Btn variant="primary" disabled={busy || loading} onClick={handleSave} className="w-full">
+      <Btn variant="primary" disabled={busy || loading} onClick={() => void handleSave()} className="w-full">
         {busy && <Spinner />}
         {busy ? 'Saving…' : 'Save POSM assignments'}
       </Btn>

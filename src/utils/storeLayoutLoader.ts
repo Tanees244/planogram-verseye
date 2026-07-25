@@ -219,6 +219,7 @@ export function unwrapRackPayload(raw: any): any {
     return {
       ...rack,
       blueprintName: raw.name ?? rack.blueprintName,
+      displayName: raw.displayName ?? raw.display_name ?? rack.displayName,
       sides: rack.sides ?? rack.layout?.sides ?? [],
     }
   }
@@ -318,6 +319,11 @@ export function normalizeRack(rawInput: any): Rack {
             height: binDims.height,
             binName: b.binName ?? b.name ?? b.binCode ?? undefined,
             products: normalizeBinProducts(b),
+            itemTagPosmItemId:
+              b.itemTagPosmItemId ??
+              (typeof b.itemTagPosm?.id === 'string' ? b.itemTagPosm.id : null) ??
+              null,
+            itemTagPosm: normalizeRackPosm(b.itemTagPosm ?? b.itemTagDisplay),
           }
         })
         return {
@@ -385,6 +391,12 @@ export function normalizeRack(rawInput: any): Rack {
     fixtureType,
     customConfig,
     blueprintName: raw.blueprintName ?? raw.blueprint_name ?? undefined,
+    displayName:
+      raw.displayName ??
+      raw.display_name ??
+      raw.blueprintName ??
+      raw.blueprint_name ??
+      undefined,
     publishedAt: raw.publishedAt ?? raw.published_at ?? null,
     lastUpdated: raw.lastUpdated ?? raw.last_updated ?? raw.updatedAt ?? raw.updated_at ?? null,
     placement: placement ?? undefined,
@@ -467,6 +479,7 @@ export function mergeRackPositions(
       fixtureType: rack.fixtureType ?? prev.fixtureType,
       customConfig: rack.customConfig ?? prev.customConfig,
       blueprintName: rack.blueprintName ?? prev.blueprintName,
+      displayName: rack.displayName ?? prev.displayName,
       placement: options?.preferExistingPlacement
         ? (prev.placement ?? rack.placement)
         : (rack.placement ?? prev.placement),
@@ -726,6 +739,16 @@ function collectPosmIdsNeedingMedia(racks: Rack[]): Set<string> {
         ) {
           wanted.add(row.dividerPosmItemId)
         }
+        for (const bin of row.bins) {
+          take(bin.itemTagPosm)
+          if (
+            !bin.itemTagPosm &&
+            bin.itemTagPosmItemId &&
+            UUID_RE.test(bin.itemTagPosmItemId)
+          ) {
+            wanted.add(bin.itemTagPosmItemId)
+          }
+        }
       }
     }
   }
@@ -842,6 +865,10 @@ export async function hydratePosmMediaFromCatalog(
       rows: side.rows.map((row) => ({
         ...row,
         dividerPosm: mergePosmMedia(row.dividerPosm, row.dividerPosmItemId),
+        bins: row.bins.map((bin) => ({
+          ...bin,
+          itemTagPosm: mergePosmMedia(bin.itemTagPosm, bin.itemTagPosmItemId),
+        })),
       })),
     })),
   }))

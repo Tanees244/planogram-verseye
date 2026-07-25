@@ -159,7 +159,10 @@ export interface UpdateRackPosmItemsRequest {
 
   rightWallPosmItemId?: string | null;
 
+  /** @deprecated Prefer binPosmItems (item-tag on bin). Kept for legacy row talkers. */
   rowPosmItems?: Array<{ rowId: string; dividerPosmItemId: string | null }>;
+
+  binPosmItems?: Array<{ binId: string; itemTagPosmItemId: string | null }>;
 
 }
 
@@ -206,8 +209,6 @@ export interface BinProduct {
 }
 
 
-
-import type { ShelfFacingUtilization } from '@/types/shelfUtilization'
 
 export interface BlueprintRow {
 
@@ -264,6 +265,10 @@ export interface BlueprintBin {
   slotCount: number | null;
 
   products: BinProduct[];
+
+  itemTagPosmItemId?: string | null;
+
+  itemTagPosm?: RackSurfacePosm | null;
 
 }
 

@@ -19,6 +19,7 @@ function BinScene({
   usedWidthM,
   occupiedFacings,
   fits,
+  packOrder = 'depthFirst',
 }: {
   binWidthM: number
   binHeightM: number
@@ -30,6 +31,7 @@ function BinScene({
   usedWidthM: number
   occupiedFacings: number
   fits: boolean
+  packOrder?: 'depthFirst' | 'stackFirst'
 }) {
   const pack = packFacingsInBin({
     binWidth: binWidthM,
@@ -40,6 +42,7 @@ function BinScene({
     usedWidthM,
     occupiedFacings,
     visualLimit: PREVIEW_SLOT_LIMIT,
+    packOrder,
   })
 
   const maxDim = Math.max(binWidthM, binHeightM, binDepthM, 0.2)
@@ -66,7 +69,7 @@ function BinScene({
               <Instance
                 key={slot.index}
                 position={[slot.x, slot.y, slot.z]}
-                scale={[slot.width * 0.9, slot.height * 0.9, slot.depth * 0.9]}
+                scale={[slot.width, slot.height, slot.depth]}
                 color={slot.overflow || !fits ? '#ef4444' : '#2C5282'}
               />
             ))}
@@ -94,6 +97,7 @@ export function FacingBin3DPreview({
   quantity,
   usedWidthM = 0,
   occupiedFacings = 0,
+  packOrder = 'depthFirst',
   className,
   label = '3D bin preview',
 }: {
@@ -106,6 +110,7 @@ export function FacingBin3DPreview({
   quantity: number
   usedWidthM?: number
   occupiedFacings?: number
+  packOrder?: 'depthFirst' | 'stackFirst'
   className?: string
   label?: string
 }) {
@@ -126,6 +131,7 @@ export function FacingBin3DPreview({
     occupiedFacings,
     // Header only needs grid math (cols × rows × layers) — skip slot building.
     visualLimit: 0,
+    packOrder,
   })
   const qty = Math.max(0, Math.floor(quantity) || 0)
   const overflow = qty > pack.maxFit
@@ -165,12 +171,14 @@ export function FacingBin3DPreview({
             usedWidthM={usedWidthM}
             occupiedFacings={occupiedFacings}
             fits={!overflow}
+            packOrder={packOrder}
           />
         </Canvas>
       </div>
       <p className="text-[10px] text-gray-500 leading-snug">
-        Facings fill left→right, then front→back, then stack up. Drag to orbit. Quantity is
-        limited to what fits inside the bin.
+        {packOrder === 'stackFirst'
+          ? 'Stackable: fill across, then stack up on the front face, then depth. Drag to orbit.'
+          : 'Facings fill left→right, then front→back, then stack up. Drag to orbit.'}
       </p>
     </div>
   )

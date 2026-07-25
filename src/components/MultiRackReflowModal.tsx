@@ -13,7 +13,9 @@ import {
   fetchApplyMultiRackReflow,
   fetchMultiRackReflowPreview,
 } from '@/utils/rackReflowApi'
+import { displayRackName } from '@/utils/displayRackName'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
+import type { ShelfRowUtilization } from '@/types/shelfUtilization'
 
 type Step = 'select' | 'preview' | 'results'
 
@@ -27,6 +29,9 @@ interface StoreOption {
 interface TargetRackOption {
   id: string
   rackCode: string
+  displayName?: string | null
+  blueprintName?: string | null
+  rackName?: string | null
   width?: number | null
   depth?: number | null
   storeId: string
@@ -66,6 +71,63 @@ function statusChip(status: MultiRackReflowTargetResult['status']) {
     default:
       return 'bg-red-100 text-red-800 border-red-200'
   }
+}
+
+function RowUtilizationBars({ rows }: { rows?: ShelfRowUtilization[] }) {
+  if (!rows || rows.length === 0) return null
+  return (
+    <div className="space-y-1.5 pt-1 border-t border-gray-100">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        Per-row utilization
+      </p>
+      {rows.map((ru, i) => {
+        const label =
+          ru.rowNumber != null ? `Row ${ru.rowNumber}` : ru.rowId || `Row ${i + 1}`
+        const u = ru.utilization
+        if (!u.canCalculate || u.status === 'dimensions_unavailable') {
+          return (
+            <div key={ru.rowId || i} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-gray-600">{label}</span>
+              <span className="text-gray-400">Unable to calculate</span>
+            </div>
+          )
+        }
+        const pct = Math.round(u.utilizationPercent)
+        return (
+          <div key={ru.rowId || i} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-gray-600">{label}</span>
+              <span
+                className={cn(
+                  'font-semibold tabular-nums',
+                  u.isOverCapacity ? 'text-red-600' : 'text-gray-800',
+                )}
+              >
+                {pct}%{u.isOverCapacity ? ' over' : ''}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden bg-gray-200">
+              <div
+                className={cn(
+                  'h-full rounded-full',
+                  u.isOverCapacity
+                    ? 'bg-red-500'
+                    : pct >= 95
+                      ? 'bg-emerald-500'
+                      : pct >= 70
+                        ? 'bg-sky-500'
+                        : pct >= 40
+                          ? 'bg-amber-500'
+                          : 'bg-red-400',
+                )}
+                style={{ width: `${Math.max(2, Math.min(100, u.utilizationPercent))}%` }}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function TargetCard({
@@ -114,6 +176,8 @@ function TargetCard({
         </p>
       ))}
 
+      <RowUtilizationBars rows={target.rowUtilizations} />
+
       {(target.exceptions.length > 0 ||
         target.quantityChanges.length > 0 ||
         target.geometryChanges.length > 0) && (
@@ -157,8 +221,10 @@ export function MultiRackReflowModal({
 
   const labelById = useMemo(() => {
     const m = new Map<string, string>()
-    for (const r of areaRacks) m.set(r.rackId || r.id, r.rackCode || r.id)
-    for (const r of candidates) m.set(r.id, `${r.rackCode} (${r.storeName})`)
+    for (const r of areaRacks) m.set(r.rackId || r.id, displayRackName(r))
+    for (const r of candidates) {
+      m.set(r.id, `${displayRackName(r)} (${r.storeName})`)
+    }
     return m
   }, [areaRacks, candidates])
 
@@ -204,6 +270,9 @@ export function MultiRackReflowModal({
               .map((r) => ({
                 id: r.rackId || r.id,
                 rackCode: r.rackCode || r.id,
+                displayName: r.displayName,
+                blueprintName: r.blueprintName,
+                rackName: r.blueprintName,
                 width: r.width,
                 depth: r.depth,
                 storeId,
@@ -232,6 +301,9 @@ export function MultiRackReflowModal({
               return {
                 id,
                 rackCode: String(raw.rackCode ?? raw.rack_code ?? id),
+                displayName: (raw.displayName ?? raw.display_name ?? null) as string | null,
+                blueprintName: (raw.blueprintName ?? raw.blueprint_name ?? null) as string | null,
+                rackName: (raw.rackName ?? raw.rack_name ?? null) as string | null,
                 width: raw.outer?.width ?? raw.width ?? null,
                 depth: raw.outer?.depth ?? raw.depth ?? null,
                 storeId,
@@ -352,7 +424,7 @@ export function MultiRackReflowModal({
       open={open}
       onClose={onClose}
       title="Apply multi-rack reflow"
-      subtitle={`Source: ${rack.rackCode}`}
+      subtitle={`Source: ${displayRackName(rack)}`}
       maxWidth="3xl"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -388,8 +460,8 @@ export function MultiRackReflowModal({
           Pick <strong>existing</strong> target racks in this store or another. Targets keep their
           own outer size and floor placement; source SKU/bin topology is mapped and facings
           reflow onto those fixtures. This does <strong>not</strong> create new racks — use{' '}
-          <strong>Publish to stores</strong> only when you intentionally want to clone a new
-          fixture into another store.
+          <strong>Copy to stores</strong> only when you intentionally want to create a 1:1 clone
+          of this fixture in another store.
         </p>
         {!UUID_RE.test(sourceRackId) && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -460,7 +532,7 @@ export function MultiRackReflowModal({
                       />
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-gray-900 truncate">
-                          {r.rackCode}
+                          {displayRackName(r)}
                         </div>
                         <div className="text-[11px] text-gray-500">
                           {r.storeName}

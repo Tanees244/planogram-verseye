@@ -342,6 +342,9 @@ function mapBinForApi(bin: Bin, slotIndex: number, slotCount: number, xStart: nu
     xStart,
     xEnd,
     products: bin.products.map(mapProductForApi),
+    ...(bin.itemTagPosmItemId
+      ? { itemTagPosmItemId: bin.itemTagPosmItemId }
+      : {}),
   };
 }
 
@@ -496,15 +499,22 @@ export function maxBinDepthM(rack: Rack, rowId?: string | null): number {
       const row = side.rows.find((r) => r.id === rowId);
       if (!row) continue;
 
-      // Priority mirrors the API's business rule: the row's own depth, then
-      // the side depth. side.inner.depth is the FULL cavity (both faces on a
-      // double-sided gondola, e.g. 0.94) and must NOT outrank side.depth (0.55).
+      // API available depth is the tightest of row / side depth. Prefer side.depth
+      // as a hard ceiling — row.depth can be wrongly set to outer/cavity depth
+      // (e.g. 0.98) while the API only allows ~0.55 (side.depth).
+      // Never use side.inner.depth alone: on double-sided gondolas it is the
+      // full cavity across both faces.
       const rowD = Number(row.depth);
       const sideD = Number(side.depth);
-      const sideInnerD = Number(side.inner?.depth);
-      if (Number.isFinite(rowD) && rowD > 0) limit = rowD;
-      else if (Number.isFinite(sideD) && sideD > 0) limit = sideD;
-      else if (Number.isFinite(sideInnerD) && sideInnerD > 0) limit = sideInnerD;
+      const candidates: number[] = [];
+      if (Number.isFinite(sideD) && sideD > 0) candidates.push(sideD);
+      if (Number.isFinite(rowD) && rowD > 0) candidates.push(rowD);
+      if (candidates.length > 0) {
+        limit = Math.min(...candidates);
+      } else {
+        const sideInnerD = Number(side.inner?.depth);
+        if (Number.isFinite(sideInnerD) && sideInnerD > 0) limit = sideInnerD;
+      }
 
       // Existing bins already accepted by the API are a reliable ceiling too.
       for (const bin of row.bins) {
@@ -570,10 +580,10 @@ export function buildUpdateRackPayload(
     inner,
     placement,
     // Top-level placement mirrors (API accepts both nested + flat fields).
-    positionX: placement.position.x,
-    positionY: placement.position.y ?? 0,
-    positionZ: placement.position.z,
-    rotationY: placement.rotation?.y ?? 0,
+    positionX: placement.position?.x ?? rack.position.x,
+    positionY: placement.position?.y ?? rack.position.y ?? 0,
+    positionZ: placement.position?.z ?? rack.position.z,
+    rotationY: placement.rotation?.y ?? rack.rotation?.y ?? 0,
     width: outer.width,
     depth: outer.depth,
     height: outer.height,

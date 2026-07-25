@@ -12,6 +12,8 @@ interface AddRowModalProps {
   /** Number of rows to add at once (default 1). */
   count?: string
   onCountChange?: (v: string) => void
+  /** Usable body height (m) — when set, changing count auto-fills equal row heights. */
+  availableHeightM?: number
   onSubmit: () => void
   isSubmitting?: boolean
 }
@@ -23,10 +25,15 @@ export function AddRowModal({
   onHeightChange,
   count = '1',
   onCountChange,
+  availableHeightM,
   onSubmit,
   isSubmitting,
 }: AddRowModalProps) {
   const n = Math.max(1, Math.min(20, Math.floor(Number(count) || 1)))
+  const autoH =
+    availableHeightM != null && availableHeightM > 0
+      ? Number((availableHeightM / n).toFixed(3))
+      : null
 
   return (
     <Modal
@@ -50,7 +57,11 @@ export function AddRowModal({
       <div className="space-y-3">
         <FormField
           label="Number of rows"
-          hint="Add multiple shelves at once (max 20). Stops if the rack runs out of height."
+          hint={
+            autoH != null
+              ? `Equal heights: ${availableHeightM!.toFixed(2)} m ÷ ${n} = ${autoH} m each`
+              : 'Add multiple shelves at once (max 20). Stops if the rack runs out of height.'
+          }
         >
           <Input
             type="number"
@@ -61,11 +72,25 @@ export function AddRowModal({
             value={count}
             onChange={(e) => {
               const v = e.target.value
-              if (v === '' || /^\d+$/.test(v)) onCountChange?.(v)
+              if (v === '' || /^\d+$/.test(v)) {
+                onCountChange?.(v)
+                if (availableHeightM != null && availableHeightM > 0) {
+                  const nextN = Math.max(1, Math.min(20, Math.floor(Number(v) || 1)))
+                  onHeightChange(String(Number((availableHeightM / nextN).toFixed(3))))
+                }
+              }
             }}
           />
         </FormField>
-        <FormField label="Row Height (m)" required hint="Height for each new row">
+        <FormField
+          label="Row Height (m)"
+          required
+          hint={
+            autoH != null
+              ? 'Auto-filled from available height ÷ number of rows (you can override)'
+              : 'Height for each new row'
+          }
+        >
           <Input
             inputMode="decimal"
             value={height}

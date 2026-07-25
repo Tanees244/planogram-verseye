@@ -14,6 +14,7 @@ export function FacingShelfPreview({
   quantity,
   usedWidthM = 0,
   occupiedFacings = 0,
+  packOrder = 'depthFirst',
   className,
   label = 'Live facing preview',
 }: {
@@ -26,6 +27,7 @@ export function FacingShelfPreview({
   quantity: number
   usedWidthM?: number
   occupiedFacings?: number
+  packOrder?: 'depthFirst' | 'stackFirst'
   className?: string
   label?: string
 }) {
@@ -47,12 +49,15 @@ export function FacingShelfPreview({
     usedWidthM: usedW,
     occupiedFacings,
     visualLimit: 1, // grid views use math; skip heavy slot list
+    packOrder,
   })
 
   const { cols, depthRows, stackLayers, maxFit } = pack
   const overflow = qty > maxFit
   const overflowCount = Math.max(0, qty - maxFit)
   const placedQty = Math.min(qty, maxFit)
+  const stackFirst = packOrder === 'stackFirst'
+  const frontPlane = Math.max(1, cols * stackLayers)
   const footprint = Math.max(1, cols * depthRows)
 
   // Front elevation: front depth-row only, columns × stack layers
@@ -60,10 +65,20 @@ export function FacingShelfPreview({
     Array.from({ length: stackLayers }, () => false),
   )
   for (let i = 0; i < placedQty; i++) {
-    const layer = Math.floor(i / footprint)
-    const rem = i % footprint
-    const col = rem % cols
-    const depthRow = Math.floor(rem / cols)
+    let col: number
+    let depthRow: number
+    let layer: number
+    if (stackFirst) {
+      depthRow = Math.floor(i / frontPlane)
+      const rem = i % frontPlane
+      col = rem % cols
+      layer = Math.floor(rem / cols)
+    } else {
+      layer = Math.floor(i / footprint)
+      const rem = i % footprint
+      col = rem % cols
+      depthRow = Math.floor(rem / cols)
+    }
     if (depthRow === 0 && layer < stackLayers && col < cols) {
       frontCells[col][layer] = true
     }
@@ -74,10 +89,20 @@ export function FacingShelfPreview({
     Array.from({ length: depthRows }, () => 0),
   )
   for (let i = 0; i < placedQty; i++) {
-    const layer = Math.floor(i / footprint)
-    const rem = i % footprint
-    const col = rem % cols
-    const depthRow = Math.floor(rem / cols)
+    let col: number
+    let depthRow: number
+    let layer: number
+    if (stackFirst) {
+      depthRow = Math.floor(i / frontPlane)
+      const rem = i % frontPlane
+      col = rem % cols
+      layer = Math.floor(rem / cols)
+    } else {
+      layer = Math.floor(i / footprint)
+      const rem = i % footprint
+      col = rem % cols
+      depthRow = Math.floor(rem / cols)
+    }
     if (col < cols && depthRow < depthRows) {
       topStacks[col][depthRow] = Math.max(topStacks[col][depthRow], layer + 1)
     }
@@ -199,8 +224,9 @@ export function FacingShelfPreview({
       </div>
 
       <p className="text-[10px] text-gray-500 leading-snug">
-        Pack order: across → depth → stack up. Front shows the front row with stacks; top
-        numbers show stack height per cell (
+        {packOrder === 'stackFirst'
+          ? 'Stackable pack: across → stack up → depth. Front shows stacks; top numbers show height per cell ('
+          : 'Pack order: across → depth → stack up. Front shows the front row with stacks; top numbers show stack height per cell ('}
         {(facingWidthM * 100).toFixed(0)}×{(faceD * 100).toFixed(0)}×
         {(facingHeightM * 100).toFixed(0)} cm).
       </p>

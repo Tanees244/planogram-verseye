@@ -97,7 +97,7 @@ function GhostGlb({
   const { scene } = useGLTF(url)
   const model = useMemo(() => {
     const clone = scene.clone(true)
-    fitObjectToBox(clone, width, height, depth)
+    fitObjectToBox(clone, width, height, depth, 'stretch')
     clone.traverse((child) => {
       const mesh = child as Mesh
       if (!mesh.isMesh) return

@@ -13,6 +13,66 @@ import {
   fetchApplyReflow,
   fetchReflowPreview,
 } from '@/utils/rackReflowApi'
+import { displayRackName } from '@/utils/displayRackName'
+import { cn } from '@/lib/cn'
+import type { ShelfRowUtilization } from '@/types/shelfUtilization'
+
+function RowUtilizationBars({ rows }: { rows?: ShelfRowUtilization[] }) {
+  if (!rows || rows.length === 0) return null
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        Per-row utilization
+      </p>
+      {rows.map((ru, i) => {
+        const label =
+          ru.rowNumber != null ? `Row ${ru.rowNumber}` : ru.rowId || `Row ${i + 1}`
+        const u = ru.utilization
+        if (!u.canCalculate || u.status === 'dimensions_unavailable') {
+          return (
+            <div key={ru.rowId || i} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-gray-600">{label}</span>
+              <span className="text-gray-400">Unable to calculate</span>
+            </div>
+          )
+        }
+        const pct = Math.round(u.utilizationPercent)
+        return (
+          <div key={ru.rowId || i} className="space-y-0.5">
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-gray-600">{label}</span>
+              <span
+                className={cn(
+                  'font-semibold tabular-nums',
+                  u.isOverCapacity ? 'text-red-600' : 'text-gray-800',
+                )}
+              >
+                {pct}%{u.isOverCapacity ? ' over' : ''}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden bg-gray-200">
+              <div
+                className={cn(
+                  'h-full rounded-full',
+                  u.isOverCapacity
+                    ? 'bg-red-500'
+                    : pct >= 95
+                      ? 'bg-emerald-500'
+                      : pct >= 70
+                        ? 'bg-sky-500'
+                        : pct >= 40
+                          ? 'bg-amber-500'
+                          : 'bg-red-400',
+                )}
+                style={{ width: `${Math.max(2, Math.min(100, u.utilizationPercent))}%` }}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export function RackReflowModal({
   rack,
@@ -100,7 +160,7 @@ export function RackReflowModal({
       open={open}
       onClose={onClose}
       title="Apply rack reflow"
-      subtitle={`${rack.rackCode} — POST /racks/{id}/reflow (resize + fill capacity)`}
+      subtitle={`${displayRackName(rack)} — POST /racks/{id}/reflow (resize + fill capacity)`}
       maxWidth="2xl"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -148,7 +208,10 @@ export function RackReflowModal({
             <Spinner /> Loading reflow preview…
           </div>
         ) : (
-          <ReflowExceptionTray preview={preview} dark={false} />
+          <>
+            <RowUtilizationBars rows={preview?.rowUtilizations} />
+            <ReflowExceptionTray preview={preview} dark={false} />
+          </>
         )}
       </div>
     </Modal>

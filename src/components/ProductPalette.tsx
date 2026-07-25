@@ -21,9 +21,16 @@ import { safeDim } from '@/utils/safeDimensions'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
 import { SkuThumb } from '@/components/SkuThumb'
-import { PANEL_SHELL } from '@/lib/uiShell'
+import { PANEL_SHELL, PANEL_LIST_ITEM } from '@/lib/uiShell'
 
 export const PRODUCT_DRAG_MIME = 'application/planogram-sku'
+/** Drag an existing bin SKU to another bin (move inventory). */
+export const PRODUCT_MOVE_MIME = 'application/planogram-sku-move'
+
+export type ProductMoveDragPayload = {
+  mode: 'move'
+  sourceBinId: string
+}
 
 const COLLAPSE_KEY = 'planogram.productPaletteCollapsed'
 const shell = PANEL_SHELL
@@ -352,11 +359,13 @@ export function ProductPalette() {
                   startProductPlacement(skuToPending(sku))
                 }}
                 className={cn(
-                  'flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all',
-                  'bg-white/[0.04] border-white/10 hover:bg-emerald-500/15 hover:border-emerald-400/35',
-                  active && 'bg-emerald-500/25 border-emerald-400/50 shadow-lg shadow-emerald-500/15',
-                  isDragging && 'opacity-50 scale-[0.98]',
-                  !selectedStoreId && 'opacity-45 cursor-not-allowed',
+                  PANEL_LIST_ITEM,
+                  'hover:bg-emerald-500/15 hover:border-emerald-400/35',
+                  active &&
+                    'bg-emerald-500/25 border-emerald-400/50 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/50 -translate-y-0.5',
+                  isDragging && 'opacity-40 scale-95 ring-2 ring-emerald-300/60',
+                  !selectedStoreId &&
+                    'opacity-45 cursor-not-allowed hover:translate-y-0 hover:shadow-none',
                 )}
               >
                 <SkuThumb

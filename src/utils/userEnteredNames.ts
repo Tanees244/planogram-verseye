@@ -5,7 +5,7 @@
 
 const PREFIX = 'planogram.userNames.'
 
-export type NameScope = 'rack' | 'planogram' | 'bin' | 'sku'
+export type NameScope = 'rack' | 'planogram' | 'bin' | 'sku' | 'posm'
 
 function key(scope: NameScope) {
   return `${PREFIX}${scope}`

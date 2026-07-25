@@ -21,9 +21,14 @@ export function RoofToggle({
       type="button"
       onClick={() => setRoofVisible(!roofVisible)}
       className={cn(
-        'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all',
+        'flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all duration-200',
         embedded
-          ? 'text-gray-300 hover:text-white hover:bg-white/10'
+          ? cn(
+              'w-full text-left',
+              roofVisible
+                ? 'bg-brand/25 text-white border border-brand/40 hover:bg-brand/35'
+                : 'text-gray-300 hover:text-white hover:bg-white/10 border border-transparent',
+            )
           : cn(
               'shadow-lg border',
               dark
@@ -32,19 +37,23 @@ export function RoofToggle({
             ),
         className,
       )}
-      title={roofVisible ? 'Click the roof in 3D, or use this button to open the building' : 'Show building roof'}
+      title={
+        roofVisible
+          ? 'Click the roof in 3D, or use this button to open the building'
+          : 'Show building roof'
+      }
+      aria-pressed={!roofVisible}
     >
-      {roofVisible ? (
-        <>
-          <FiLayers size={16} />
-          Open Building
-        </>
-      ) : (
-        <>
-          <FiHome size={16} />
-          Show Roof
-        </>
-      )}
+      <span className="inline-flex items-center gap-1.5">
+        {roofVisible ? <FiLayers size={16} /> : <FiHome size={16} />}
+        {roofVisible ? 'Open Building' : 'Show Roof'}
+      </span>
+      <span
+        className={cn(
+          'h-2 w-2 rounded-full transition-colors',
+          roofVisible ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400',
+        )}
+      />
     </button>
   )
 }
@@ -54,8 +63,8 @@ export function RoofHint() {
   if (!roofVisible) return null
 
   return (
-    <div className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-medium shadow-lg border border-brand-dark animate-pulse">
-      Click the roof to enter and edit your layout
+    <div className="px-3.5 py-2 rounded-xl bg-[#152033] text-brand-light text-[12px] font-medium shadow-lg border border-brand/35 animate-in fade-in slide-in-from-top-1 duration-200">
+      Click the roof to enter the store
     </div>
   )
 }

@@ -29,7 +29,7 @@ import {
   listCustomFixturePresets,
   type CustomFixturePreset,
 } from '@/utils/customFixturePresets'
-import { PANEL_SHELL, PANEL_HEADER } from '@/lib/uiShell'
+import { PANEL_SHELL, PANEL_HEADER, PANEL_LIST_ITEM } from '@/lib/uiShell'
 
 const FIXTURE_ICONS: Record<FixtureType, React.ComponentType<{ size?: number; className?: string }>> = {
   GONDOLA: FiGrid,
@@ -62,8 +62,6 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const addRackError = usePlanogramStore((s) => s.addRackError)
   const setFixturePaletteCollapsed = usePlanogramStore((s) => s.setFixturePaletteCollapsed)
-  const nextRackName = usePlanogramStore((s) => s.nextRackName)
-  const setNextRackName = usePlanogramStore((s) => s.setNextRackName)
   const setFixtureDragActive = usePlanogramStore((s) => s.setFixtureDragActive)
 
   const [dragging, setDragging] = useState<FixtureType | null>(null)
@@ -208,28 +206,6 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
           fillHeight && 'flex-1',
         )}
       >
-        <label className="block">
-          <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
-            Rack name
-          </span>
-          <input
-            type="text"
-            value={nextRackName}
-            onChange={(e) => setNextRackName(e.target.value)}
-            disabled={!selectedStoreId}
-            placeholder="e.g. Beverages Wall A"
-            maxLength={80}
-            className={cn(
-              'mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white',
-              'placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand',
-              !selectedStoreId && 'opacity-45 cursor-not-allowed',
-            )}
-          />
-          <span className="text-[9px] text-gray-500 block mt-0.5">
-            Applied to the next rack you place (click or drag)
-          </span>
-        </label>
-
         <button
           type="button"
           onClick={() => selectedStoreId && openCustomRackBuilder('CUSTOM')}
@@ -309,11 +285,12 @@ export function FixturePalette({ fillHeight = false }: { fillHeight?: boolean })
                 startFixturePlacement(type)
               }}
               className={cn(
-                'flex items-center gap-2.5 p-2.5 rounded-xl border cursor-grab active:cursor-grabbing transition-all',
-                'bg-white/[0.04] border-white/10 hover:bg-sky-500/15 hover:border-sky-400/35',
-                active && 'bg-brand/30 border-brand/50 shadow-lg shadow-brand/20',
-                isDragging && 'opacity-50 scale-[0.98]',
-                !selectedStoreId && 'opacity-45 cursor-not-allowed',
+                PANEL_LIST_ITEM,
+                'hover:bg-sky-500/15 hover:border-sky-400/35',
+                active &&
+                  'bg-brand/30 border-brand/50 shadow-lg shadow-brand/20 ring-2 ring-brand/50 -translate-y-0.5',
+                isDragging && 'opacity-40 scale-95 ring-2 ring-sky-300/60',
+                !selectedStoreId && 'opacity-45 cursor-not-allowed hover:translate-y-0 hover:shadow-none',
               )}
               title={def.description}
             >

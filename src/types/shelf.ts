@@ -17,6 +17,10 @@ export interface ShelfListItem {
   lastUpdated?: string | null
   hasLayout?: boolean
   hasPlanogram?: boolean
+  /** True when an ideal planogram image is stored for this shelf. */
+  hasIdealImage?: boolean
+  /** True when the shelf is considered fully configured (layout + ideal image). */
+  isConfigured?: boolean
 }
 
 export type ShelfDetail = ShelfListItem & {

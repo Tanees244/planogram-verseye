@@ -12,6 +12,9 @@ export const DEFAULT_WAREHOUSE_HEIGHT = 8
 export const DEFAULT_RACK_WIDTH = 2.7
 export const DEFAULT_RACK_DEPTH = 1.1
 export const DEFAULT_RACK_HEIGHT = 6
+/** Minimum outer footprint when creating / placing a rack (meters). */
+export const MIN_RACK_WIDTH = 0.4
+export const MIN_RACK_DEPTH = 0.3
 export const DEFAULT_SHELF_LEVELS = 4
 
 /** Retail grocery shelf bay. */

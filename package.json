@@ -53,6 +53,7 @@
     "d3-sankey": "^0.12.3",
     "d3-shape": "^3.2.0",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "hls.js": "^1.6.16",
     "input-otp": "^1.4.2",
     "jspdf": "^4.2.1",

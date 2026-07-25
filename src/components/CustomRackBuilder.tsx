@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, ContactShadows } from '@react-three/drei'
 import { FiX, FiLayers, FiMaximize2 } from 'react-icons/fi'
 import { usePlanogramStore } from '@/store/planogramStore'
 import {
+  cloneCustomRackConfig,
   computeCustomRackDimensions,
   fitCustomRackToRetailWall,
   normalizeSectionSpans,
@@ -15,6 +16,8 @@ import {
 } from '@/components/fixtures/customRackTypes'
 import { CustomRackMesh } from '@/components/fixtures/CustomRackMesh'
 import { RETAIL_FIXTURE_HEIGHT } from '@/constants/warehouse'
+import { MIN_RACK_DEPTH, MIN_RACK_WIDTH } from '@/constants/dimensions'
+import { getUserEnteredNames } from '@/utils/userEnteredNames'
 
 function NumInput({
   label,
@@ -155,10 +158,17 @@ function SectionEditor({
           </p>
           <button
             type="button"
-            onClick={() => onChange({ width: 0, depth: 0 })}
+            onClick={() =>
+              onChange({
+                width: 0,
+                depth: 0,
+                protrusion: 0,
+                height: kind === 'header' ? 0.35 : 0.12,
+              })
+            }
             className="text-[10px] px-2 py-1 rounded-md bg-white/10 border border-white/15 text-gray-300 hover:bg-white/15"
           >
-            Reset to full rack span
+            Reset size (full span + default height)
           </button>
           <div className="grid grid-cols-2 gap-2">
             <NumInput
@@ -269,14 +279,74 @@ export function CustomRackBuilder() {
   const [saving, setSaving] = useState(false)
   const [rackName, setRackName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
+  const [dimError, setDimError] = useState<string | null>(null)
   const [showInPresets, setShowInPresets] = useState(true)
+  const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+  const [fitWallHeight, setFitWallHeight] = useState(false)
+  const preFitWallRef = useRef<CustomRackConfig | null>(null)
+
+  useEffect(() => {
+    setNameSuggestions(getUserEnteredNames('rack'))
+  }, [])
+
+  useEffect(() => {
+    if (!open) {
+      setFitWallHeight(false)
+      preFitWallRef.current = null
+      setDimError(null)
+    }
+  }, [open])
 
   const dims = useMemo(() => computeCustomRackDimensions(draft), [draft])
 
   if (!open) return null
 
-  const patch = (p: Partial<CustomRackConfig>) =>
-    setDraft((d) => normalizeSectionSpans({ ...d, ...p }))
+  const validateOuterDims = (cfg: CustomRackConfig = draft): string | null => {
+    if (!(cfg.outerWidth >= MIN_RACK_WIDTH)) {
+      return `Width must be at least ${MIN_RACK_WIDTH} m`
+    }
+    if (!(cfg.outerDepth >= MIN_RACK_DEPTH)) {
+      return `Depth must be at least ${MIN_RACK_DEPTH} m`
+    }
+    return null
+  }
+
+  const patch = (p: Partial<CustomRackConfig>) => {
+    if (p.outerWidth != null || p.outerDepth != null || p.outerHeight != null) {
+      // Manual dim edits leave "fit wall" mode
+      if (fitWallHeight && (p.outerHeight != null || p.outerWidth != null || p.outerDepth != null)) {
+        if (p.outerHeight != null && Math.abs(p.outerHeight - RETAIL_FIXTURE_HEIGHT) > 0.02) {
+          setFitWallHeight(false)
+          preFitWallRef.current = null
+        }
+      }
+    }
+    setDraft((d) => {
+      const next = normalizeSectionSpans({ ...d, ...p })
+      const err = validateOuterDims(next)
+      setDimError(err)
+      return next
+    })
+  }
+
+  const toggleFitWallHeight = (on: boolean) => {
+    if (on) {
+      preFitWallRef.current = cloneCustomRackConfig(draft)
+      const fitted = fitCustomRackToRetailWall(draft)
+      setDraft(fitted)
+      setFitWallHeight(true)
+      setDimError(validateOuterDims(fitted))
+      return
+    }
+    if (preFitWallRef.current) {
+      const restored = preFitWallRef.current
+      preFitWallRef.current = null
+      setDraft(restored)
+      setDimError(validateOuterDims(restored))
+    }
+    setFitWallHeight(false)
+  }
+
   const patchHeader = (p: Partial<CustomRackSection>) =>
     setDraft((d) => normalizeSectionSpans({ ...d, header: { ...d.header, ...p } }))
   const patchFooter = (p: Partial<CustomRackSection>) =>
@@ -286,6 +356,11 @@ export function CustomRackBuilder() {
 
   const handleSaveEdit = async () => {
     if (!editingId) return
+    const dimErr = validateOuterDims()
+    if (dimErr) {
+      setDimError(dimErr)
+      return
+    }
     const normalized = normalizeSectionSpans(draft)
     const { exceptions } = updateRack(editingId, normalized)
     if (exceptions && exceptions.length > 0) {
@@ -314,12 +389,18 @@ export function CustomRackBuilder() {
   }
 
   const handleConfirmPlace = () => {
+    const dimErr = validateOuterDims()
+    if (dimErr) {
+      setDimError(dimErr)
+      return
+    }
     const name = rackName.trim()
     if (!name) {
       setNameError('Rack name is required')
       return
     }
     setNameError(null)
+    setDimError(null)
     if (showInPresets) {
       void import('@/utils/customFixturePresets').then(({ saveCustomFixturePreset }) => {
         saveCustomFixturePreset(name, draft)
@@ -387,10 +468,16 @@ export function CustomRackBuilder() {
                     }}
                     placeholder="e.g. Chilled Drinks Bay"
                     maxLength={80}
+                    list="custom-rack-name-suggestions"
                     className={`mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand ${
                       nameError ? 'border-red-400' : 'border-white/15'
                     }`}
                   />
+                  <datalist id="custom-rack-name-suggestions">
+                    {nameSuggestions.map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
                   {nameError && <p className="text-[10px] text-red-400 mt-1">{nameError}</p>}
                 </label>
                 <Toggle
@@ -411,24 +498,27 @@ export function CustomRackBuilder() {
                   <FiMaximize2 size={12} className="text-brand-light" />
                   Outer dimensions
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDraft(fitCustomRackToRetailWall(draft))}
-                  className="text-[10px] px-2 py-1 rounded-md bg-brand/25 border border-brand/40 text-brand-light hover:bg-brand/35 transition-colors"
-                  title={`Scale to retail wall height (${RETAIL_FIXTURE_HEIGHT.toFixed(1)} m)`}
-                >
-                  Fit wall height
-                </button>
+                <Toggle
+                  label={`Fit wall (${RETAIL_FIXTURE_HEIGHT.toFixed(1)} m)`}
+                  checked={fitWallHeight}
+                  onChange={toggleFitWallHeight}
+                />
               </div>
+              <p className="text-[10px] text-gray-500 leading-snug">
+                Toggle on to scale the rack to retail wall height; toggle off to restore previous
+                size.
+              </p>
               <div className="grid grid-cols-3 gap-2">
                 <NumInput
                   label="Width"
                   value={draft.outerWidth}
+                  min={MIN_RACK_WIDTH}
                   onChange={(outerWidth) => patch({ outerWidth })}
                 />
                 <NumInput
                   label="Depth"
                   value={draft.outerDepth}
+                  min={MIN_RACK_DEPTH}
                   onChange={(outerDepth) => patch({ outerDepth })}
                 />
                 <NumInput
@@ -439,6 +529,12 @@ export function CustomRackBuilder() {
                   onChange={(outerHeight) => patch({ outerHeight })}
                 />
               </div>
+              {dimError && (
+                <p className="text-[11px] text-red-400 font-medium">{dimError}</p>
+              )}
+              <p className="text-[10px] text-gray-500">
+                Min width {MIN_RACK_WIDTH} m · min depth {MIN_RACK_DEPTH} m
+              </p>
               <NumInput
                 label="Wall thickness"
                 value={draft.wallThickness}
@@ -550,11 +646,38 @@ export function CustomRackBuilder() {
             />
 
             <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
+              <p className="text-xs font-semibold text-white">Rows</p>
+              <p className="text-[10px] text-gray-400 leading-snug">
+                Set how many shelves to create when placing. Heights split the usable cavity
+                evenly (cavity {dims.innerHeight.toFixed(2)} m ÷ rows).
+              </p>
+              <NumInput
+                label="Number of rows"
+                value={draft.shelfCount}
+                min={0}
+                max={20}
+                step={1}
+                onChange={(shelfCount) =>
+                  patch({ shelfCount: Math.max(0, Math.min(20, Math.round(shelfCount))) })
+                }
+              />
+              {draft.shelfCount > 0 ? (
+                <p className="text-[11px] text-emerald-300/90 font-medium">
+                  Each row ≈ {(dims.innerHeight / draft.shelfCount).toFixed(3)} m
+                </p>
+              ) : (
+                <p className="text-[10px] text-gray-500">
+                  0 = place empty bay; add rows later from the Rows panel.
+                </p>
+              )}
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
               <p className="text-xs font-semibold text-white">Walls</p>
               <p className="text-[10px] text-gray-400 leading-snug">
                 {draft.isDoubleSided
-                  ? 'Two-sided bay with a center divider. Add rows to each side after placing.'
-                  : 'Hollow bay with back + side walls. Add rows after placing via + Add Row.'}
+                  ? 'Two-sided bay with a center divider. Rows are created on each side.'
+                  : 'Hollow bay with back + side walls.'}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <Toggle
@@ -610,7 +733,7 @@ export function CustomRackBuilder() {
             <button
               type="button"
               onClick={handleSaveEdit}
-              disabled={saving}
+              disabled={saving || Boolean(dimError)}
               className="px-5 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors disabled:opacity-60"
             >
               {saving ? 'Saving…' : 'Confirm & save structure'}
@@ -619,7 +742,8 @@ export function CustomRackBuilder() {
             <button
               type="button"
               onClick={handleConfirmPlace}
-              className="px-5 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors"
+              disabled={Boolean(dimError)}
+              className="px-5 py-2.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-dark transition-colors disabled:opacity-60"
             >
               Confirm & place on floor
             </button>

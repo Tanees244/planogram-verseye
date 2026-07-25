@@ -16,9 +16,13 @@ export type PosmDragPayload = {
   imageStorageKey?: string | null
 }
 
-function findRowContextFromIntersects(
+type DropTarget =
+  | { kind: 'bin'; binId: string; rackId: string }
+  | { kind: 'row'; rowId: string; rackId: string }
+
+function findDropTargetFromIntersects(
   intersects: THREE.Intersection[],
-): { rowId: string; rackId: string } | null {
+): DropTarget | null {
   const state = usePlanogramStore.getState()
   for (const hit of intersects) {
     let obj: THREE.Object3D | null = hit.object
@@ -26,33 +30,36 @@ function findRowContextFromIntersects(
       const id = obj.userData?.id
       const type = obj.userData?.type
       if (typeof id === 'string' && id.length > 0) {
-        // Prefer explicit row
-        if (type === 'row') {
-          for (const rack of state.area.racks) {
-            for (const side of rack.sides) {
-              if (side.rows.some((r) => r.id === id)) {
-                return { rowId: id, rackId: rack.id }
-              }
-            }
-          }
-        }
-        // Bin → parent row
         if (type === 'bin') {
           for (const rack of state.area.racks) {
             for (const side of rack.sides) {
               for (const row of side.rows) {
                 if (row.bins.some((b) => b.id === id)) {
-                  return { rowId: row.id, rackId: rack.id }
+                  return { kind: 'bin', binId: id, rackId: rack.id }
                 }
               }
             }
           }
         }
-        // Bare id that matches a row
+        if (type === 'row') {
+          for (const rack of state.area.racks) {
+            for (const side of rack.sides) {
+              if (side.rows.some((r) => r.id === id)) {
+                return { kind: 'row', rowId: id, rackId: rack.id }
+              }
+            }
+          }
+        }
+        // Bare id that matches a bin first, then row
         for (const rack of state.area.racks) {
           for (const side of rack.sides) {
+            for (const row of side.rows) {
+              if (row.bins.some((b) => b.id === id)) {
+                return { kind: 'bin', binId: id, rackId: rack.id }
+              }
+            }
             if (side.rows.some((r) => r.id === id)) {
-              return { rowId: id, rackId: rack.id }
+              return { kind: 'row', rowId: id, rackId: rack.id }
             }
           }
         }
@@ -63,9 +70,10 @@ function findRowContextFromIntersects(
   return null
 }
 
-/** Drag POSM from panel onto a row / bin in the 3D scene. */
+/** Drag POSM from panel onto a bin (preferred) or row in the 3D scene. */
 export function PosmDropHandler() {
   const { camera, gl, scene } = useThree()
+  const assignBinItemTagPosm = usePlanogramStore((s) => s.assignBinItemTagPosm)
   const assignRowDividerPosm = usePlanogramStore((s) => s.assignRowDividerPosm)
 
   useEffect(() => {
@@ -98,10 +106,10 @@ export function PosmDropHandler() {
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(mouse, camera)
       const hits = raycaster.intersectObjects(scene.children, true)
-      const ctx = findRowContextFromIntersects(hits)
+      const ctx = findDropTargetFromIntersects(hits)
       if (!ctx) {
         usePlanogramStore.setState({
-          addProductError: 'Drop the POSM onto a row or bin.',
+          addProductError: 'Drop the POSM onto a bin or row.',
         })
         return
       }
@@ -113,7 +121,10 @@ export function PosmDropHandler() {
         imageUrl: payload.imageUrl ?? null,
         imageStorageKey: payload.imageStorageKey ?? null,
       }
-      const res = await assignRowDividerPosm(ctx.rackId, ctx.rowId, payload.id, hydrated)
+      const res =
+        ctx.kind === 'bin'
+          ? await assignBinItemTagPosm(ctx.rackId, ctx.binId, payload.id, hydrated)
+          : await assignRowDividerPosm(ctx.rackId, ctx.rowId, payload.id, hydrated)
       if (!res.success) {
         usePlanogramStore.setState({
           addProductError: res.message ?? 'Failed to assign POSM',
@@ -129,7 +140,7 @@ export function PosmDropHandler() {
       el.removeEventListener('dragover', onDragOver)
       el.removeEventListener('drop', onDrop)
     }
-  }, [camera, gl, scene, assignRowDividerPosm])
+  }, [camera, gl, scene, assignBinItemTagPosm, assignRowDividerPosm])
 
   return null
 }

@@ -14,6 +14,7 @@ import type {
 } from '@/types/rackPublish'
 import { fetchPublishPreview, fetchPublishRack } from '@/utils/rackPublishApi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
+import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
 
 interface StoreOption {
   id: string
@@ -103,6 +104,11 @@ export function RackPublishModal({
   const [publishResult, setPublishResult] = useState<RackPublishResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+
+  useEffect(() => {
+    if (open) setNameSuggestions(getUserEnteredNames('rack'))
+  }, [open])
 
   const storeLabelById = useMemo(() => {
     const m = new Map<string, string>()
@@ -121,7 +127,7 @@ export function RackPublishModal({
           .filter((l: any) => l?.id && l.id !== selectedStoreId)
           .map((l: any) => ({
             id: l.id,
-            name: l.locationCode ?? l.name ?? l.id,
+            name: l.name ?? l.locationCode ?? l.id,
           })),
       )
     } catch {
@@ -190,6 +196,7 @@ export function RackPublishModal({
         setError(res.message ?? 'Publish failed')
         return
       }
+      if (blueprintName.trim()) rememberUserEnteredName('rack', blueprintName.trim())
       setPublishResult(res.data)
       setStep('results')
       // Pick up server-set publishedAt / lastUpdated on source + targets
@@ -209,8 +216,8 @@ export function RackPublishModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Publish rack to stores"
-      subtitle="1:1 clone — shell, rows, bins, SKUs, POSM (no floor placement)"
+      title="Copy rack to stores"
+      subtitle="Creates a 1:1 clone — shell, rows, bins, SKUs, POSM (no floor placement). Not a reflow."
       maxWidth="lg"
       footer={
         <>
@@ -220,7 +227,7 @@ export function RackPublishModal({
           {step === 'configure' && (
             <Btn variant="primary" onClick={handlePreview} disabled={busy || loadingStores}>
               {busy ? <Spinner /> : null}
-              Preview publish
+              Preview copy
             </Btn>
           )}
           {step === 'preview' && (
@@ -234,7 +241,7 @@ export function RackPublishModal({
                 disabled={busy || readyCount === 0}
               >
                 {busy ? <Spinner /> : null}
-                Publish to {readyCount} store{readyCount === 1 ? '' : 's'}
+                Copy to {readyCount} store{readyCount === 1 ? '' : 's'}
               </Btn>
             </>
           )}
@@ -257,12 +264,21 @@ export function RackPublishModal({
                 placeholder="R-01"
               />
             </FormField>
-            <FormField label="Blueprint display name">
+            <FormField
+              label="Blueprint display name"
+              hint="Suggestions are names you typed before"
+            >
               <Input
                 value={blueprintName}
                 onChange={(e) => setBlueprintName(e.target.value)}
                 placeholder="Optional"
+                list="publish-blueprint-name-suggestions"
               />
+              <datalist id="publish-blueprint-name-suggestions">
+                {nameSuggestions.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
             </FormField>
             <div>
               <p className="text-sm font-medium text-gray-800 mb-2">Target stores</p>

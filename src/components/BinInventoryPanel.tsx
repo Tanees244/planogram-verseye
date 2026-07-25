@@ -15,6 +15,7 @@ import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
+import { PRODUCT_MOVE_MIME } from '@/components/ProductPalette'
 
 interface BinInventoryPanelProps {
   binId: string
@@ -191,9 +192,25 @@ export function BinInventoryPanel({
         <>
           <button
             type="button"
+            draggable
+            onDragStart={(e) => {
+              const payload = JSON.stringify({
+                mode: 'move',
+                sourceBinId: binId,
+              })
+              e.dataTransfer.setData(PRODUCT_MOVE_MIME, payload)
+              e.dataTransfer.effectAllowed = 'move'
+              startMovingBinInventory(binId)
+            }}
+            onDragEnd={() => {
+              // Drop handler clears move mode; keep if user aborted without drop on bin
+              if (usePlanogramStore.getState().movingInventoryFromBinId === binId) {
+                cancelMovingBinInventory()
+              }
+            }}
             onClick={() => setSelected(inventory.sku!.skuId, 'product')}
             className={cn(
-              'w-full text-left rounded-lg border px-2.5 py-2 transition-colors',
+              'w-full text-left rounded-lg border px-2.5 py-2 transition-colors cursor-grab active:cursor-grabbing',
               skuSelected
                 ? dark
                   ? 'border-brand/50 bg-brand/15'
@@ -202,6 +219,7 @@ export function BinInventoryPanel({
                   ? 'border-white/10 hover:bg-white/5'
                   : 'border-gray-100 hover:bg-gray-50',
             )}
+            title="Drag onto another bin in the 3D scene to move this SKU"
           >
             <div className="flex items-start gap-2">
               <span
