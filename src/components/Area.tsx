@@ -4,12 +4,11 @@
 import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Mesh, DoubleSide } from 'three'
-import { Html } from '@react-three/drei'
 import { usePlanogramStore, type Rack as RackType } from '@/store/planogramStore'
 import { FIXTURE_LIBRARY } from '@/components/fixtures/types'
 import { StoreEnvironment } from '@/components/scene/StoreEnvironment'
 import { snapRackToWall, rackOverlapsOthers, snapToGrid } from '@/utils/rackPlacement'
-import { PlacementPreview, placementHintLabel } from '@/components/scene/PlacementPreview'
+import { PlacementPreview } from '@/components/scene/PlacementPreview'
 import { PlacementGrid } from '@/components/scene/PlacementGrid'
 import { CustomRackLivePreview } from '@/components/scene/CustomRackLivePreview'
 import { Rack } from './Rack'
@@ -301,49 +300,6 @@ export function Area() {
 
       <PlacementPreview position={previewPos} />
       <CustomRackLivePreview />
-
-      {/* Placement mode */}
-      {isPlacingRack && (
-        <>
-          <Html position={[0, 2, 0]} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={{
-              background: 'linear-gradient(135deg, rgba(44, 82, 130, 0.95), rgba(30, 58, 98, 0.92))',
-              color: 'white',
-              padding: '12px 22px',
-              borderRadius: '14px',
-              fontSize: '13px',
-              fontWeight: 600,
-              boxShadow: '0 8px 28px rgba(15, 23, 42, 0.35)',
-              border: '1px solid rgba(255,255,255,0.18)',
-              maxWidth: 380,
-              textAlign: 'center',
-              backdropFilter: 'blur(8px)',
-            }}>
-              {placementHintLabel(placingFixtureType, pendingRackParams)}
-              {previewPos?.overlaps ? ' — overlaps another rack' : ' — snaps to floor grid'}
-            </div>
-          </Html>
-        </>
-      )}
-
-      {/* Edit rack position: click floor to move selected rack */}
-      {editingRackId && (
-        <>
-          <Html position={[0, 1.5, 0]} center zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
-            <div style={{
-              background: 'rgba(245, 158, 11, 0.9)',
-              color: 'white',
-              padding: '12px 20px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: 600,
-              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
-            }}>
-              Click on the floor to move rack (no overlap with other racks)
-            </div>
-          </Html>
-        </>
-      )}
     </group>
   )
 }

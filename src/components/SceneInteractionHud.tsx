@@ -36,6 +36,8 @@ export function SceneInteractionHud({ className }: { className?: string }) {
   const productDropHover = usePlanogramStore((s) => s.productDropHover)
   const movingInventoryFromBinId = usePlanogramStore((s) => s.movingInventoryFromBinId)
   const fixtureDragActive = usePlanogramStore((s) => s.fixtureDragActive)
+  const editingRackId = usePlanogramStore((s) => s.editingRackId)
+  const setEditingRackId = usePlanogramStore((s) => s.setEditingRackId)
   const roofVisible = usePlanogramStore((s) => s.roofVisible)
   const selectedType = usePlanogramStore((s) => s.selectedType)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
@@ -57,6 +59,7 @@ export function SceneInteractionHud({ className }: { className?: string }) {
     movingInventoryFromBinId,
     productDropHover?.binId,
     fixtureDragActive,
+    editingRackId,
     roofVisible,
     selectedType,
   ])
@@ -103,19 +106,25 @@ export function SceneInteractionHud({ className }: { className?: string }) {
         : productDropHover.reason || 'This bin cannot fit the product'
       : 'Drag onto a bin or hover one to preview size'
     action = { label: 'Cancel', onClick: () => cancelProductPlacement() }
+  } else if (editingRackId) {
+    tone = 'move'
+    icon = <FiMove size={15} className="shrink-0" />
+    title = 'Moving rack'
+    detail = 'Click an empty floor cell to place · cannot overlap other racks · Esc cancels'
+    action = { label: 'Cancel', onClick: () => setEditingRackId(null) }
   } else if (isPlacingRack || fixtureDragActive) {
     tone = 'place'
     icon = <FiBox size={15} className="shrink-0" />
     title = placingFixtureType
       ? `Placing ${placingFixtureType.replace(/_/g, ' ').toLowerCase()}`
       : 'Placing fixture'
-    detail = 'Move on the floor grid · click to drop · Esc cancels'
+    detail = 'Move on the floor grid · click empty space to drop · cannot overlap · Esc cancels'
     action = { label: 'Cancel', onClick: () => cancelFixturePlacement() }
   } else if (selectedType === 'rack') {
     tone = 'idle'
     icon = <FiLayers size={15} className="shrink-0" />
     title = 'Rack selected'
-    detail = 'Use the left panel for rows, POSM, export, publish · drag the rack to move it'
+    detail = 'Use the left panel for rows, POSM, export, publish · Move Rack to reposition'
   } else if (selectedType === 'row') {
     tone = 'idle'
     icon = <FiLayers size={15} className="shrink-0" />
@@ -175,7 +184,10 @@ export function SceneInteractionHud({ className }: { className?: string }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold truncate">{title}</p>
-            {(isPlacingRack || isPlacingProduct || movingInventoryFromBinId) && (
+            {(isPlacingRack ||
+              isPlacingProduct ||
+              movingInventoryFromBinId ||
+              editingRackId) && (
               <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse shrink-0" />
             )}
           </div>

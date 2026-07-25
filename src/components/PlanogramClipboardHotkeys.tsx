@@ -36,6 +36,11 @@ export function PlanogramClipboardHotkeys() {
           toast('Fixture placement cancelled')
           return
         }
+        if (s.editingRackId) {
+          s.setEditingRackId(null)
+          toast('Move cancelled')
+          return
+        }
         return
       }
 

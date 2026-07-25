@@ -440,16 +440,19 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             )}
           </ActionBar>
           {editingRackId && (
-            <span
+            <div
               className={cn(
-                'text-sm px-3 py-1.5 rounded-lg border text-[11px] leading-snug',
+                'rounded-xl border px-3 py-2 text-[11px] leading-snug',
                 isSidebar
-                  ? 'bg-brand/15 border-brand/30 text-gray-200 w-full'
-                  : 'text-gray-600 bg-white/90 border-gray-200',
+                  ? 'w-full bg-amber-500/15 border-amber-500/30 text-amber-100'
+                  : 'bg-amber-50 border-amber-200 text-amber-900',
               )}
             >
-              Click on the floor to move the rack
-            </span>
+              <p className="font-semibold">Moving rack</p>
+              <p className={isSidebar ? 'text-amber-100/80 mt-0.5' : 'text-amber-800/80 mt-0.5'}>
+                Click an empty floor cell · cannot overlap other racks
+              </p>
+            </div>
           )}
           {moveRackError && (
             <div
