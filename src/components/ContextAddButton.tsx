@@ -16,7 +16,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2, FiGitMerge, FiCopy, FiClipboard } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2, FiGitMerge, FiCopy, FiClipboard, FiCamera } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -26,6 +26,7 @@ import { Spinner } from "./Spinner";
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { AddBinModal } from '@/components/forms/AddBinModal'
+import { SaveAsPlanogramModal } from '@/components/forms/SaveAsPlanogramModal'
 import { ActionBar, ActionBtn } from '@/components/ui/ActionBar'
 import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeightsEditor'
 import { RackPosmPanel } from '@/components/RackPosmPanel'
@@ -101,6 +102,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showReflowModal, setShowReflowModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
+  const [showSavePlanogramModal, setShowSavePlanogramModal] = useState(false);
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -382,6 +384,14 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               Save layout
             </ActionBtn>
             <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
+              onClick={() => setShowSavePlanogramModal(true)}
+              title="Name this shelf face and upload an ideal rack photo"
+            >
+              <FiCamera /> Save as planogram
+            </ActionBtn>
+            <ActionBtn
               variant="primary"
               fullWidth={isSidebar}
               onClick={() => setShowReflowModal(true)}
@@ -556,6 +566,23 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
         />
         {rack && (
           <>
+            <SaveAsPlanogramModal
+              open={showSavePlanogramModal}
+              onClose={() => setShowSavePlanogramModal(false)}
+              rack={rack}
+              onSaveLayout={async () => {
+                const res = await saveRackLayoutToServer(rack.id)
+                if (!res.success) {
+                  setAddRackError(res.message ?? 'Failed to save layout')
+                  return { success: false, message: res.message }
+                }
+                setAddRackError(null)
+                return { success: true }
+              }}
+              onSuccess={({ name }) => {
+                toast.success(`Planogram saved: ${name}`)
+              }}
+            />
             <RackPublishModal
               rack={rack}
               open={showPublishModal}

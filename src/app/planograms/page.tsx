@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { FiArrowLeft, FiLayers, FiSearch, FiBox, FiChevronRight, FiTrash2 } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { usePlanogramStore } from '@/store/planogramStore'
-import { formatPlanogramDateTime, type ShelfListItem } from '@/types/shelf'
+import { formatPlanogramDateTime, planogramStatusFromShelf, shelfListRackDisplayName, type ShelfListItem } from '@/types/shelf'
 import { PlanogramThumb } from '@/components/PlanogramThumb'
 import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
 
@@ -28,36 +28,77 @@ function authHeaders(): Record<string, string> {
 }
 
 function mapShelf(p: Record<string, unknown>): ShelfListItem {
+  const idealKey =
+    typeof p.idealImageStorageKey === 'string' ? p.idealImageStorageKey : null
+  const hasIdealImage =
+    typeof p.hasIdealImage === 'boolean'
+      ? p.hasIdealImage
+      : typeof p.has_ideal_image === 'boolean'
+        ? p.has_ideal_image
+        : Boolean(idealKey)
+  const isConfigured =
+    typeof p.isConfigured === 'boolean'
+      ? p.isConfigured
+      : typeof p.is_configured === 'boolean'
+        ? p.is_configured
+        : undefined
+  const rackSideId = (p.rackSideId as string) ?? null
+  const rackId = (p.rackId as string) ?? null
+  const hasLayout =
+    typeof p.hasLayout === 'boolean' ? p.hasLayout : Boolean(rackSideId || rackId)
   return {
     id: String(p.id ?? p.shelfId ?? ''),
     storeId: String(p.storeId ?? ''),
+    storeName: typeof p.storeName === 'string' ? p.storeName : undefined,
     name: String(p.name ?? p.title ?? 'Untitled planogram'),
+    planogramName: (p.planogramName as string) ?? null,
     sortOrder: typeof p.sortOrder === 'number' ? p.sortOrder : undefined,
     categoryId: (p.categoryId as string) ?? null,
     shelfType: (p.shelfType as string | number) ?? null,
     isActive: typeof p.isActive === 'boolean' ? p.isActive : undefined,
-    rackSideId: (p.rackSideId as string) ?? null,
-    rackId: (p.rackId as string) ?? null,
+    rackSideId,
+    rackId,
     rackCode: (p.rackCode as string) ?? null,
+    rackName: (p.rackName as string) ?? null,
     sideCode: (p.sideCode as string) ?? null,
     fixtureType: (p.fixtureType as string) ?? null,
     publishedAt: (p.publishedAt as string) ?? null,
     lastUpdated: (p.lastUpdated as string) ?? (p.updatedAt as string) ?? null,
-    hasLayout: typeof p.hasLayout === 'boolean' ? p.hasLayout : undefined,
+    hasLayout,
     hasPlanogram: typeof p.hasPlanogram === 'boolean' ? p.hasPlanogram : undefined,
-    hasIdealImage:
-      typeof p.hasIdealImage === 'boolean'
-        ? p.hasIdealImage
-        : typeof p.has_ideal_image === 'boolean'
-          ? p.has_ideal_image
-          : undefined,
-    isConfigured:
-      typeof p.isConfigured === 'boolean'
-        ? p.isConfigured
-        : typeof p.is_configured === 'boolean'
-          ? p.is_configured
-          : undefined,
+    hasIdealImage,
+    isConfigured,
   }
+}
+
+function StatusBadge({ item }: { item: ShelfListItem }) {
+  const status = planogramStatusFromShelf(item)
+  if (status === 'Configured') {
+    return (
+      <span className="px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700">
+        Configured
+      </span>
+    )
+  }
+  if (status === 'Layout only') {
+    return (
+      <span className="px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-800">
+        Layout only
+      </span>
+    )
+  }
+  if (status === 'Image only') {
+    return (
+      <span className="px-2 py-0.5 rounded-full font-medium bg-indigo-50 text-indigo-700">
+        Image only
+      </span>
+    )
+  }
+  return (
+    <span className="px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
+      Not linked
+    </span>
+  )
 }
 
 export default function PlanogramsPage() {
@@ -275,7 +316,14 @@ export default function PlanogramsPage() {
                         {p.name}
                       </Link>
                       <p className="text-xs text-gray-500 mt-0.5 truncate">
-                        {[storeLabel, p.rackCode ? `Code ${p.rackCode}` : null, p.sideCode]
+                        {[
+                          p.storeName || storeLabel,
+                          shelfListRackDisplayName(p) !== '—'
+                            ? shelfListRackDisplayName(p)
+                            : null,
+                          p.rackCode ? `Code ${p.rackCode}` : null,
+                          p.sideCode,
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
@@ -298,18 +346,7 @@ export default function PlanogramsPage() {
                           {p.fixtureType.replace(/_/g, ' ')}
                         </span>
                       ) : null}
-                      {p.isConfigured === true ? (
-                        <span className="px-2 py-0.5 rounded-full font-medium bg-emerald-50 text-emerald-700">
-                          Configured
-                        </span>
-                      ) : p.hasIdealImage === false || p.isConfigured === false ? (
-                        <span className="px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-800">
-                          Needs ideal image
-                        </span>
-                      ) : null}
-                      {!p.fixtureType && p.isConfigured == null && p.hasIdealImage == null
-                        ? '—'
-                        : null}
+                      <StatusBadge item={p} />
                     </span>
                     <span className="truncate">{formatPlanogramDateTime(p.lastUpdated)}</span>
                   </div>

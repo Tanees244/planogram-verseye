@@ -1,9 +1,10 @@
 /**
- * Exact face-fill helpers (linear front facings).
- * Aligns with backend FRONTEND_EXACT_FACE_FILL.md — meters / positive integers.
+ * Soft face-fill helpers (linear front facings).
+ * Aligns with FRONTEND_LAYOUT_SHELF_PLANOGRAM_CONTRACT.md — meters / positive integers.
+ * Soft mode: underfill allowed; overfill rejected (tolerance 1 cm).
  */
 
-export const FACE_FILL_TOLERANCE_M = 0.001
+export const FACE_FILL_TOLERANCE_M = 0.01
 
 export type FaceFillProduct = {
   width?: number | null
@@ -77,7 +78,7 @@ export function minProductFacingWidth(products: FaceFillProduct[] | null | undef
   return Number.isFinite(min) ? min : 0
 }
 
-/** Front face is filled when exact (≤1 mm) or leftover gap is too small for another facing. */
+/** Front face is filled when exact (≤1 cm) or leftover gap is too small for another facing. */
 export function isFaceFilled(
   occupied: number,
   available: number,
@@ -357,13 +358,29 @@ export function fillBinFrontFacings<
     }
   }
 
-  // Multi-SKU: keep relative shares but scale to fill face when underfilled.
-  const occupied = binFacingOccupied(products)
-  if (isFaceFilled(occupied, binW, minProductFacingWidth(products))) return bin
-  // Assign remaining gap to the first product that still fits another facing.
+  // Multi-SKU: clamp overfill first, then grow to fill remaining face gap.
   const next = products.map((p) => ({ ...p }))
   let used = binFacingOccupied(next)
   let guard = 0
+  while (used > binW + FACE_FILL_TOLERANCE_M && guard < 500) {
+    let shrunk = false
+    for (let i = next.length - 1; i >= 0; i--) {
+      const q = Math.max(0, Math.floor(Number(next[i].quantity) || 0))
+      if (q < 1) continue
+      next[i] = { ...next[i], quantity: q - 1 }
+      used = binFacingOccupied(next)
+      shrunk = true
+      break
+    }
+    if (!shrunk) break
+    guard += 1
+  }
+
+  if (isFaceFilled(used, binW, minProductFacingWidth(next))) {
+    return { ...bin, products: next }
+  }
+
+  guard = 0
   while (used + FACE_FILL_TOLERANCE_M < binW && guard < 500) {
     let grew = false
     for (const p of next) {
@@ -380,6 +397,66 @@ export function fillBinFrontFacings<
     guard += 1
   }
   return { ...bin, products: next }
+}
+
+/**
+ * Soft save clamp: reduce facings until occupied ≤ bin width (+ tolerance).
+ * Does not stretch bins or grow underfilled faces (BE soft mode allows underfill).
+ */
+export function clampBinFacingsOverfill<
+  T extends FaceFillBin & { products?: Array<FaceFillProduct & { name?: string }> | null },
+>(bin: T): T {
+  const products = (bin.products ?? []).filter((p) => p?.isActive !== false)
+  if (products.length === 0) return bin
+  const binW = Number(bin.width)
+  if (!(binW > 0)) return bin
+
+  if (products.length === 1) {
+    const p = products[0]
+    const w = Number(p.width)
+    const maxQ = suggestedFaceFacings(binW, w)
+    const q = Math.max(0, Math.floor(Number(p.quantity) || 0))
+    if (maxQ >= 1 && q > maxQ) {
+      return { ...bin, products: [{ ...p, quantity: maxQ }] }
+    }
+    return bin
+  }
+
+  const next = products.map((p) => ({ ...p }))
+  let used = binFacingOccupied(next)
+  let guard = 0
+  while (used > binW + FACE_FILL_TOLERANCE_M && guard < 500) {
+    let shrunk = false
+    for (let i = next.length - 1; i >= 0; i--) {
+      const q = Math.max(0, Math.floor(Number(next[i].quantity) || 0))
+      if (q < 1) continue
+      next[i] = { ...next[i], quantity: q - 1 }
+      used = binFacingOccupied(next)
+      shrunk = true
+      break
+    }
+    if (!shrunk) break
+    guard += 1
+  }
+  return { ...bin, products: next }
+}
+
+/** Clamp overfilled bins only — for PUT layout / placement (soft face-fill). */
+export function applySoftFaceFillClampToRack<
+  T extends {
+    sides?: Array<{ rows?: FaceFillRow[] | null }> | null
+  },
+>(rack: T): T {
+  return {
+    ...rack,
+    sides: (rack.sides ?? []).map((side) => ({
+      ...side,
+      rows: (side.rows ?? []).map((row) => ({
+        ...row,
+        bins: (row.bins ?? []).map((bin) => clampBinFacingsOverfill(bin)),
+      })),
+    })),
+  }
 }
 
 /**

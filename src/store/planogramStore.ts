@@ -33,7 +33,7 @@ import {
   type CascadeException,
 } from "@/utils/layoutCascade";
 import { maxFacingsInBinVolume } from "@/utils/facingPack";
-import { applyLocalFaceFillToRack } from "@/utils/faceFill";
+import { applyLocalFaceFillToRack, applySoftFaceFillClampToRack } from "@/utils/faceFill";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
 import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
 import type { SceneTheme } from "@/constants/sceneTheme";
@@ -208,6 +208,8 @@ export interface RackSide {
   id: string;
   sideId: string;
   sideCode: string;
+  /** Linked portal shelf for this face (planogram view / ideal image). */
+  shelfId?: string | null;
   depth?: number | null;
   inner?: ZoneFootprint | null;
   outer?: ZoneFootprint | null;
@@ -2247,20 +2249,21 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      // Client-side exact face-fill check (matches backend save rules).
-      const { validateRackFaceFill, formatFaceFillIssues } = await import('@/utils/faceFill');
-      const faceIssues = validateRackFaceFill(rack);
-      if (faceIssues.length > 0) {
-        const message =
-          formatFaceFillIssues(faceIssues) ||
-          'Front face is not fully filled — fix bin widths / facings before save.';
-        if (!options?.suppressLoading) {
-          set({ isSavingLayout: false, saveLayoutError: message });
-        }
-        return { success: false, message };
-      }
-
-      const payload = buildUpdateRackPayload(rack, { reflowSkus: options?.reflowSkus });
+      // Soft face-fill: clamp overfilled facings only (underfill OK; BE tolerance 1 cm).
+      const clamped = applySoftFaceFillClampToRack(rack);
+      set((s) => ({
+        area: {
+          ...s.area,
+          racks: s.area.racks.map((r) =>
+            r.id === rack.id || r.rackId === rack.rackId
+              ? { ...r, ...clamped, id: r.id, rackId: r.rackId }
+              : r,
+          ),
+        },
+      }));
+      const fixed =
+        get().area.racks.find((r) => r.id === rack.id || r.rackId === rack.rackId) ?? clamped;
+      const payload = buildUpdateRackPayload(fixed, { reflowSkus: options?.reflowSkus });
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,
@@ -2269,29 +2272,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
-        // Prefer structured face-fill errors from the API when present.
         let message = data?.message || `Failed to save layout (${res.status})`;
         const apiErrors = Array.isArray(data?.errors) ? data.errors : [];
         if (apiErrors.length > 0) {
-          const mapped: import('@/utils/faceFill').FaceFillIssue[] = apiErrors.map(
-            (e: { message?: string; code?: string; rowId?: string; binId?: string }) => ({
-              severity: 'error' as const,
-              code: (e?.code as import('@/utils/faceFill').FaceFillIssue['code']) || 'BinFaceUnderfilled',
-              message: String(e?.message || e?.code || 'Face-fill validation failed'),
-              rowId: e?.rowId,
-              binId: e?.binId,
-            }),
-          );
-          const formatted = formatFaceFillIssues(mapped);
-          if (formatted) {
-            message = formatted;
-          } else {
-            const joined = apiErrors
-              .map((e: { message?: string }) => e?.message)
-              .filter(Boolean)
-              .join(' · ');
-            if (joined) message = joined;
-          }
+          const joined = apiErrors
+            .map((e: { message?: string }) => e?.message)
+            .filter(Boolean)
+            .join(' · ');
+          if (joined) message = joined;
         }
         if (!options?.suppressLoading) {
           set({ isSavingLayout: false, saveLayoutError: message });
@@ -2331,7 +2319,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
 
     try {
-      const payload = buildUpdateRackPlacementPayload(rack);
+      // Full tree required — slim placement body can soft-delete rows on BE.
+      const clamped = applySoftFaceFillClampToRack(rack);
+      const payload = buildUpdateRackPlacementPayload(clamped);
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,

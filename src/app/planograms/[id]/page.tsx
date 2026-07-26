@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FiArrowLeft, FiLayers, FiPackage, FiBox, FiTrash2, FiUpload } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
-import { formatPlanogramDateTime, type ShelfDetail } from '@/types/shelf'
+import { formatPlanogramDateTime, planogramStatusFromShelf, type ShelfDetail } from '@/types/shelf'
 import { PlanogramElevation2D, type ElevationRow } from '@/components/PlanogramThumb'
 
 interface SkuRow {
@@ -291,15 +291,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                 <Meta label="Rows" value={String(rows.length)} />
                 <Meta
                   label="Status"
-                  value={
-                    detail.isConfigured
-                      ? 'Configured'
-                      : detail.hasIdealImage === false
-                        ? 'Needs ideal image'
-                        : detail.hasIdealImage
-                          ? 'Has ideal image'
-                          : undefined
-                  }
+                  value={planogramStatusFromShelf(detail)}
                 />
               </div>
             </div>

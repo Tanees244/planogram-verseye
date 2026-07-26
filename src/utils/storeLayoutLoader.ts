@@ -360,6 +360,12 @@ export function normalizeRack(rawInput: any): Rack {
         id: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
         sideId: resolveEntityId(s.sideId) ?? resolveEntityId(s.id) ?? generateId(),
         sideCode: s.sideCode ?? s.side_code ?? `S${idx + 1}`,
+        shelfId:
+          resolveEntityId(s.shelfId) ??
+          resolveEntityId(s.shelf_id) ??
+          resolveEntityId(s.shelf?.id) ??
+          resolveEntityId(s.shelf?.shelfId) ??
+          null,
         depth: s.depth != null ? Number(s.depth) : null,
         inner: normalizeZoneFootprint(s.inner),
         outer: normalizeZoneFootprint(s.outer),
