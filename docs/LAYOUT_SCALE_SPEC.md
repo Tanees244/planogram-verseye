@@ -136,7 +136,7 @@ Each rack is a physical fixture on the floor.
 | `grid` | Auto grid (`gridPlaceRacks`) — **current fallback on load** |
 | `blueprint` | Positions saved in blueprint JSON from backend |
 
-> **Gap today:** `GET /api/racks/by-store/{id}` returns structure but **not floor coordinates**. Positions reset to `(0,0,0)` on normalize; we only keep them via `mergeRackPositions` after first placement.
+> **Gap today:** `GET /api/racks/by-store/{id}` and `/structure` often return `placement: null` / `position: null`. On load, `placeRacksOnFloor()` uses API `placement` when present, else the per-store local cache (`rackPlacementCache`, written on every move / rotate / create), and only grid-places racks with no known spot.
 
 ### Example rack record
 

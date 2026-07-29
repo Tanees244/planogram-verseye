@@ -4,8 +4,8 @@
  */
 
 /** Default store / warehouse floor footprint. */
-export const DEFAULT_WAREHOUSE_WIDTH = 30
-export const DEFAULT_WAREHOUSE_DEPTH = 20
+export const DEFAULT_WAREHOUSE_WIDTH = 42
+export const DEFAULT_WAREHOUSE_DEPTH = 28
 export const DEFAULT_WAREHOUSE_HEIGHT = 8
 
 /** Standard pallet / gondola bay (warehouse-style starting rack). */

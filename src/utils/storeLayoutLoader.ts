@@ -463,6 +463,76 @@ export function gridPlaceRacks(racks: Rack[], areaWidth: number, areaDepth: numb
   })
 }
 
+/** True when the API returned finite floor coordinates, including (0, 0). */
+export function hasApiPlacement(rack: Rack): boolean {
+  const pos = rack.placement?.position ?? rack.position
+  return Boolean(pos && Number.isFinite(pos.x) && Number.isFinite(pos.z))
+}
+
+function floorPoseFrom(rack: Rack): {
+  position: { x: number; y: number; z: number }
+  rotation: { x: number; y: number; z: number }
+  quadrant: Rack['quadrant']
+  placement: Rack['placement']
+} | null {
+  if (!hasApiPlacement(rack)) return null
+  const position = {
+    x: rack.placement?.position?.x ?? rack.position.x,
+    y: rack.placement?.position?.y ?? rack.position.y ?? 0,
+    z: rack.placement?.position?.z ?? rack.position.z,
+  }
+  const rotation = {
+    x: rack.placement?.rotation?.x ?? rack.rotation?.x ?? 0,
+    y: rack.placement?.rotation?.y ?? rack.rotation?.y ?? 0,
+    z: rack.placement?.rotation?.z ?? rack.rotation?.z ?? 0,
+  }
+  const quadrant =
+    parseQuadrant(rack.placement?.quadrant) ??
+    rack.quadrant ??
+    (position.x < 0 && position.z >= 0
+      ? 'NW'
+      : position.x >= 0 && position.z >= 0
+        ? 'NE'
+        : position.x < 0
+          ? 'SW'
+          : 'SE')
+  return {
+    position,
+    rotation,
+    quadrant,
+    placement: {
+      position: { ...position },
+      rotation: { ...rotation },
+      snapMode: rack.placement?.snapMode ?? 'wall',
+      quadrant: quadrant ?? null,
+    },
+  }
+}
+
+/**
+ * Apply the API pose exactly. Loading a store must never move, distribute,
+ * repair, grid-place, or override a rack from local cache.
+ */
+export function placeRacksOnFloor(
+  racks: Rack[],
+  _areaWidth: number,
+  _areaDepth: number,
+  _storeId?: string | null,
+): Rack[] {
+  return racks.map((rack) => {
+    const apiPose = floorPoseFrom(rack)
+    if (!apiPose) return { ...rack, placementSource: 'api' as const }
+    return {
+      ...rack,
+      position: apiPose.position,
+      rotation: apiPose.rotation,
+      quadrant: apiPose.quadrant,
+      placement: apiPose.placement,
+      placementSource: 'api' as const,
+    }
+  })
+}
+
 /** Keep rack positions/rotations and 3D-only fields when refreshing layout data. */
 export function mergeRackPositions(
   existing: Rack[],
@@ -489,21 +559,32 @@ export function mergeRackPositions(
     const prev = byKey.get(key)
     if (!prev) return rack
 
-    const useApiPlacement =
-      Boolean(rack.placement?.position) && !options?.preferExistingPlacement
+    const pose = options?.preferExistingPlacement
+      ? floorPoseFrom(prev) ?? floorPoseFrom(rack)
+      : floorPoseFrom(rack) ?? floorPoseFrom(prev)
 
     return {
       ...rack,
-      position: useApiPlacement ? rack.position : prev.position,
-      rotation: useApiPlacement ? (rack.rotation ?? prev.rotation) : (prev.rotation ?? rack.rotation),
-      quadrant: useApiPlacement ? (rack.quadrant ?? prev.quadrant) : (prev.quadrant ?? rack.quadrant),
+      position: pose?.position ?? (options?.preferExistingPlacement ? prev.position : rack.position),
+      rotation:
+        pose?.rotation ??
+        (options?.preferExistingPlacement
+          ? (prev.rotation ?? rack.rotation)
+          : (rack.rotation ?? prev.rotation)),
+      quadrant:
+        pose?.quadrant ??
+        (options?.preferExistingPlacement
+          ? (prev.quadrant ?? rack.quadrant)
+          : (rack.quadrant ?? prev.quadrant)),
       fixtureType: rack.fixtureType ?? prev.fixtureType,
       customConfig: rack.customConfig ?? prev.customConfig,
       blueprintName: rack.blueprintName ?? prev.blueprintName,
       displayName: rack.displayName ?? prev.displayName,
-      placement: options?.preferExistingPlacement
-        ? (prev.placement ?? rack.placement)
-        : (rack.placement ?? prev.placement),
+      placement:
+        pose?.placement ??
+        (options?.preferExistingPlacement
+          ? (prev.placement ?? rack.placement)
+          : (rack.placement ?? prev.placement)),
       outer: rack.outer ?? prev.outer,
       shell: rack.shell ?? prev.shell,
       inner: rack.inner ?? prev.inner,
@@ -557,6 +638,29 @@ export async function fetchRackBlueprint(
 }
 
 /** Load store listing, then hydrate each rack with full structure (sides/rows/bins). */
+/** Floor pose always comes from by-store list; structure only supplies shelf tree. */
+function withListPlacement(structureOrBlueprint: Rack, listRack: Rack): Rack {
+  const pose = floorPoseFrom(listRack) ?? {
+    position: { ...listRack.position },
+    rotation: listRack.rotation ? { ...listRack.rotation } : { x: 0, y: 0, z: 0 },
+    quadrant: listRack.quadrant,
+    placement: listRack.placement ?? null,
+  }
+  return {
+    ...structureOrBlueprint,
+    position: pose.position,
+    rotation: pose.rotation,
+    quadrant: pose.quadrant,
+    placement: pose.placement ?? undefined,
+    placementSource: 'api',
+    // Keep list audit fields when structure omits them.
+    lastUpdated: listRack.lastUpdated ?? structureOrBlueprint.lastUpdated,
+    publishedAt: listRack.publishedAt ?? structureOrBlueprint.publishedAt,
+    displayName: structureOrBlueprint.displayName ?? listRack.displayName,
+    rackName: structureOrBlueprint.rackName ?? listRack.rackName,
+  }
+}
+
 export async function fetchStoreLayoutRacks(
   storeId: string,
 ): Promise<{ success: boolean; racks: Rack[]; message?: string }> {
@@ -581,20 +685,29 @@ export async function fetchStoreLayoutRacks(
   const hydrated = await Promise.all(
     summaries.map(async (summary) => {
       const id = summary.rackId || summary.id
-      if (!id) return summary
+      if (!id) return { ...summary, placementSource: 'api' as const }
       try {
         const structure = await fetchRackStructure(id)
         if (structure.success && structure.rack) {
-          return mergeRackPositions([summary], [structure.rack])[0]
+          // Shelf tree from /structure; floor pose only from by-store list.
+          const merged = withListPlacement(structure.rack, summary)
+          // eslint-disable-next-line no-console
+          console.log(
+            `[placement] load ${summary.rackName || id}` +
+              ` | byStore=(${summary.position.x}, ${summary.position.z}, rot=${summary.rotation?.y ?? 0})` +
+              ` | structure=(${structure.rack.position.x}, ${structure.rack.position.z}, rot=${structure.rack.rotation?.y ?? 0})` +
+              ` | using=(${merged.position.x}, ${merged.position.z}, rot=${merged.rotation?.y ?? 0})`,
+          )
+          return merged
         }
         const blueprint = await fetchRackBlueprint(id)
         if (blueprint.success && blueprint.rack) {
-          return mergeRackPositions([summary], [blueprint.rack])[0]
+          return withListPlacement(blueprint.rack, summary)
         }
       } catch {
         /* keep summary */
       }
-      return summary
+      return { ...summary, placementSource: 'api' as const }
     }),
   )
 

@@ -37,7 +37,7 @@ function pickDownloadUrl(payload: Record<string, unknown>): string | null {
 /**
  * Rewrite signed storage URLs to a reachable MinIO origin (same as images).
  *
- * IMAGE_STORAGE_PUBLIC_ORIGIN=http://163.61.91.156:32004
+ * OBJECT_STORAGE_MODEL_ORIGIN=http://163.61.91.156:32004
  * Optional pair: OBJECT_STORAGE_REWRITE_FROM / OBJECT_STORAGE_REWRITE_TO
  */
 function maybeRewriteStorageUrl(url: string): string {

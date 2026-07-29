@@ -5,7 +5,11 @@ import { useLoader } from '@react-three/fiber'
 import { SRGBColorSpace, TextureLoader, type Texture } from 'three'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { SCENE_THEMES } from '@/constants/sceneTheme'
-import { WAREHOUSE_SCALE, BUILDING_HEIGHT } from '@/constants/warehouse'
+import {
+  BUILDING_WALL_MARGIN,
+  BUILDING_WALL_THICKNESS,
+  WAREHOUSE_SCALE,
+} from '@/constants/warehouse'
 
 interface BuildingExteriorProps {
   halfW: number
@@ -43,13 +47,19 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
   const [roofHovered, setRoofHovered] = useState(false)
 
   const S = WAREHOUSE_SCALE
-  const margin = 2.5 * S
+  const margin = BUILDING_WALL_MARGIN
   const bW = width + margin * 2
   const bD = depth + margin * 2
   const floor1H = 4.5 * S
   const floor2H = 3.5 * S
   const totalH = floor1H + floor2H
-  const wallT = 0.45 * S
+  const wallT = BUILDING_WALL_THICKNESS
+  // Side walls run past the back/front walls so every corner is mitred shut.
+  const sideSpanD = bD + wallT * 2
+  // Entrance opening centred in the front wall; panels reach the corners.
+  const doorW = bW * 0.36
+  const frontPanelW = (bW - doorW) / 2
+  const frontPanelX = doorW / 2 + frontPanelW / 2
   const white = '#f5f7fa'
   const glass = '#6ba3d4'
   const glassEmissive = '#000000'
@@ -69,7 +79,7 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
         <meshStandardMaterial color={white} roughness={0.55} metalness={0.05} />
       </mesh>
 
-      {/* Ground floor – side walls */}
+      {/* Ground floor – side walls (overlap back/front walls at the corners) */}
       {[-1, 1].map((side) => (
         <mesh
           key={`gf-side-${side}`}
@@ -77,31 +87,34 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
           castShadow
           receiveShadow
         >
-          <boxGeometry args={[wallT, floor1H, bD]} />
+          <boxGeometry args={[wallT, floor1H, sideSpanD]} />
           <meshStandardMaterial color={white} roughness={0.55} metalness={0.05} />
         </mesh>
       ))}
 
       {/* Ground floor – front wall (+Z) with entrance opening */}
-      {/* Left panel */}
-      <mesh position={[-bW * 0.32, floor1H / 2, halfD + margin + wallT / 2]} castShadow receiveShadow>
-        <boxGeometry args={[bW * 0.32, floor1H, wallT]} />
-        <meshStandardMaterial color={white} roughness={0.55} />
-      </mesh>
-      {/* Right panel */}
-      <mesh position={[bW * 0.32, floor1H / 2, halfD + margin + wallT / 2]} castShadow receiveShadow>
-        <boxGeometry args={[bW * 0.32, floor1H, wallT]} />
-        <meshStandardMaterial color={white} roughness={0.55} />
-      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={`gf-front-${side}`}
+          position={[side * frontPanelX, floor1H / 2, halfD + margin + wallT / 2]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[frontPanelW, floor1H, wallT]} />
+          <meshStandardMaterial color={white} roughness={0.55} />
+        </mesh>
+      ))}
       {/* Header above entrance */}
       <mesh position={[0, floor1H - 0.5 * S, halfD + margin + wallT / 2]} castShadow receiveShadow>
-        <boxGeometry args={[bW * 0.36, 1 * S, wallT]} />
+        <boxGeometry args={[doorW, 1 * S, wallT]} />
         <meshStandardMaterial color={white} roughness={0.5} />
       </mesh>
 
-      {/* Glass entrance doors */}
-      <mesh position={[0, floor1H * 0.38, halfD + margin + wallT + 0.04]}>
-        <boxGeometry args={[bW * 0.28, floor1H * 0.65, 0.08]} />
+      {/* Glass entrance doors — fill the opening up to the header */}
+      <mesh
+        position={[0, (floor1H - 1 * S) / 2, halfD + margin + wallT + 0.04]}
+      >
+        <boxGeometry args={[doorW, floor1H - 1 * S, 0.08]} />
         <meshStandardMaterial
           color={glass}
           emissive={glassEmissive}
@@ -128,7 +141,8 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
         { pos: [0, floor1H + floor2H / 2, halfD + margin + wallT + 0.04] as [number, number, number], size: [bW, floor2H * 0.75, 0.1] as [number, number, number] },
         ...([-1, 1] as const).map((side) => ({
           pos: [side * (halfW + margin + wallT + 0.04), floor1H + floor2H / 2, 0] as [number, number, number],
-          size: [0.1, floor2H * 0.75, bD] as [number, number, number],
+          // Wrap past the back/front bands so the band is continuous at corners.
+          size: [0.1, floor2H * 0.75, bD + (wallT + 0.09) * 2] as [number, number, number],
         })),
       ].map((w, i) => (
         <mesh key={`glass-band-${i}`} position={w.pos}>
@@ -148,14 +162,19 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
       {/* Upper floor solid spandrel panels (top/bottom of glass band) */}
       {[-1, 1].map((side) => (
         <mesh key={`spandrel-${side}`} position={[side * (halfW + margin + wallT / 2), floor1H + floor2H - 0.3, 0]}>
-          <boxGeometry args={[wallT, 0.6, bD]} />
+          <boxGeometry args={[wallT, 0.6, sideSpanD]} />
           <meshStandardMaterial color={white} roughness={0.55} />
         </mesh>
       ))}
-      <mesh position={[0, floor1H + floor2H - 0.3, -halfD - margin - wallT / 2]}>
-        <boxGeometry args={[bW, 0.6, wallT]} />
-        <meshStandardMaterial color={white} roughness={0.55} />
-      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={`spandrel-z-${side}`}
+          position={[0, floor1H + floor2H - 0.3, side * (halfD + margin + wallT / 2)]}
+        >
+          <boxGeometry args={[bW, 0.6, wallT]} />
+          <meshStandardMaterial color={white} roughness={0.55} />
+        </mesh>
+      ))}
 
       {/* Left annex wing (taller set-back section) */}
       <group position={[-halfW - margin - 6 * S, 0, -halfD - margin + 4 * S]}>
@@ -224,16 +243,21 @@ export function BuildingExterior({ halfW, halfD, width, depth }: BuildingExterio
         </group>
       )}
 
-      {/* Interior parapet walls when roof is off (low rim) */}
+      {/* Interior parapet walls when roof is off (low rim, closed all round) */}
       {!roofVisible && (
         <>
-          <mesh position={[0, totalH, -halfD - margin - wallT / 2]}>
-            <boxGeometry args={[bW, 0.25, wallT]} />
-            <meshStandardMaterial color={white} roughness={0.55} />
-          </mesh>
+          {[-1, 1].map((side) => (
+            <mesh
+              key={`parapet-z-${side}`}
+              position={[0, totalH, side * (halfD + margin + wallT / 2)]}
+            >
+              <boxGeometry args={[bW, 0.25, wallT]} />
+              <meshStandardMaterial color={white} roughness={0.55} />
+            </mesh>
+          ))}
           {[-1, 1].map((side) => (
             <mesh key={`parapet-${side}`} position={[side * (halfW + margin + wallT / 2), totalH, 0]}>
-              <boxGeometry args={[wallT, 0.25, bD]} />
+              <boxGeometry args={[wallT, 0.25, sideSpanD]} />
               <meshStandardMaterial color={white} roughness={0.55} />
             </mesh>
           ))}

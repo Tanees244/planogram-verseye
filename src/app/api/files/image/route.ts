@@ -8,7 +8,7 @@ const API_BASE_URL = process.env.API_BASE_URL
  * Staging often signs https://aisleris-staging…:32004 while images should be
  * fetched from a reachable MinIO IP. Keep path + query (signature) intact.
  *
- * IMAGE_STORAGE_PUBLIC_ORIGIN=http://163.61.91.156:32004
+ * OBJECT_STORAGE_IMAGE_ORIGIN=http://163.61.91.156:32004
  */
 function rewriteImageStorageUrl(url: string): string {
   const publicOrigin =

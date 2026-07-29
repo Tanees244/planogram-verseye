@@ -1,6 +1,6 @@
 /**
  * Global warehouse / building shell scale.
- * Floor footprint defaults to a realistic mini warehouse: 30 × 20 × 8 m
+ * Floor footprint defaults to a realistic mini warehouse: 42 × 28 × 8 m
  * (see docs/REALISTIC_DIMENSIONS.md and src/constants/dimensions.ts).
  */
 import {
@@ -34,3 +34,9 @@ export const RETAIL_FIXTURE_HEIGHT = Math.min(
 
 /** How close (m) a click must be to snap a rack against a perimeter wall. */
 export const WALL_SNAP_THRESHOLD = 1.25 * Math.max(1, WAREHOUSE_SCALE)
+
+/** Perimeter walkway between the editable sales floor and the building walls (m). */
+export const BUILDING_WALL_MARGIN = 2.5 * WAREHOUSE_SCALE
+
+/** Building wall / post thickness (m). */
+export const BUILDING_WALL_THICKNESS = 0.45 * WAREHOUSE_SCALE

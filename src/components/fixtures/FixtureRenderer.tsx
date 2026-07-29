@@ -26,6 +26,8 @@ import { createBlankCustomRack } from './customRackTypes'
 
 interface FixtureRendererProps {
   rack: Rack
+  /** When false, ignore hover / selection (wall guides). */
+  interactive?: boolean
 }
 
 const FIXTURE_COMPONENTS: Record<
@@ -45,12 +47,12 @@ const FIXTURE_COMPONENTS: Record<
   CUSTOM: CustomRackFixture,
 }
 
-export function FixtureRenderer({ rack }: FixtureRendererProps) {
+export function FixtureRenderer({ rack, interactive = true }: FixtureRendererProps) {
   const meshRef = useRef<Mesh>(null)
   const { selectedId, setSelected } = usePlanogramStore()
   const [hovered, setHovered] = useState(false)
 
-  const isSelected = selectedId === rack.id
+  const isSelected = interactive && selectedId === rack.id
   const { rackHeight, groupY } = computeFixtureMetrics(rack)
   const hasContent = rack.sides.some((s) => s.rows.length > 0)
   const fixtureType = resolveFixtureType(rack)
@@ -63,15 +65,18 @@ export function FixtureRenderer({ rack }: FixtureRendererProps) {
   })
 
   const onSelect = (e: unknown) => {
+    if (!interactive) return
     ;(e as { stopPropagation?: () => void }).stopPropagation?.()
     setSelected(rack.id, 'rack')
   }
   const onPointerOver = (e: unknown) => {
+    if (!interactive) return
     ;(e as { stopPropagation?: () => void }).stopPropagation?.()
     setHovered(true)
     document.body.style.cursor = 'pointer'
   }
   const onPointerOut = () => {
+    if (!interactive) return
     setHovered(false)
     document.body.style.cursor = 'default'
   }

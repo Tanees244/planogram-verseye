@@ -11,6 +11,7 @@ import { snapRackToWall, rackOverlapsOthers, snapToGrid } from '@/utils/rackPlac
 import { PlacementPreview } from '@/components/scene/PlacementPreview'
 import { PlacementGrid } from '@/components/scene/PlacementGrid'
 import { CustomRackLivePreview } from '@/components/scene/CustomRackLivePreview'
+import { WallRackGuides } from '@/components/scene/WallRackGuides'
 import { Rack } from './Rack'
 
 export function Area() {
@@ -109,10 +110,11 @@ export function Area() {
         })
         return
       }
-      updateRackPosition(editingRackId, { x: snapped.x, y: 0, z: snapped.z })
-      if (snapped.snapped) {
-        usePlanogramStore.getState().setRackRotationY?.(editingRackId, snapped.rotationY)
-      }
+      updateRackPosition(
+        editingRackId,
+        { x: snapped.x, y: 0, z: snapped.z },
+        { rotationY: rotY, snapped: snapped.snapped },
+      )
       setEditingRackId(null)
       setPreviewPos(null)
       return
@@ -259,7 +261,8 @@ export function Area() {
         }}
         onPointerLeave={() => {
           document.body.style.cursor = 'default'
-          if (isPlacingRack) setPreviewPos(null)
+          // Clearing the preview also brings the moving rack back to its real spot.
+          if (isPlacingRack || editingRackId) setPreviewPos(null)
         }}
       >
         <planeGeometry args={[area.width, area.depth]} />
@@ -293,10 +296,14 @@ export function Area() {
         fixtureLabel={gridFixtureLabel}
       />
 
-      {/* RACKS */}
-      {area.racks.map((rack: RackType) => (
-        <Rack key={rack.id} rack={rack} />
-      ))}
+      {/* RACKS — the one being moved is drawn as the ghost preview instead */}
+      {area.racks.map((rack: RackType) =>
+        editingRackId === rack.id && previewPos ? null : (
+          <Rack key={rack.id} rack={rack} />
+        ),
+      )}
+
+      <WallRackGuides />
 
       <PlacementPreview position={previewPos} />
       <CustomRackLivePreview />

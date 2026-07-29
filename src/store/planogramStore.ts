@@ -20,7 +20,7 @@ import {
   snapRackToWall,
   snapToGrid,
 } from "@/utils/rackPlacement";
-import { buildCreateRackPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { buildCreateRackPayload, buildPlacementOnlyPayload, buildPlacementWithRowStubsPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, rackHasEmptyRows, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
 import { canAddRowToSide, innerFromCustomConfig, nextRowYStart, reanchorSideRows } from "@/utils/rowStack";
 import { getFixtureSeedLayout } from "@/utils/fixtureSeed";
 import { boundsFromRacks, summarizeRacks } from "@/lib/planogram-formats/serialize";
@@ -257,6 +257,8 @@ export interface Rack {
   sides: RackSide[];
   quadrant?: Quadrant;
   isDoubleSided?: boolean;
+  /** Where the loaded pose came from. Diagnostics only — never sent to the API. */
+  placementSource?: "api" | "live edit";
 }
 
 export interface Area {
@@ -291,6 +293,14 @@ export function getQuadrantFromPosition(x: number, z: number): Quadrant {
   return "SE"; // South-East
 }
 
+/** Normalize a Y rotation to [-π, π] so stored and displayed angles stay stable. */
+function normalizeAngle(radians: number): number {
+  let y = radians;
+  while (y > Math.PI) y -= Math.PI * 2;
+  while (y < -Math.PI) y += Math.PI * 2;
+  return y;
+}
+
 export type ViewMode = "traditional" | "advanced";
 
 export interface PlanogramState {
@@ -300,6 +310,9 @@ export interface PlanogramState {
   setSceneTheme: (theme: SceneTheme) => void;
   roofVisible: boolean;
   setRoofVisible: (visible: boolean) => void;
+  /** Non-interactive dummy racks along the walls, tiled so joins are visible. */
+  wallGuidesVisible: boolean;
+  setWallGuidesVisible: (visible: boolean) => void;
   fixturePaletteCollapsed: boolean;
   productPaletteCollapsed: boolean;
   setFixturePaletteCollapsed: (collapsed: boolean) => void;
@@ -491,6 +504,12 @@ export interface PlanogramState {
   updateRackPosition: (
     rackId: string,
     position: { x: number; y: number; z: number },
+    /**
+     * Apply this Y rotation together with the move. Required for wall snaps:
+     * the footprint check and the saved pose must agree on the rotation, and a
+     * separate {@link setRackRotationY} call would race its own PUT.
+     */
+    options?: { rotationY?: number; snapped?: boolean },
   ) => void;
   /** Set absolute Y rotation in radians (also syncs placement for save). */
   setRackRotationY: (rackId: string, rotationY: number) => void;
@@ -719,6 +738,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   setSceneTheme: () => set({ sceneTheme: "day" }),
   roofVisible: true,
   setRoofVisible: (visible) => set({ roofVisible: visible }),
+  wallGuidesVisible: false,
+  setWallGuidesVisible: (visible) => set({ wallGuidesVisible: visible }),
   fixturePaletteCollapsed: false,
   productPaletteCollapsed: false,
   setFixturePaletteCollapsed: (collapsed) => set({ fixturePaletteCollapsed: collapsed }),
@@ -1111,7 +1132,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     let placeZ = pos.z;
     let rotationY = options?.rotationY ?? 0;
 
-    if (options?.snapToWall !== false) {
+    if (position && options?.snapToWall !== false) {
       const snapped = snapRackToWall(
         { x: pos.x, z: pos.z },
         width,
@@ -2212,7 +2233,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
 
     set({ isLoadingStoreLayout: true });
     try {
-      const { fetchStoreLayoutRacks, mergeRackPositions, gridPlaceRacks } = await import(
+      const { fetchStoreLayoutRacks, placeRacksOnFloor } = await import(
         '@/utils/storeLayoutLoader'
       );
       const result = await fetchStoreLayoutRacks(selectedStoreId);
@@ -2221,12 +2242,13 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       }
 
       const fresh = result.racks;
-      // Local session owns rack positions during a reload — server placement
-      // can lag behind (reflow / structure saves) and would make racks jump.
-      const placed =
-        area.racks.length > 0
-          ? mergeRackPositions(area.racks, fresh, { preferExistingPlacement: true })
-          : gridPlaceRacks(fresh, area.width, area.depth);
+      // Reload always reflects the API exactly; local/cache placement never wins.
+      const placed = placeRacksOnFloor(
+        fresh,
+        area.width,
+        area.depth,
+        selectedStoreId,
+      );
 
       set({ area: { ...area, racks: placed } });
       return { success: true };
@@ -2334,25 +2356,65 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       /* ignore */
     }
 
-    try {
-      // Full tree required — slim placement body can soft-delete rows on BE.
-      const clamped = applySoftFaceFillClampToRack(rack);
-      const payload = buildUpdateRackPlacementPayload(clamped);
+    const clamped = applySoftFaceFillClampToRack(rack);
+    const put = async (body: Record<string, unknown>) => {
       const res = await fetch(`/api/racks/${encodeURIComponent(serverRackId)}`, {
         method: 'PUT',
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
-        return {
-          success: false,
-          message: data?.message || `Failed to save placement (${res.status})`,
-        };
+      const ok =
+        res.ok && data?.isRequestSuccess !== false && data?.success !== false;
+      return {
+        ok,
+        message: ok
+          ? (data?.message as string | undefined)
+          : extractApiErrorMessage(data, `Failed to save placement (${res.status})`),
+      };
+    };
+
+    try {
+      // Bodies from richest to slimmest. The full tree is preferred because
+      // omitting rows can soft-delete them, but shelf validation rejects rows
+      // with no bins, so a rack still being built falls back to lighter bodies
+      // that carry the placement without failing that rule.
+      const bodies: [string, Record<string, unknown>][] = rackHasEmptyRows(clamped)
+        ? [
+            ['rows-without-bins', buildPlacementWithRowStubsPayload(clamped)],
+            ['placement-only', buildPlacementOnlyPayload(clamped)],
+          ]
+        : [
+            ['full-tree', buildUpdateRackPlacementPayload(clamped)],
+            ['rows-without-bins', buildPlacementWithRowStubsPayload(clamped)],
+            ['placement-only', buildPlacementOnlyPayload(clamped)],
+          ];
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[placement] saving ${serverRackId} → (${rack.position.x}, ${rack.position.z}, rotDeg=${Math.round(((rack.rotation?.y ?? 0) * 180) / Math.PI)}, ${rack.quadrant})`,
+      );
+
+      let lastMessage: string | undefined;
+      for (const [variant, body] of bodies) {
+        const result = await put(body);
+        // eslint-disable-next-line no-console
+        console.log(`[placement] PUT ${variant} → ${result.ok ? 'OK' : `FAILED — ${result.message}`}`);
+        if (result.ok) {
+          // eslint-disable-next-line no-console
+          console.log(`[placement] saved OK ${serverRackId}`);
+          return { success: true, message: result.message || 'Placement saved' };
+        }
+        lastMessage = result.message;
       }
-      return { success: true, message: data?.message || 'Placement saved' };
+
+      const message = lastMessage || 'Failed to save placement';
+      toastApiError(`Move not saved — ${message}`);
+      return { success: false, message };
     } catch {
-      return { success: false, message: 'Network error while saving placement' };
+      const message = 'Network error while saving placement';
+      toastApiError(message);
+      return { success: false, message };
     }
   },
   saveStoreLayoutToServer: async () => {
@@ -2552,15 +2614,18 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return state;
     });
   },
-  updateRackPosition: (rackId, position) => {
+  updateRackPosition: (rackId, position, options) => {
     let moved = false;
     set((state) => {
       const rack = state.area.racks.find((r) => r.id === rackId);
       if (!rack) return state;
 
-      const x = snapToGrid(position.x);
-      const z = snapToGrid(position.z);
-      const rotY = rack.rotation?.y ?? 0;
+      // A wall snap already resolved the exact flush offset; re-snapping to the
+      // grid would nudge the rack off the wall.
+      const x = options?.snapped ? position.x : snapToGrid(position.x);
+      const z = options?.snapped ? position.z : snapToGrid(position.z);
+      const rotY = normalizeAngle(options?.rotationY ?? rack.rotation?.y ?? 0);
+      const rotation = { x: rack.rotation?.x ?? 0, y: rotY, z: rack.rotation?.z ?? 0 };
 
       if (
         !isRackInsideFloor(
@@ -2611,10 +2676,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
               ? {
                 ...r,
                 position: nextPos,
+                rotation,
                 quadrant: getQuadrantFromPosition(nextPos.x, nextPos.z),
                 placement: {
                   position: { ...nextPos },
-                  rotation: r.rotation ? { ...r.rotation } : { x: 0, y: 0, z: 0 },
+                  rotation: { ...rotation },
                   snapMode: r.placement?.snapMode ?? 'wall',
                   quadrant: getQuadrantFromPosition(nextPos.x, nextPos.z),
                 },
@@ -2624,18 +2690,20 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         },
       };
     });
-    if (moved) void get().saveRackPlacementToServer(rackId);
+    if (moved) {
+      void get().saveRackPlacementToServer(rackId);
+    }
   },
   setRackRotationY: (rackId, rotationY) => {
     let rotated = false;
     set((state) => {
       const rack = state.area.racks.find((r) => r.id === rackId);
       if (!rack) return state;
-      // Normalize to [-π, π] for stable display
-      let y = rotationY;
-      while (y > Math.PI) y -= Math.PI * 2;
-      while (y < -Math.PI) y += Math.PI * 2;
-      const rotation = { x: rack.rotation?.x ?? 0, y, z: rack.rotation?.z ?? 0 };
+      const rotation = {
+        x: rack.rotation?.x ?? 0,
+        y: normalizeAngle(rotationY),
+        z: rack.rotation?.z ?? 0,
+      };
       rotated = true;
       return {
         ...state,
@@ -2659,7 +2727,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         },
       };
     });
-    if (rotated) void get().saveRackPlacementToServer(rackId);
+    if (rotated) {
+      void get().saveRackPlacementToServer(rackId);
+    }
   },
   rotateRack: (rackId, deltaDegrees = 90) => {
     const state = get();

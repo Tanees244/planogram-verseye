@@ -15,6 +15,7 @@ import {
   FiMove,
   FiChevronLeft,
   FiChevronRight,
+  FiColumns,
   FiX,
   FiSliders,
 } from 'react-icons/fi'
@@ -80,6 +81,8 @@ export function FixturePalette({
   const setAddRackError = usePlanogramStore((s) => s.setAddRackError)
   const setFixturePaletteCollapsed = usePlanogramStore((s) => s.setFixturePaletteCollapsed)
   const setFixtureDragActive = usePlanogramStore((s) => s.setFixtureDragActive)
+  const wallGuidesVisible = usePlanogramStore((s) => s.wallGuidesVisible)
+  const setWallGuidesVisible = usePlanogramStore((s) => s.setWallGuidesVisible)
 
   const [dragging, setDragging] = useState<FixtureType | null>(null)
   const [collapsed, setCollapsed] = useState(false)
@@ -303,6 +306,44 @@ export function FixturePalette({
             (fillHeight || embedded) && 'flex-1',
           )}
         >
+          <button
+            type="button"
+            onClick={() => setWallGuidesVisible(!wallGuidesVisible)}
+            className={cn(
+              'w-full flex items-center gap-2.5 p-2.5 rounded-xl border transition-all text-left',
+              wallGuidesVisible
+                ? 'border-sky-400/50 bg-sky-500/20 shadow-md shadow-sky-900/20'
+                : 'border-white/10 bg-white/[0.04] hover:bg-white/10 hover:border-white/15',
+            )}
+            aria-pressed={wallGuidesVisible}
+            title="Show one-sided wall-bay guides along the walls (not clickable)"
+          >
+            <span
+              className={cn(
+                'flex items-center justify-center w-9 h-9 rounded-xl shrink-0',
+                wallGuidesVisible ? 'bg-sky-500 text-white' : 'bg-white/10 text-sky-200',
+              )}
+            >
+              <FiColumns size={15} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="text-xs font-semibold text-white block">Wall rack guides</span>
+              <span className="text-[10px] text-gray-400">
+                One-sided wall bays with sample SKUs · not clickable
+              </span>
+            </div>
+            <span
+              className={cn(
+                'shrink-0 px-1.5 py-0.5 rounded-md border text-[10px] font-semibold',
+                wallGuidesVisible
+                  ? 'bg-brand/40 border-brand/50 text-white'
+                  : 'bg-black/35 border-white/10 text-gray-400',
+              )}
+            >
+              {wallGuidesVisible ? 'On' : 'Off'}
+            </span>
+          </button>
+
           {showBuildCustom && (
           <button
             type="button"

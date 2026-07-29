@@ -5,7 +5,7 @@ import { FiMapPin, FiSearch } from 'react-icons/fi'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/form'
 import { usePlanogramStore } from '@/store/planogramStore'
-import { authHeaders, fetchStoreLayoutRacks, gridPlaceRacks } from '@/utils/storeLayoutLoader'
+import { authHeaders, fetchStoreLayoutRacks, placeRacksOnFloor } from '@/utils/storeLayoutLoader'
 
 interface Branch {
   id: string
@@ -94,8 +94,19 @@ export default function StoreLayout() {
           usePlanogramStore.setState((s) => ({ area: { ...s.area, racks: [] } }))
           return
         }
-        const placed = gridPlaceRacks(result.racks, areaWidth, areaDepth)
+        const placed = placeRacksOnFloor(
+          result.racks,
+          areaWidth,
+          areaDepth,
+          selectedStoreId,
+        )
         usePlanogramStore.setState((s) => ({ area: { ...s.area, racks: placed } }))
+        // Drop the old local placement cache — load is API-only now.
+        try {
+          window.localStorage.removeItem('planogram.rackPlacements')
+        } catch {
+          /* ignore */
+        }
       } catch {
         loadedStoreRef.current = null
       } finally {

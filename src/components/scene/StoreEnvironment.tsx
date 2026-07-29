@@ -1,7 +1,12 @@
 'use client'
 
 import { SCENE_THEMES } from '@/constants/sceneTheme'
-import { BUILDING_HEIGHT, WAREHOUSE_SCALE } from '@/constants/warehouse'
+import {
+  BUILDING_HEIGHT,
+  BUILDING_WALL_MARGIN,
+  BUILDING_WALL_THICKNESS,
+  WAREHOUSE_SCALE,
+} from '@/constants/warehouse'
 import { BuildingExterior } from '@/components/scene/BuildingExterior'
 
 interface StoreEnvironmentProps {
@@ -29,6 +34,10 @@ export function StoreEnvironment({ halfW, halfD, width, depth }: StoreEnvironmen
     [halfW + 12, 0, halfD + 5],
     [halfW + 7, 0, halfD + 13],
   ]
+
+  // Interior slab runs under the walls so the floor meets them with no gap.
+  const interiorW = width + (BUILDING_WALL_MARGIN + BUILDING_WALL_THICKNESS) * 2
+  const interiorD = depth + (BUILDING_WALL_MARGIN + BUILDING_WALL_THICKNESS) * 2
 
   return (
     <group>
@@ -132,6 +141,17 @@ export function StoreEnvironment({ halfW, halfD, width, depth }: StoreEnvironmen
           </mesh>
         </group>
       ))}
+
+      {/* Store interior slab — perimeter walkway between sales floor and walls */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.005, 0]}
+        receiveShadow
+        raycast={() => null}
+      >
+        <planeGeometry args={[interiorW, interiorD]} />
+        <meshStandardMaterial color="#dbe2ec" roughness={0.7} metalness={0.05} />
+      </mesh>
 
       <BuildingExterior halfW={halfW} halfD={halfD} width={width} depth={depth} />
 

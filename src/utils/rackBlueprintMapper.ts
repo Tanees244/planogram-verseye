@@ -16,10 +16,18 @@ import {
 } from '@/constants/dimensions';
 import { safeDim } from '@/utils/safeDimensions';
 
+/** Positive dimensions only (width/depth/height). Not for floor coords. */
 function num(value: unknown, fallback: number): number {
   if (value === null || value === undefined || value === '') return fallback;
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Any finite number, including 0 and negatives — floor x/z and rotations. */
+function finiteNum(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function bandFromSection(
@@ -113,10 +121,10 @@ export function parsePlacement(raw: Record<string, unknown>): RackPlacement | nu
     const rot = placement.rotation as Record<string, number> | null | undefined;
     return {
       position: pos
-        ? { x: num(pos.x, 0), y: num(pos.y, 0), z: num(pos.z, 0) }
+        ? { x: finiteNum(pos.x, 0), y: finiteNum(pos.y, 0), z: finiteNum(pos.z, 0) }
         : null,
       rotation: rot
-        ? { x: num(rot.x, 0), y: num(rot.y, 0), z: num(rot.z, 0) }
+        ? { x: finiteNum(rot.x, 0), y: finiteNum(rot.y, 0), z: finiteNum(rot.z, 0) }
         : null,
       snapMode: (placement.snapMode as string) ?? null,
       quadrant: (placement.quadrant as string) ?? null,
@@ -127,13 +135,13 @@ export function parsePlacement(raw: Record<string, unknown>): RackPlacement | nu
   if (legacyPos && typeof legacyPos === 'object') {
     return {
       position: {
-        x: num(legacyPos.x, 0),
-        y: num(legacyPos.y, 0),
-        z: num(legacyPos.z, 0),
+        x: finiteNum(legacyPos.x, 0),
+        y: finiteNum(legacyPos.y, 0),
+        z: finiteNum(legacyPos.z, 0),
       },
       rotation: {
         x: 0,
-        y: num(legacyPos.rotationY, num(raw.rotationY, 0)),
+        y: finiteNum(legacyPos.rotationY, finiteNum(raw.rotationY, 0)),
         z: 0,
       },
       snapMode: null,
@@ -149,11 +157,11 @@ export function parsePlacement(raw: Record<string, unknown>): RackPlacement | nu
   ) {
     return {
       position: {
-        x: num(raw.positionX, 0),
-        y: num(raw.positionY, 0),
-        z: num(raw.positionZ, 0),
+        x: finiteNum(raw.positionX, 0),
+        y: finiteNum(raw.positionY, 0),
+        z: finiteNum(raw.positionZ, 0),
       },
-      rotation: { x: 0, y: num(raw.rotationY, 0), z: 0 },
+      rotation: { x: 0, y: finiteNum(raw.rotationY, 0), z: 0 },
       snapMode: null,
       quadrant: (raw.quadrant as string) ?? null,
     };
@@ -165,9 +173,9 @@ export function parsePlacement(raw: Record<string, unknown>): RackPlacement | nu
 export function placementToRotation(placement: RackPlacement | null | undefined): RackRotation {
   const rot = placement?.rotation;
   return {
-    x: num(rot?.x, 0),
-    y: num(rot?.y, 0),
-    z: num(rot?.z, 0),
+    x: finiteNum(rot?.x, 0),
+    y: finiteNum(rot?.y, 0),
+    z: finiteNum(rot?.z, 0),
   };
 }
 
@@ -175,7 +183,7 @@ export function placementToPosition(
   placement: RackPlacement | null | undefined,
 ): { x: number; y: number; z: number } {
   const pos = placement?.position;
-  return { x: num(pos?.x, 0), y: num(pos?.y, 0), z: num(pos?.z, 0) };
+  return { x: finiteNum(pos?.x, 0), y: finiteNum(pos?.y, 0), z: finiteNum(pos?.z, 0) };
 }
 
 export function rackToPlacement(rack: Rack): RackPlacement {
@@ -637,4 +645,38 @@ export function buildUpdateRackPayload(
  * Omitting rows soft-deletes them on the backend. */
 export function buildUpdateRackPlacementPayload(rack: Rack): Record<string, unknown> {
   return buildUpdateRackPayload(rack);
+}
+
+/**
+ * Placement fallback that keeps rows but omits their bins, for racks the
+ * full-tree PUT rejects with 422 "empty rows are not allowed".
+ * `sides` must stay — the backend also requires exactly one side on a
+ * single-sided rack — and the row ids keep the existing rows from being dropped.
+ */
+export function buildPlacementWithRowStubsPayload(rack: Rack): Record<string, unknown> {
+  const full = buildUpdateRackPayload(rack);
+  const sides = ((full.sides as Record<string, unknown>[]) ?? []).map((side) => ({
+    ...side,
+    rows: ((side.rows as Record<string, unknown>[]) ?? []).map(
+      ({ bins: _bins, ...row }) => row,
+    ),
+  }));
+  return { ...full, sides };
+}
+
+/**
+ * Last-resort placement body: side ids only, no rows. Sends just enough for the
+ * single/double-sided check to pass while skipping row and bin validation.
+ */
+export function buildPlacementOnlyPayload(rack: Rack): Record<string, unknown> {
+  const full = buildUpdateRackPayload(rack);
+  const sides = ((full.sides as Record<string, unknown>[]) ?? []).map(
+    ({ rows: _rows, ...side }) => side,
+  );
+  return { ...full, sides };
+}
+
+/** True when any row has no bins — the backend rejects those on a full-tree PUT. */
+export function rackHasEmptyRows(rack: Rack): boolean {
+  return rack.sides.some((side) => side.rows.some((row) => row.bins.length === 0));
 }

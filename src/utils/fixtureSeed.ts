@@ -28,6 +28,16 @@ export function getFixtureSeedLayout(fixtureType: FixtureType): FixtureSeedLayou
           { height: 0.45, bins: 3, binLabel: 'Bin' },
         ],
       }
+    case 'WALL_BAY':
+      // 2.2 m tall · 4 wall shelves · 3 bins
+      return {
+        rows: [
+          { height: 0.4, bins: 3, binLabel: 'Bay' },
+          { height: 0.4, bins: 3, binLabel: 'Bay' },
+          { height: 0.4, bins: 3, binLabel: 'Bay' },
+          { height: 0.4, bins: 3, binLabel: 'Bay' },
+        ],
+      }
     case 'FREEZER':
       // 2.2 m tall · 4 cold shelves · 2 bins
       return {
