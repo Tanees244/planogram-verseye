@@ -6,14 +6,21 @@ interface AddRackRequest {
   // New field name. `globalLocationId` is accepted for backwards compatibility.
   storeId?: string;
   globalLocationId?: string;
-  rackCode: string;
+  /** Preferred display name (FRONTEND_RACK_NAME_AND_AUTO_CODE). */
+  rackName?: string;
+  /** Legacy alias — accepted if rackName is omitted. */
+  blueprintName?: string;
+  /**
+   * Some BE builds still require RackCode on create (even when docs say auto-code).
+   * Optional from client; otherwise derived from rackName.
+   */
+  rackCode?: string;
   height?: number;
   width?: number;
   depth?: number;
   isDoubleSided: boolean;
-  /** Blueprint contract fields (CUSTOM fixtures). */
+  /** Contract fields (CUSTOM fixtures). */
   fixtureType?: string;
-  blueprintName?: string;
   outer?: { width: number; depth: number; height: number };
   shell?: Record<string, unknown>;
   placement?: Record<string, unknown>;
@@ -21,6 +28,25 @@ interface AddRackRequest {
   positionY?: number;
   positionZ?: number;
   rotationY?: number;
+}
+
+function resolveRackName(body: AddRackRequest): string | null {
+  const fromName = typeof body.rackName === 'string' ? body.rackName.trim() : '';
+  if (fromName) return fromName;
+  const fromLegacy =
+    typeof body.blueprintName === 'string' ? body.blueprintName.trim() : '';
+  return fromLegacy || null;
+}
+
+/** "Dairy Gondola A" → "DAIRY-GONDOLA-A" (matches BE auto-code style). */
+function rackCodeFromName(name: string): string {
+  const code = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return code || `RACK-${Date.now()}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +61,8 @@ export async function POST(req: NextRequest) {
   }
 
   const storeId = body.storeId ?? body.globalLocationId;
-  const { rackCode, isDoubleSided } = body;
+  const rackName = resolveRackName(body);
+  const { isDoubleSided } = body;
   const isBlueprint = Boolean(body.outer && body.shell);
 
   if (!storeId || typeof storeId !== 'string') {
@@ -44,9 +71,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (!rackCode || typeof rackCode !== 'string') {
+  if (!rackName) {
     return NextResponse.json(
-      { isRequestSuccess: false, message: 'rackCode is required', statusCode: 400 },
+      { isRequestSuccess: false, message: 'rackName is required', statusCode: 400 },
       { status: 400 }
     );
   }
@@ -56,6 +83,14 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const rackCode =
+    (typeof body.rackCode === 'string' && body.rackCode.trim()) ||
+    rackCodeFromName(rackName);
+
+  // rackName = display name; rackCode required by current BE validation.
+  // blueprintName mirrored for older blueprint create paths.
+  const nameFields = { rackName, rackCode, blueprintName: rackName };
 
   if (isBlueprint) {
     const outer = body.outer!;
@@ -76,10 +111,9 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       body: {
         storeId,
-        rackCode,
+        ...nameFields,
         isDoubleSided,
         fixtureType: body.fixtureType ?? 'CUSTOM',
-        blueprintName: body.blueprintName ?? rackCode,
         outer: body.outer,
         shell: body.shell,
         placement: body.placement,
@@ -109,12 +143,11 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     body: {
       storeId,
-      rackCode,
+      ...nameFields,
       height,
       width,
       isDoubleSided,
       ...(body.fixtureType ? { fixtureType: body.fixtureType } : {}),
-      ...(body.blueprintName ? { blueprintName: body.blueprintName } : {}),
       ...(body.depth != null ? { depth: body.depth } : {}),
       ...(body.outer ? { outer: body.outer } : {}),
       ...(body.placement ? { placement: body.placement } : {}),

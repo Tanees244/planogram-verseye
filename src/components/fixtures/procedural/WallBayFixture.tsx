@@ -22,7 +22,7 @@ export function WallBayFixture({
 
   return (
     <>
-      {/* Back panel (mounts to wall at -Z) */}
+      {/* Back panel (local +Z — mounts to wall; open shelves face −Z) */}
       <mesh position={[0, 0, backZ]} {...bind}>
         <boxGeometry args={[rack.width, rackHeight, 0.08]} />
         <meshStandardMaterial color="#e8ecef" metalness={0.2} roughness={0.7} emissive={emissive} emissiveIntensity={0.15} />

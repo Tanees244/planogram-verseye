@@ -1,6 +1,7 @@
 import type { Rack, RackSide, Row } from '@/store/planogramStore'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveRackInner, resolveRackOuter } from '@/utils/rackBlueprintMapper'
+import { formatCm } from '@/utils/lengthUnits'
 
 /** Sum of row heights on a side (meters). */
 export function sumRowHeights(rows: Row[]): number {
@@ -58,7 +59,7 @@ export function canAddRowToSide(
       usable,
       used,
       remaining,
-      message: `Row heights (${total.toFixed(2)} m) exceed available space (${usable.toFixed(2)} m). ${remaining > 0 ? `Remaining: ${remaining.toFixed(2)} m.` : 'No space left.'}`,
+      message: `Row heights (${formatCm(total)}) exceed available space (${formatCm(usable)}). ${remaining > 0 ? `Remaining: ${formatCm(remaining)}.` : 'No space left.'}`,
     }
   }
   return { ok: true, usable, used, remaining }

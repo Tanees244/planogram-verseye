@@ -6,6 +6,7 @@ import { FIXTURE_LIBRARY } from '@/components/fixtures/types'
 import { computeFixtureMetrics } from '@/components/fixtures/fixtureMetrics'
 import { CustomRackMesh } from '@/components/fixtures/CustomRackMesh'
 import type { Rack } from '@/store/planogramStore'
+import { formatCmPair, formatCmTriple } from '@/utils/lengthUnits'
 
 interface PlacementPreviewProps {
   position: { x: number; z: number; rotationY: number; overlaps?: boolean } | null
@@ -74,7 +75,7 @@ export function PlacementPreview({ position }: PlacementPreviewProps) {
           boxShadow: '0 6px 18px rgba(0,0,0,0.35)',
         }}
       >
-        {label}: {width.toFixed(2)} × {depth.toFixed(2)} × {displayH.toFixed(2)} m
+        {label}: {formatCmTriple(width, depth, displayH)}
       </div>
     </Html>
   )
@@ -111,5 +112,5 @@ export function PlacementPreview({ position }: PlacementPreviewProps) {
 export function placementHintLabel(placingType: string | null, pending: { width: number; depth: number } | null) {
   if (!placingType || !pending) return 'Click the floor to place — snaps to grid / walls'
   const label = FIXTURE_LIBRARY[placingType as keyof typeof FIXTURE_LIBRARY]?.label ?? 'Fixture'
-  return `Place ${label} (${pending.width.toFixed(2)}m × ${pending.depth.toFixed(2)}m)`
+  return `Place ${label} (${formatCmPair(pending.width, pending.depth)})`
 }

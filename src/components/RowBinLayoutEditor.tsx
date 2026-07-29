@@ -87,7 +87,7 @@ export function RowBinLayoutEditor({
     if (!(w > 0.05) || remainingM < 0.08) return
     const next: DraftBinLayout = {
       id: uid(),
-      name: `Bay ${existingBins.length + drafts.length + 1}`,
+      name: `Bin ${existingBins.length + drafts.length + 1}`,
       widthM: Math.round(w * 1000) / 1000,
       depthM: Math.round(Math.min(rowDepthM, Math.max(0.15, rowDepthM)) * 1000) / 1000,
       heightM: Math.round(Math.min(rowHeightM * 0.9, Math.max(0.15, rowHeightM - 0.05)) * 1000) / 1000,
@@ -351,7 +351,7 @@ export function createInitialDraft(
   const w = Math.min(Math.max(0.2, freeM * 0.35 || 0.35), Math.max(0.15, freeM))
   return {
     id: uid(),
-    name: `Bay ${index}`,
+    name: `Bin ${index}`,
     widthM: Math.round(w * 1000) / 1000,
     depthM: Math.round(Math.max(0.15, rowDepthM) * 1000) / 1000,
     heightM: Math.round(

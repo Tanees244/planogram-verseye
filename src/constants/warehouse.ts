@@ -33,4 +33,4 @@ export const RETAIL_FIXTURE_HEIGHT = Math.min(
 )
 
 /** How close (m) a click must be to snap a rack against a perimeter wall. */
-export const WALL_SNAP_THRESHOLD = 3 * Math.max(1, WAREHOUSE_SCALE)
+export const WALL_SNAP_THRESHOLD = 1.25 * Math.max(1, WAREHOUSE_SCALE)

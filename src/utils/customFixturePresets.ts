@@ -54,3 +54,34 @@ export function saveCustomFixturePreset(name: string, config: CustomRackConfig):
 export function removeCustomFixturePreset(id: string) {
   writeAll(readAll().filter((p) => p.id !== id))
 }
+
+/** Suggest a store-unique rack name from a preset base name. */
+export function suggestUniqueRackName(
+  baseName: string,
+  existingNames: Array<string | null | undefined>,
+): string {
+  const base = baseName.trim() || 'Custom rack'
+  const taken = new Set(
+    existingNames
+      .map((n) => (typeof n === 'string' ? n.trim().toLowerCase() : ''))
+      .filter(Boolean),
+  )
+  if (!taken.has(base.toLowerCase())) return base
+  for (let i = 2; i < 200; i++) {
+    const candidate = `${base} ${i}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+  return `${base} ${Date.now()}`
+}
+
+export function isRackNameConflictMessage(message?: string | null): boolean {
+  if (!message) return false
+  const m = message.toLowerCase()
+  return (
+    m.includes('unique') ||
+    m.includes('already exist') ||
+    m.includes('already in use') ||
+    m.includes('duplicate') ||
+    (m.includes('name') && (m.includes('taken') || m.includes('conflict') || m.includes('exist')))
+  )
+}

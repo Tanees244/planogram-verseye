@@ -8,7 +8,7 @@ export function displayRackName(rack: {
 }): string {
   const display = (rack.displayName ?? '').trim()
   if (display) return display
-  const name = (rack.blueprintName ?? rack.rackName ?? '').trim()
+  const name = (rack.rackName ?? rack.blueprintName ?? '').trim()
   if (name) return name
   const code = (rack.rackCode ?? '').trim()
   if (code) return code

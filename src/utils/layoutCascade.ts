@@ -11,6 +11,7 @@
  * with min/max clamp. Exceptions are returned (never dropped silently).
  */
 
+import { formatCm } from '@/utils/lengthUnits'
 import type { CustomRackConfig } from '@/components/fixtures/customRackTypes'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import type { Bin, Product, Rack, Row } from '@/store/planogramStore'
@@ -165,7 +166,7 @@ function rescaleRowHeights(rows: Row[], innerHeight: number, exceptions: Cascade
     if (nextH + 0.001 < row.height) {
       exceptions.push({
         code: 'row_span_clamped',
-        message: `Row height reduced ${row.height.toFixed(2)} → ${nextH.toFixed(2)} m to fit inner height`,
+        message: `Row height reduced ${formatCm(row.height)} → ${formatCm(nextH)} to fit inner height`,
         rackId,
         rowId: row.id,
       })
@@ -205,7 +206,7 @@ function rescaleBins(
     if (nextW + 0.001 < bin.width) {
       exceptions.push({
         code: 'bin_width_clamped',
-        message: `Bin width reduced ${bin.width.toFixed(2)} → ${nextW.toFixed(2)} m (row span ${rowSpan.toFixed(2)} m)`,
+        message: `Bin width reduced ${formatCm(bin.width)} → ${formatCm(nextW)} (row span ${formatCm(rowSpan)})`,
         rackId,
         rowId: row.id,
         binId: bin.id,
@@ -274,7 +275,7 @@ function reintegeriseFacings(
   if (!fits(nextQty)) {
     exceptions.push({
       code: 'overflow_unresolved',
-      message: `Bin ${bin.binName || bin.id.slice(0, 8)} still overflows after min facings — Σ(product.width×qty) > bin.width (${bin.width.toFixed(2)} m)`,
+      message: `Bin ${bin.binName || bin.id.slice(0, 8)} still overflows after min facings — Σ(product.width×qty) > bin.width (${formatCm(bin.width)})`,
       rackId,
       rowId,
       binId: bin.id,
@@ -287,7 +288,7 @@ function reintegeriseFacings(
     if (next < prev) {
       exceptions.push({
         code: 'facings_reduced',
-        message: `${p.name}: facings ${prev} → ${next} to fit bin width ${bin.width.toFixed(2)} m`,
+        message: `${p.name}: facings ${prev} → ${next} to fit bin width ${formatCm(bin.width)}`,
         rackId,
         rowId,
         binId: bin.id,
@@ -344,7 +345,7 @@ export function cascadeRescaleRack(rack: Rack): CascadeResult {
         if (span + 0.001 < prevSpan) {
           exceptions.push({
             code: 'row_span_clamped',
-            message: `Row span clamped ${prevSpan.toFixed(2)} → ${span.toFixed(2)} m (inner.width ${inner.width.toFixed(2)} m)`,
+            message: `Row span clamped ${formatCm(prevSpan)} → ${formatCm(span)} (inner.width ${formatCm(inner.width)})`,
             rackId: rack.id,
             rowId: row.id,
           })
@@ -378,7 +379,7 @@ export function validateLayoutHierarchy(rack: Rack): CascadeException[] {
       if (span > inner.width + 0.001) {
         exceptions.push({
           code: 'row_span_clamped',
-          message: `row.span ${span.toFixed(2)} > inner.width ${inner.width.toFixed(2)}`,
+          message: `row.span ${formatCm(span)} > inner.width ${formatCm(inner.width)}`,
           rackId: rack.id,
           rowId: row.id,
         })
@@ -387,7 +388,7 @@ export function validateLayoutHierarchy(rack: Rack): CascadeException[] {
       if (binSum > span + 0.001) {
         exceptions.push({
           code: 'bin_width_clamped',
-          message: `Σ bin.width ${binSum.toFixed(2)} > row.span ${span.toFixed(2)}`,
+          message: `Σ bin.width ${formatCm(binSum)} > row.span ${formatCm(span)}`,
           rackId: rack.id,
           rowId: row.id,
         })
@@ -397,7 +398,7 @@ export function validateLayoutHierarchy(rack: Rack): CascadeException[] {
         if (prodSum > bin.width + 0.001) {
           exceptions.push({
             code: 'overflow_unresolved',
-            message: `Σ(product.width×qty) ${prodSum.toFixed(2)} > bin.width ${bin.width.toFixed(2)}`,
+            message: `Σ(product.width×qty) ${formatCm(prodSum)} > bin.width ${formatCm(bin.width)}`,
             rackId: rack.id,
             rowId: row.id,
             binId: bin.id,

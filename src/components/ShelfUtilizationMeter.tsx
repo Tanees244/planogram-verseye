@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/cn'
+import { formatCm } from '@/utils/lengthUnits'
 import {
   rackFaceUtilization,
   rowFaceUtilization,
@@ -67,7 +68,7 @@ export function ShelfUtilizationMeter({
               dark ? 'text-gray-200' : 'text-gray-800',
               api.isOverCapacity && 'text-red-400',
             )}
-            title={`${(api.occupiedWidthMeters ?? 0).toFixed(3)} m / ${(api.availableWidthMeters ?? 0).toFixed(3)} m front face`}
+            title={`${formatCm(api.occupiedWidthMeters ?? 0, 1)} / ${formatCm(api.availableWidthMeters ?? 0, 1)} front face`}
           >
             {pct}%{api.isOverCapacity ? ' over' : ''}
           </span>
@@ -116,7 +117,7 @@ export function ShelfUtilizationMeter({
             'text-[11px] font-semibold tabular-nums',
             dark ? 'text-gray-200' : 'text-gray-800',
           )}
-          title={`${u.occupiedM.toFixed(3)} m / ${u.availableM.toFixed(3)} m front face`}
+          title={`${formatCm(u.occupiedM, 1)} / ${formatCm(u.availableM, 1)} front face`}
         >
           {pct}%
         </span>

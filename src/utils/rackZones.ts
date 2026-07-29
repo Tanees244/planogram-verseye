@@ -2,6 +2,7 @@ import type { Rack, RackSide, Row } from '@/store/planogramStore'
 import type { RackSurfacePosm, ZoneFootprint, ZoneVolume } from '@/types/rackBlueprint'
 import { resolveRackInner, resolveRackOuter } from '@/utils/rackBlueprintMapper'
 import { resolveUsableRowStackHeight, sumRowHeights } from '@/utils/rowStack'
+import { formatCm, formatCmPair, formatCmTriple } from '@/utils/lengthUnits'
 
 export function normalizeRackPosm(raw: unknown): RackSurfacePosm | null {
   if (!raw || typeof raw !== 'object') return null
@@ -112,7 +113,7 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
   const footerH = zones.footer.height ?? 0
   if (headerH + footerH > outer.height + 0.001) {
     issues.push({
-      message: `header.height + footer.height (${(headerH + footerH).toFixed(2)} m) exceeds rack height (${outer.height.toFixed(2)} m)`,
+      message: `header.height + footer.height (${formatCm(headerH + footerH)}) exceeds rack height (${formatCm(outer.height)})`,
     })
   }
 
@@ -121,7 +122,7 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
   const sideDepth = side.depth ?? outer.depth
   if (side.inner?.depth != null && side.outer?.depth != null && innerD + outerD > sideDepth + 0.001) {
     issues.push({
-      message: `inner.depth + outer.depth (${(innerD + outerD).toFixed(2)} m) exceeds side depth (${sideDepth.toFixed(2)} m)`,
+      message: `inner.depth + outer.depth (${formatCm(innerD + outerD)}) exceeds side depth (${formatCm(sideDepth)})`,
     })
   }
 
@@ -129,7 +130,7 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
   const usableH = resolveUsableRowStackHeight(rack)
   if (rowStack > usableH + 0.001) {
     issues.push({
-      message: `Σ row heights (${rowStack.toFixed(2)} m) exceeds usable stack (${usableH.toFixed(2)} m)`,
+      message: `Σ row heights (${formatCm(rowStack)}) exceeds usable stack (${formatCm(usableH)})`,
     })
   }
 
@@ -137,13 +138,13 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
     const span = row.width ?? row.span ?? inner.width
     if (span > inner.width + 0.001) {
       issues.push({
-        message: `Row span ${span.toFixed(2)} m > inner.width ${inner.width.toFixed(2)} m`,
+        message: `Row span ${formatCm(span)} > inner.width ${formatCm(inner.width)}`,
       })
     }
     const binSum = row.bins.reduce((s, b) => s + (Number(b.width) || 0), 0)
     if (binSum > span + 0.001) {
       issues.push({
-        message: `Σ bin.width ${binSum.toFixed(2)} m > row span ${span.toFixed(2)} m`,
+        message: `Σ bin.width ${formatCm(binSum)} > row span ${formatCm(span)}`,
       })
     }
   }
@@ -153,10 +154,10 @@ export function validateSideZones(side: RackSide, rack: Rack): ZoneValidationIss
 
 export function formatZoneFootprint(z: ZoneFootprint | null | undefined): string {
   if (!z?.width && !z?.depth) return '—'
-  return `${(z.width ?? 0).toFixed(2)} × ${(z.depth ?? 0).toFixed(2)} m`
+  return formatCmPair(z.width, z.depth)
 }
 
 export function formatZoneVolume(z: ZoneVolume | null | undefined): string {
   if (!z?.width && !z?.depth && !z?.height) return '—'
-  return `${(z.width ?? 0).toFixed(2)} × ${(z.depth ?? 0).toFixed(2)} × ${(z.height ?? 0).toFixed(2)} m`
+  return formatCmTriple(z.width, z.depth, z.height)
 }

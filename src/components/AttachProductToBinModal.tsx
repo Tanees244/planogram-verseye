@@ -39,6 +39,11 @@ import { FacingShelfPreview } from '@/components/FacingShelfPreview'
 import { FacingBin3DPreview } from '@/components/FacingBin3DPreview'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { getUserEnteredNames } from '@/utils/userEnteredNames'
+import {
+  cmInputFromM,
+  formatCmTriple,
+  parseCmInputToM,
+} from '@/utils/lengthUnits'
 
 interface AttachProductToBinModalProps {
   isOpen: boolean
@@ -158,17 +163,17 @@ export default function AttachProductToBinModal({
     name: '',
     code: '',
     categoryId: '',
-    width: String(DEFAULT_PRODUCT_WIDTH),
-    depth: String(DEFAULT_PRODUCT_DEPTH),
-    height: String(DEFAULT_PRODUCT_HEIGHT),
+    width: cmInputFromM(DEFAULT_PRODUCT_WIDTH),
+    depth: cmInputFromM(DEFAULT_PRODUCT_DEPTH),
+    height: cmInputFromM(DEFAULT_PRODUCT_HEIGHT),
     isHero: false,
     isStackable: true,
   })
   const [skuNameSuggestions, setSkuNameSuggestions] = useState<string[]>([])
   const [overrideDims, setOverrideDims] = useState({
-    width: String(DEFAULT_PRODUCT_WIDTH),
-    depth: String(DEFAULT_PRODUCT_DEPTH),
-    height: String(DEFAULT_PRODUCT_HEIGHT),
+    width: cmInputFromM(DEFAULT_PRODUCT_WIDTH),
+    depth: cmInputFromM(DEFAULT_PRODUCT_DEPTH),
+    height: cmInputFromM(DEFAULT_PRODUCT_HEIGHT),
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -186,9 +191,18 @@ export default function AttachProductToBinModal({
     [localModelUrl, modelObjectUrl],
   )
 
-  const previewWidth = parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
-  const previewDepth = parseFloat(createForm.depth) || DEFAULT_PRODUCT_DEPTH
-  const previewHeight = parseFloat(createForm.height) || DEFAULT_PRODUCT_HEIGHT
+  const previewWidth = (() => {
+    const m = parseCmInputToM(createForm.width)
+    return Number.isFinite(m) && m > 0 ? m : DEFAULT_PRODUCT_WIDTH
+  })()
+  const previewDepth = (() => {
+    const m = parseCmInputToM(createForm.depth)
+    return Number.isFinite(m) && m > 0 ? m : DEFAULT_PRODUCT_DEPTH
+  })()
+  const previewHeight = (() => {
+    const m = parseCmInputToM(createForm.height)
+    return Number.isFinite(m) && m > 0 ? m : DEFAULT_PRODUCT_HEIGHT
+  })()
 
   const loadInventory = useCallback(async () => {
     if (!binId) return
@@ -312,9 +326,9 @@ export default function AttachProductToBinModal({
   useEffect(() => {
     if (!selectedSku) return
     setOverrideDims({
-      width: String(safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)),
-      depth: String(safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)),
-      height: String(safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)),
+      width: cmInputFromM(safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)),
+      depth: cmInputFromM(safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)),
+      height: cmInputFromM(safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)),
     })
   }, [selectedSkuId, selectedSku])
 
@@ -322,21 +336,36 @@ export default function AttachProductToBinModal({
   const quantityOk = Number.isFinite(parsedQuantity) && parsedQuantity >= 1
 
   const facingWidthM = selectedSku
-    ? parseFloat(overrideDims.width) || safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)
+    ? (() => {
+        const m = parseCmInputToM(overrideDims.width)
+        return Number.isFinite(m) && m > 0
+          ? m
+          : safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)
+      })()
     : mode === 'create'
-      ? parseFloat(createForm.width) || DEFAULT_PRODUCT_WIDTH
+      ? previewWidth
       : 0
 
   const facingHeightM = selectedSku
-    ? parseFloat(overrideDims.height) || safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)
+    ? (() => {
+        const m = parseCmInputToM(overrideDims.height)
+        return Number.isFinite(m) && m > 0
+          ? m
+          : safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)
+      })()
     : mode === 'create'
-      ? parseFloat(createForm.height) || DEFAULT_PRODUCT_HEIGHT
+      ? previewHeight
       : 0
 
   const facingDepthM = selectedSku
-    ? parseFloat(overrideDims.depth) || safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)
+    ? (() => {
+        const m = parseCmInputToM(overrideDims.depth)
+        return Number.isFinite(m) && m > 0
+          ? m
+          : safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)
+      })()
     : mode === 'create'
-      ? parseFloat(createForm.depth) || DEFAULT_PRODUCT_DEPTH
+      ? previewDepth
       : 0
 
   const binWidthM = inventory?.width ?? 0
@@ -550,9 +579,9 @@ export default function AttachProductToBinModal({
     setSubmitting(true)
     setError(null)
     try {
-      const w = parseFloat(overrideDims.width)
-      const d = parseFloat(overrideDims.depth)
-      const h = parseFloat(overrideDims.height)
+      const w = parseCmInputToM(overrideDims.width)
+      const d = parseCmInputToM(overrideDims.depth)
+      const h = parseCmInputToM(overrideDims.height)
       if (!(w > 0 && d > 0 && h > 0)) {
         setError('Width, depth, and height must be greater than 0')
         return
@@ -616,9 +645,9 @@ export default function AttachProductToBinModal({
         : null
       return {
         ...prev,
-        width: String(DEFAULT_PRODUCT_WIDTH),
-        depth: String(DEFAULT_PRODUCT_DEPTH),
-        height: String(DEFAULT_PRODUCT_HEIGHT),
+        width: cmInputFromM(DEFAULT_PRODUCT_WIDTH),
+        depth: cmInputFromM(DEFAULT_PRODUCT_DEPTH),
+        height: cmInputFromM(DEFAULT_PRODUCT_HEIGHT),
         // Clear autofilled demo name/code when they still match the selected demo
         name:
           demo?.suggestedName && prev.name.trim() === demo.suggestedName ? '' : prev.name,
@@ -634,9 +663,9 @@ export default function AttachProductToBinModal({
       setError('Name, code, and category are required')
       return
     }
-    const w = parseFloat(createForm.width)
-    const d = parseFloat(createForm.depth)
-    const h = parseFloat(createForm.height)
+    const w = parseCmInputToM(createForm.width)
+    const d = parseCmInputToM(createForm.depth)
+    const h = parseCmInputToM(createForm.height)
     if (!(w > 0 && d > 0 && h > 0)) {
       setError('Width, depth, and height must be greater than 0')
       return
@@ -770,9 +799,9 @@ export default function AttachProductToBinModal({
         name: '',
         code: '',
         categoryId: '',
-        width: String(DEFAULT_PRODUCT_WIDTH),
-        depth: String(DEFAULT_PRODUCT_DEPTH),
-        height: String(DEFAULT_PRODUCT_HEIGHT),
+        width: cmInputFromM(DEFAULT_PRODUCT_WIDTH),
+        depth: cmInputFromM(DEFAULT_PRODUCT_DEPTH),
+        height: cmInputFromM(DEFAULT_PRODUCT_HEIGHT),
         isHero: false,
         isStackable: true,
       })
@@ -1108,7 +1137,7 @@ export default function AttachProductToBinModal({
                           <p className="text-[10px] text-gray-400 mt-0.5">
                             {missingDims
                               ? 'No catalog dims — enter size below'
-                              : `${Number(sku.width).toFixed(2)} × ${Number(sku.depth).toFixed(2)} × ${Number(sku.height).toFixed(2)} m`}
+                              : formatCmTriple(Number(sku.width), Number(sku.depth), Number(sku.height))}
                           </p>
                         </div>
                         {selected && (
@@ -1125,40 +1154,40 @@ export default function AttachProductToBinModal({
               <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 space-y-2">
                 <p className="text-xs text-amber-900 font-medium">
                   {selectedNeedsDims
-                    ? 'This SKU has no dimensions. Enter W × D × H in meters (e.g. 0.12 = 12 cm).'
-                    : 'Confirm dimensions in meters (e.g. 0.12 = 12 cm):'}
+                    ? 'This SKU has no dimensions. Enter W × D × H in centimeters.'
+                    : 'Confirm dimensions in centimeters:'}
                 </p>
                 <div className="grid grid-cols-3 gap-2">
-                  <FormField label="Width (m)">
+                  <FormField label="Width (cm)">
                     <Input
                       type="number"
                       inputMode="decimal"
-                      min={0.01}
-                      step={0.01}
+                      min={1}
+                      step={1}
                       value={overrideDims.width}
                       onChange={(e) =>
                         setOverrideDims({ ...overrideDims, width: e.target.value })
                       }
                     />
                   </FormField>
-                  <FormField label="Depth (m)">
+                  <FormField label="Depth (cm)">
                     <Input
                       type="number"
                       inputMode="decimal"
-                      min={0.01}
-                      step={0.01}
+                      min={1}
+                      step={1}
                       value={overrideDims.depth}
                       onChange={(e) =>
                         setOverrideDims({ ...overrideDims, depth: e.target.value })
                       }
                     />
                   </FormField>
-                  <FormField label="Height (m)">
+                  <FormField label="Height (cm)">
                     <Input
                       type="number"
                       inputMode="decimal"
-                      min={0.01}
-                      step={0.01}
+                      min={1}
+                      step={1}
                       value={overrideDims.height}
                       onChange={(e) =>
                         setOverrideDims({ ...overrideDims, height: e.target.value })
@@ -1218,7 +1247,7 @@ export default function AttachProductToBinModal({
               />
               <span className="text-xs text-amber-950 leading-snug">
                 <span className="font-semibold">Hero SKU</span> — only place on eye-level rows
-                (≈1.2–1.6 m from floor).
+                (≈120–160 cm from floor).
               </span>
             </label>
             <label className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 cursor-pointer">
@@ -1347,15 +1376,15 @@ export default function AttachProductToBinModal({
                             setLocalModelUrl(demo.url)
                             setCreateForm((prev) => ({
                               ...prev,
-                              width: String(demo.width),
-                              depth: String(demo.depth),
-                              height: String(demo.height),
+                              width: cmInputFromM(demo.width),
+                              depth: cmInputFromM(demo.depth),
+                              height: cmInputFromM(demo.height),
                               name: prev.name.trim() ? prev.name : (demo.suggestedName ?? prev.name),
                               code: prev.code.trim() ? prev.code : (demo.suggestedCode ?? prev.code),
                             }))
                           }}
                           className="text-left text-[11px] text-[#2C5282] hover:text-[#1a365d] px-2 py-1.5 rounded-lg border border-[#2C5282]/20 hover:bg-[#2C5282]/5 transition-colors"
-                          title={`${demo.width}×${demo.depth}×${demo.height} m`}
+                          title={formatCmTriple(demo.width, demo.depth, demo.height)}
                         >
                           {demo.label}
                         </button>
@@ -1367,34 +1396,34 @@ export default function AttachProductToBinModal({
             </FormField>
 
             <div className="grid grid-cols-3 gap-3">
-              <FormField label="Width (m)" required hint="e.g. 0.12 = 12 cm">
+              <FormField label="Width (cm)" required hint="e.g. 12">
                 <Input
                   type="number"
                   inputMode="decimal"
-                  min={0.01}
-                  step={0.01}
+                  min={1}
+                  step={1}
                   required
                   value={createForm.width}
                   onChange={(e) => setCreateForm({ ...createForm, width: e.target.value })}
                 />
               </FormField>
-              <FormField label="Depth (m)" required hint="e.g. 0.08 = 8 cm">
+              <FormField label="Depth (cm)" required hint="e.g. 8">
                 <Input
                   type="number"
                   inputMode="decimal"
-                  min={0.01}
-                  step={0.01}
+                  min={1}
+                  step={1}
                   required
                   value={createForm.depth}
                   onChange={(e) => setCreateForm({ ...createForm, depth: e.target.value })}
                 />
               </FormField>
-              <FormField label="Height (m)" required hint="e.g. 0.27 = 27 cm">
+              <FormField label="Height (cm)" required hint="e.g. 27">
                 <Input
                   type="number"
                   inputMode="decimal"
-                  min={0.01}
-                  step={0.01}
+                  min={1}
+                  step={1}
                   required
                   value={createForm.height}
                   onChange={(e) => setCreateForm({ ...createForm, height: e.target.value })}

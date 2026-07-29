@@ -16,6 +16,7 @@ interface Branch {
 
 export default function StoreLayout() {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
+  const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
   const setIsLoadingStoreLayout = usePlanogramStore((s) => s.setIsLoadingStoreLayout)
   const areaWidth = usePlanogramStore((s) => s.area.width)
@@ -24,8 +25,15 @@ export default function StoreLayout() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [search, setSearch] = useState('')
+  /** Last selected store — used to cancel “Change store” and close the picker. */
+  const [dismissTo, setDismissTo] = useState<{ id: string; name: string | null } | null>(null)
   const restoredRef = useRef(false)
   const loadedStoreRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!selectedStoreId) return
+    setDismissTo({ id: selectedStoreId, name: selectedStoreName })
+  }, [selectedStoreId, selectedStoreName])
 
   useEffect(() => {
     if (restoredRef.current) return
@@ -107,14 +115,19 @@ export default function StoreLayout() {
       (b.address ?? '').toLowerCase().includes(search.toLowerCase()),
   )
 
+  const handleClose = () => {
+    if (!dismissTo) return
+    setSelectedStore(dismissTo.id, dismissTo.name ?? undefined)
+  }
+
   return (
     <Modal
       open
-      onClose={() => {}}
+      onClose={handleClose}
       title="Select Store"
       subtitle="Choose a store to load its planogram layout."
       maxWidth="lg"
-      hideClose
+      hideClose={!dismissTo}
     >
       <div className="relative mb-4">
         <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

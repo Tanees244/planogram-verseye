@@ -3,7 +3,7 @@
 export interface RackPublishRequest {
   storeIds: string[];
   rackCode: string;
-  blueprintName?: string | null;
+  rackName?: string | null;
 }
 
 export type RackPublishStoreStatus = 'ready' | 'blocked';

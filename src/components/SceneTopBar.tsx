@@ -14,13 +14,11 @@ import {
   FiX,
   FiZoomIn,
 } from 'react-icons/fi'
-import { RoofToggle, RoofHint } from '@/components/ui/RoofToggle'
+import { RoofToggle } from '@/components/ui/RoofToggle'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 import { PANEL_SHELL } from '@/lib/uiShell'
 import { usePlanogramExport } from '@/utils/planogramExport'
-
-const OPEN_KEY = 'planogram.sceneTopBarOpen'
 
 const shell = PANEL_SHELL
 
@@ -51,7 +49,7 @@ function ControlIcon({ kind }: { kind?: 'move' | 'zoom' | 'click' | 'copy' | 'pa
 }
 
 /** Compact camera / selection cheat-sheet for the Scene & store panel. */
-function ControlsPanel({ className }: { className?: string }) {
+function ControlsPanel({ className, showTitle = true }: { className?: string; showTitle?: boolean }) {
   return (
     <div
       className={cn(
@@ -59,11 +57,13 @@ function ControlsPanel({ className }: { className?: string }) {
         className,
       )}
     >
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-white/10">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          Controls
-        </span>
-      </div>
+      {showTitle && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-white/10">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            Controls
+          </span>
+        </div>
+      )}
       <ul className="divide-y divide-white/5">
         {CONTROL_ROWS.map((row) => (
           <li key={row.action} className="flex items-center gap-2 px-2.5 py-1.5 text-[11px]">
@@ -85,8 +85,15 @@ function ControlsPanel({ className }: { className?: string }) {
 function StoreExportMenu() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const { exportStore, exportStoreCsv, exportStoreXlsx, exportSceneImage, exportStorePdf, exportStorePptx } =
-    usePlanogramExport()
+  const {
+    hasSelectedRack,
+    exportStore,
+    exportStoreCsv,
+    exportStoreXlsx,
+    exportSceneImage,
+    exportStorePdf,
+    exportStorePptx,
+  } = usePlanogramExport()
 
   useEffect(() => {
     if (!open) return
@@ -109,11 +116,15 @@ function StoreExportMenu() {
         onClick={() => setOpen((o) => !o)}
         className={cn(menuBtn, 'inline-flex items-center justify-between gap-2')}
         aria-expanded={open}
-        title="Export store in a chosen format"
+        title={
+          hasSelectedRack
+            ? 'Export selected rack (PNG / PDF / PowerPoint use ideal planogram image)'
+            : 'Export store in a chosen format'
+        }
       >
         <span className="inline-flex items-center gap-2">
-          <FiDownload size={14} />
-          Export
+          <FiUpload size={14} />
+          Export{hasSelectedRack ? ' rack' : ''}
         </span>
         <FiChevronDown
           size={14}
@@ -122,15 +133,32 @@ function StoreExportMenu() {
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-0.5 p-1 rounded-xl bg-[#1e293b] border border-slate-600 shadow-xl z-[110]">
+          {hasSelectedRack && (
+            <p className="px-2.5 py-1.5 text-[10px] leading-snug text-gray-400">
+              PNG, PDF &amp; PowerPoint include the ideal planogram image for this rack.
+            </p>
+          )}
           {(
             [
-              { label: 'PLM', onClick: () => exportStore('plm') },
-              { label: 'PSA', onClick: () => exportStore('psa') },
-              { label: 'Excel (.xlsx)', onClick: () => void exportStoreXlsx() },
-              { label: 'CSV', onClick: () => exportStoreCsv() },
-              { label: 'PNG', onClick: () => exportSceneImage() },
-              { label: 'PDF', onClick: () => void exportStorePdf() },
-              { label: 'PowerPoint', onClick: () => void exportStorePptx() },
+              { label: 'PLM', onClick: () => exportStore('plm'), visual: false },
+              { label: 'PSA', onClick: () => exportStore('psa'), visual: false },
+              { label: 'Excel (.xlsx)', onClick: () => void exportStoreXlsx(), visual: false },
+              { label: 'CSV', onClick: () => exportStoreCsv(), visual: false },
+              {
+                label: 'PNG',
+                onClick: () => void exportSceneImage(),
+                visual: true,
+              },
+              {
+                label: 'PDF',
+                onClick: () => void exportStorePdf(),
+                visual: true,
+              },
+              {
+                label: 'PowerPoint',
+                onClick: () => void exportStorePptx(),
+                visual: true,
+              },
             ] as const
           ).map((item) => (
             <button
@@ -140,6 +168,11 @@ function StoreExportMenu() {
               className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-left text-gray-200 hover:bg-white/10 hover:text-white transition-colors"
             >
               {item.label}
+              {hasSelectedRack && item.visual ? (
+                <span className="ml-1.5 text-[10px] font-medium text-brand-light/80">
+                  · ideal image
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -156,22 +189,11 @@ export function SceneTopBar({ className }: { className?: string }) {
   const isSavingLayout = usePlanogramStore((s) => s.isSavingLayout)
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    try {
-      setOpen(window.localStorage.getItem(OPEN_KEY) === '1')
-    } catch {
-      /* ignore */
-    }
-  }, [])
+  const [controlsOpen, setControlsOpen] = useState(true)
 
   const toggleOpen = (next: boolean) => {
     setOpen(next)
-    try {
-      window.localStorage.setItem(OPEN_KEY, next ? '1' : '0')
-    } catch {
-      /* ignore */
-    }
+    if (next) setControlsOpen(true)
   }
 
   if (!open) {
@@ -230,20 +252,8 @@ export function SceneTopBar({ className }: { className?: string }) {
           </button>
         </div>
 
-        <RoofToggle dark embedded className="w-full justify-center" />
-        <ControlsPanel />
-        <Link
-          href="/import"
-          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-          title="Import a PLM or PSA planogram"
-        >
-          <FiUpload size={14} />
-          Import planogram
-        </Link>
-
         {selectedStoreId && (
           <>
-            <span className="h-px bg-white/10 my-0.5" aria-hidden />
             <div className="flex flex-col gap-2 px-0.5">
               <div className="flex items-center gap-2 min-w-0">
                 {(isLoadingStoreLayout || isSavingLayout) && (
@@ -270,10 +280,44 @@ export function SceneTopBar({ className }: { className?: string }) {
                 </div>
               )}
             </div>
+            <span className="h-px bg-white/10 my-0.5" aria-hidden />
           </>
         )}
+
+        <RoofToggle dark embedded className="w-full justify-center" />
+        <Link
+          href="/import"
+          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+          title="Import a PLM or PSA planogram"
+        >
+          <FiDownload size={14} />
+          Import planogram
+        </Link>
+
+        <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setControlsOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 border-b border-white/10 hover:bg-white/5 transition-colors"
+            aria-expanded={controlsOpen}
+            title="Toggle controls help"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              Controls
+            </span>
+            <FiChevronDown
+              size={13}
+              className={cn('text-gray-400 transition-transform', controlsOpen && 'rotate-180')}
+            />
+          </button>
+          {controlsOpen && (
+            <ControlsPanel
+              showTitle={false}
+              className="border-0 rounded-none bg-transparent"
+            />
+          )}
+        </div>
       </div>
-      <RoofHint />
     </div>
   )
 }

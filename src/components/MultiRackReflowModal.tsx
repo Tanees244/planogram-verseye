@@ -14,6 +14,7 @@ import {
   fetchMultiRackReflowPreview,
 } from '@/utils/rackReflowApi'
 import { displayRackName } from '@/utils/displayRackName'
+import { formatCmPair, formatCmTriple } from '@/utils/lengthUnits'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import type { ShelfRowUtilization } from '@/types/shelfUtilization'
 
@@ -156,12 +157,8 @@ function TargetCard({
 
       {target.outer && (
         <p className="text-xs text-gray-600">
-          Outer{' '}
-          {[target.outer.width, target.outer.depth, target.outer.height]
-            .filter((v) => v != null)
-            .map((v) => Number(v).toFixed(2))
-            .join(' × ')}{' '}
-          m (kept on target)
+          Outer {formatCmTriple(target.outer.width, target.outer.depth, target.outer.height)}{' '}
+          (kept on target)
         </p>
       )}
 
@@ -537,7 +534,7 @@ export function MultiRackReflowModal({
                         <div className="text-[11px] text-gray-500">
                           {r.storeName}
                           {r.width != null && r.depth != null
-                            ? ` · ${Number(r.width).toFixed(2)} × ${Number(r.depth).toFixed(2)} m`
+                            ? ` · ${formatCmPair(Number(r.width), Number(r.depth))}`
                             : ''}
                         </div>
                       </div>

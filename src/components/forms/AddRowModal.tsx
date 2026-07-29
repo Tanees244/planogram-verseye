@@ -3,16 +3,18 @@
 import { Modal } from '@/components/ui/Modal'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Spinner } from '@/components/Spinner'
+import { cmInputFromM, formatCm, mToCmDisplay } from '@/utils/lengthUnits'
 
 interface AddRowModalProps {
   open: boolean
   onClose: () => void
+  /** Row height as a cm form string. */
   height: string
   onHeightChange: (v: string) => void
   /** Number of rows to add at once (default 1). */
   count?: string
   onCountChange?: (v: string) => void
-  /** Usable body height (m) — when set, changing count auto-fills equal row heights. */
+  /** Usable body height (m) — when set, changing count auto-fills equal row heights in cm. */
   availableHeightM?: number
   onSubmit: () => void
   isSubmitting?: boolean
@@ -30,9 +32,9 @@ export function AddRowModal({
   isSubmitting,
 }: AddRowModalProps) {
   const n = Math.max(1, Math.min(20, Math.floor(Number(count) || 1)))
-  const autoH =
+  const autoHCm =
     availableHeightM != null && availableHeightM > 0
-      ? Number((availableHeightM / n).toFixed(3))
+      ? mToCmDisplay(availableHeightM / n, 1)
       : null
 
   return (
@@ -58,8 +60,8 @@ export function AddRowModal({
         <FormField
           label="Number of rows"
           hint={
-            autoH != null
-              ? `Equal heights: ${availableHeightM!.toFixed(2)} m ÷ ${n} = ${autoH} m each`
+            autoHCm != null
+              ? `Equal heights: ${formatCm(availableHeightM!, 0)} ÷ ${n} = ${autoHCm} cm each`
               : 'Add multiple shelves at once (max 20). Stops if the rack runs out of height.'
           }
         >
@@ -76,17 +78,17 @@ export function AddRowModal({
                 onCountChange?.(v)
                 if (availableHeightM != null && availableHeightM > 0) {
                   const nextN = Math.max(1, Math.min(20, Math.floor(Number(v) || 1)))
-                  onHeightChange(String(Number((availableHeightM / nextN).toFixed(3))))
+                  onHeightChange(cmInputFromM(availableHeightM / nextN, 1))
                 }
               }
             }}
           />
         </FormField>
         <FormField
-          label="Row Height (m)"
+          label="Row Height (cm)"
           required
           hint={
-            autoH != null
+            autoHCm != null
               ? 'Auto-filled from available height ÷ number of rows (you can override)'
               : 'Height for each new row'
           }
@@ -94,7 +96,7 @@ export function AddRowModal({
           <Input
             inputMode="decimal"
             value={height}
-            placeholder="0.4"
+            placeholder="35"
             onChange={(e) => onHeightChange(e.target.value)}
           />
         </FormField>

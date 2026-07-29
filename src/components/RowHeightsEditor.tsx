@@ -7,6 +7,7 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
+import { cmInputFromM, cmToM, mToCm } from '@/utils/lengthUnits'
 
 export type RowEntry = { row: Row; label: string }
 
@@ -29,31 +30,35 @@ function DimInput({
   min = 0.1,
   max = 10,
 }: {
+  /** Value in meters (store). */
   value: number
+  /** Commit meters back to store. */
   onCommit: (v: number) => void
   dark: boolean
   label: string
+  /** Min/max in meters. */
   min?: number
   max?: number
 }) {
-  const [local, setLocal] = useState(String(value))
-  useEffect(() => setLocal(String(value)), [value])
+  const [local, setLocal] = useState(cmInputFromM(value, 1))
+  useEffect(() => setLocal(cmInputFromM(value, 1)), [value])
 
   const commit = () => {
-    const n = parseFloat(local)
-    if (!Number.isFinite(n) || n < min) {
-      setLocal(String(value))
+    const cm = parseFloat(local)
+    if (!Number.isFinite(cm) || cm < mToCm(min)) {
+      setLocal(cmInputFromM(value, 1))
       return
     }
-    if (Math.abs(n - value) > 0.001) onCommit(n)
+    const m = cmToM(Math.min(cm, mToCm(max)))
+    if (Math.abs(m - value) > 0.001) onCommit(m)
   }
 
   return (
     <input
       type="number"
-      step="0.05"
-      min={min}
-      max={max}
+      step="1"
+      min={mToCm(min)}
+      max={mToCm(max)}
       value={local}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={commit}
@@ -63,6 +68,7 @@ function DimInput({
         dark ? 'bg-white/10 border-white/15 text-white focus:ring-brand' : 'bg-white border-gray-200',
       )}
       aria-label={label}
+      title={`${label} (cm)`}
     />
   )
 }
@@ -132,6 +138,7 @@ export function RowDimensionsField({
           onCommit={(height) => void save({ height })}
         />
         <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>H</span>
+        <span className={cn('text-[9px]', dark ? 'text-gray-500' : 'text-gray-400')}>cm</span>
       </div>
     </div>
   )

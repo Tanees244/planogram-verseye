@@ -38,6 +38,7 @@ import {
 import { validateRackForm, defaultRackForm } from '@/utils/rackFormUtils'
 import { displayRackName } from '@/utils/displayRackName'
 import { PRODUCT_MOVE_MIME } from '@/components/ProductPalette'
+import { cmInputFromM, formatCm, formatCmPair, formatCmTriple } from '@/utils/lengthUnits'
 
 export function TraditionalView() {
   const {
@@ -93,13 +94,13 @@ export function TraditionalView() {
     () => usePlanogramStore.getState().selectedStoreId ?? ''
   )
   const [locationValidationError, setLocationValidationError] = useState<string | null>(null)
-  const [rowForm, setRowForm] = useState({ height: String(GROCERY_SHELF_SPACING), count: '1' })
+  const [rowForm, setRowForm] = useState({ height: cmInputFromM(GROCERY_SHELF_SPACING), count: '1' })
   const [productForm, setProductForm] = useState({
     name: '',
     color: '#2C5282',
-    width: String(DEFAULT_PRODUCT_WIDTH),
-    depth: String(DEFAULT_PRODUCT_DEPTH),
-    height: String(DEFAULT_PRODUCT_HEIGHT),
+    width: cmInputFromM(DEFAULT_PRODUCT_WIDTH),
+    depth: cmInputFromM(DEFAULT_PRODUCT_DEPTH),
+    height: cmInputFromM(DEFAULT_PRODUCT_HEIGHT),
     quantity: '1',
   })
 
@@ -234,7 +235,7 @@ export function TraditionalView() {
           <div className="flex items-center gap-4 text-sm text-gray-600">
             <div className="flex items-center gap-2">
               <FiMapPin className="text-[#2C5282]" />
-              <span><strong>Area:</strong> {area.width}m × {area.depth}m</span>
+              <span><strong>Area:</strong> {formatCmPair(area.width, area.depth)}</span>
             </div>
             <div className="flex items-center gap-2">
               <FiLayers className="text-purple-500" />
@@ -267,7 +268,7 @@ export function TraditionalView() {
             )}
           </div>
           <div className="text-sm text-gray-500 ml-9">
-            {area.width} m × {area.depth} m · {area.racks.length} rack{area.racks.length === 1 ? '' : 's'}
+            {formatCmPair(area.width, area.depth)} · {area.racks.length} rack{area.racks.length === 1 ? '' : 's'}
           </div>
         </div>
 
@@ -288,7 +289,7 @@ export function TraditionalView() {
                   )}
                   <FiLayers className="text-xl text-[#2C5282]" />
                   <span className="text-base font-semibold text-gray-800">{displayRackName(rack)}</span>
-                  {rack.blueprintName?.trim() && rack.rackCode ? (
+                  {rack.rackCode ? (
                     <span className="text-xs text-gray-500 font-mono">{rack.rackCode}</span>
                   ) : null}
                 </div>
@@ -297,6 +298,7 @@ export function TraditionalView() {
                     onClick={(e) => {
                       e.stopPropagation()
                       setSelectedRackId(rack.id)
+                      setRowForm({ height: cmInputFromM(GROCERY_SHELF_SPACING), count: '1' })
                       setShowAddRowModal(true)
                     }}
                     className="px-4 py-2 bg-[#2C5282] text-white rounded-lg text-sm font-medium hover:bg-[#1A365D] transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
@@ -322,7 +324,7 @@ export function TraditionalView() {
               {expandedRacks.has(rack.id) && (
                 <div className="p-4 bg-gray-50 border-t border-gray-200">
                   <div className="text-sm text-gray-600 mb-4 px-2">
-                    {rack.width}m × {rack.depth}m | Sides: {rack.sides.length}
+                    {formatCmPair(rack.width, rack.depth)} | Sides: {rack.sides.length}
                   </div>
                   {rack.sides.map((side) => (
                     <div key={side.sideCode} className="mb-4 pl-6">
@@ -331,11 +333,11 @@ export function TraditionalView() {
                         Side {side.sideCode}
                       </div>
                       <div className="text-[11px] text-gray-500 mb-2 pl-1">
-                        Usable side dims: W {(rack.customConfig ? (rack.customConfig.outerWidth - rack.customConfig.wallThickness * 2) : rack.width * 0.85).toFixed(2)}m
+                        Usable side dims: W {formatCm(rack.customConfig ? (rack.customConfig.outerWidth - rack.customConfig.wallThickness * 2) : rack.width * 0.85)}
                         {" · "}
-                        D {(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) : rack.depth * 0.9).toFixed(2)}m
+                        D {formatCm(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) : rack.depth * 0.9)}
                         {" · "}
-                        H {(rack.customConfig ? (rack.customConfig.outerHeight - (rack.customConfig.header.enabled ? rack.customConfig.header.height : 0) - (rack.customConfig.footer.enabled ? rack.customConfig.footer.height : 0)) : side.rows.reduce((s, r) => s + r.height, 0)).toFixed(2)}m
+                        H {formatCm(rack.customConfig ? (rack.customConfig.outerHeight - (rack.customConfig.header.enabled ? rack.customConfig.header.height : 0) - (rack.customConfig.footer.enabled ? rack.customConfig.footer.height : 0)) : side.rows.reduce((s, r) => s + r.height, 0))}
                       </div>
                       {side.rows.map((row) => (
                         <div key={row.id} className="mb-3 pl-4">
@@ -392,7 +394,7 @@ export function TraditionalView() {
                                 <span className="font-medium text-gray-700">Height:</span>
                                 <RowDimensionsField row={row} dark={false} showLabel={false} />
                                 <span className="text-gray-500">
-                                  | Depth: {(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) * 0.95 : rack.depth * 0.9).toFixed(2)}m
+                                  | Depth: {formatCm(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) * 0.95 : rack.depth * 0.9)}
                                   {" | "}Bins: {row.bins.length}
                                 </span>
                               </div>
@@ -473,7 +475,7 @@ export function TraditionalView() {
                                     expandedBins.has(bin.id) && (
                                       <div className="mt-2 pl-4 pr-2">
                                         <div className="text-xs text-gray-600 mb-2 px-2">
-                                          Bin dims: {bin.width.toFixed(2)} × {bin.depth.toFixed(2)} × {bin.height.toFixed(2)} m
+                                          Bin dims: {formatCmTriple(bin.width, bin.depth, bin.height)}
                                           {" · "}
                                           Products: {bin.products.length} SKU{bin.products.length === 1 ? '' : 's'}
                                           {totalProductFacings(bin.products) > bin.products.length
@@ -522,7 +524,7 @@ export function TraditionalView() {
                                               <div className="flex flex-col">
                                                 <span className="text-xs font-medium text-gray-800">{product.name}{qty > 1 ? ` × ${qty}` : ''}</span>
                                                 <span className="text-[10px] text-gray-500">
-                                                  {Number(product.width).toFixed(2)} × {Number(product.depth).toFixed(2)} × {Number(product.height).toFixed(2)} m
+                                                  {formatCmTriple(Number(product.width), Number(product.depth), Number(product.height))}
                                                 </span>
                                                 {(product.brandName || product.categoryName) && (
                                                   <span className="text-[10px] text-gray-500">
@@ -586,19 +588,18 @@ export function TraditionalView() {
             setLocationValidationError(errs.location ?? null)
             return
           }
-          const w = parseFloat(rackForm.width) || DEFAULT_RACK_WIDTH
-          const d = parseFloat(rackForm.depth) || DEFAULT_RACK_DEPTH
+          const w = (parseFloat(rackForm.width) || 0) / 100
+          const d = (parseFloat(rackForm.depth) || 0) / 100
           const res = await addRackToServer(undefined, {
-            width: w,
-            depth: d,
-            rackCode: rackForm.rackCode,
+            width: w || DEFAULT_RACK_WIDTH,
+            depth: d || DEFAULT_RACK_DEPTH,
             rackName: rackForm.rackName,
             plankType: rackForm.plankType,
             sided: rackForm.fixtureType === 'GONDOLA' ? rackForm.sided : 'one',
             fixtureType: rackForm.fixtureType,
           }, selectedLocationId)
           if (res.success) {
-            const name = (rackForm.rackName || rackForm.rackCode || '').trim()
+            const name = (rackForm.rackName || '').trim()
             if (name) {
               void import('@/utils/userEnteredNames').then(({ rememberUserEnteredName }) => {
                 rememberUserEnteredName('rack', name)
@@ -621,7 +622,7 @@ export function TraditionalView() {
           if (!selectedRackId) return
           setAddingRow(true)
           try {
-            const h = parseFloat(rowForm.height) || 1.5
+            const h = parseFloat(rowForm.height) / 100 || GROCERY_SHELF_SPACING
             const n = Math.max(1, Math.min(20, Math.floor(Number(rowForm.count) || 1)))
             let added = 0
             let lastMsg: string | undefined

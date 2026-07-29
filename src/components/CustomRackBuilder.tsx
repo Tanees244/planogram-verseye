@@ -18,6 +18,13 @@ import { CustomRackMesh } from '@/components/fixtures/CustomRackMesh'
 import { RETAIL_FIXTURE_HEIGHT } from '@/constants/warehouse'
 import { MIN_RACK_DEPTH, MIN_RACK_WIDTH } from '@/constants/dimensions'
 import { getUserEnteredNames } from '@/utils/userEnteredNames'
+import {
+  cmToM,
+  formatCm,
+  formatCmTriple,
+  mToCm,
+  mToCmDisplay,
+} from '@/utils/lengthUnits'
 
 function NumInput({
   label,
@@ -26,6 +33,8 @@ function NumInput({
   min = 0.05,
   max = 20,
   onChange,
+  /** When true, value/onChange are meters but the control shows centimeters. */
+  asLength = true,
 }: {
   label: string
   value: number
@@ -33,23 +42,30 @@ function NumInput({
   min?: number
   max?: number
   onChange: (v: number) => void
+  asLength?: boolean
 }) {
+  const display = asLength ? mToCmDisplay(value, 1) : value
+  const stepUi = asLength ? mToCm(step) : step
+  const minUi = asLength ? mToCm(min) : min
+  const maxUi = asLength ? mToCm(max) : max
+
   return (
     <label className="block">
       <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</span>
       <input
         type="number"
-        step={step}
-        min={min}
-        max={max}
-        value={value}
+        step={stepUi}
+        min={minUi}
+        max={maxUi}
+        value={display}
         onChange={(e) => {
           const v = parseFloat(e.target.value)
           if (!Number.isFinite(v)) {
             onChange(min <= 0 ? 0 : min)
             return
           }
-          onChange(v <= 0 && min <= 0 ? 0 : Math.max(v, min))
+          const meters = asLength ? cmToM(v) : v
+          onChange(meters <= 0 && min <= 0 ? 0 : Math.max(meters, min))
         }}
         className="mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white focus:outline-none focus:ring-1 focus:ring-brand"
       />
@@ -153,8 +169,8 @@ function SectionEditor({
       {section.enabled && (
         <>
           <p className="text-[10px] text-gray-400 leading-snug">
-            One {kind} per rack · width/depth 0 = full span ({resolvedWidth.toFixed(2)} ×{' '}
-            {resolvedDepth.toFixed(2)} m)
+            One {kind} per rack · width/depth 0 = full span ({formatCm(resolvedWidth)} ×{' '}
+            {formatCm(resolvedDepth)})
           </p>
           <button
             type="button"
@@ -172,14 +188,14 @@ function SectionEditor({
           </button>
           <div className="grid grid-cols-2 gap-2">
             <NumInput
-              label="Height (m)"
+              label="Height (cm)"
               value={section.height}
               min={0.05}
               max={1.5}
               onChange={(height) => onChange({ height })}
             />
             <NumInput
-              label="Width (m)"
+              label="Width (cm)"
               value={section.width}
               min={0}
               max={20}
@@ -187,7 +203,7 @@ function SectionEditor({
             />
             {showDepth && (
               <NumInput
-                label="Depth (m)"
+                label="Depth (cm)"
                 value={section.depth}
                 min={0}
                 max={5}
@@ -195,7 +211,7 @@ function SectionEditor({
               />
             )}
             <NumInput
-              label="Protrusion (m)"
+              label="Protrusion (cm)"
               value={section.protrusion}
               min={0}
               max={0.5}
@@ -259,7 +275,7 @@ function BuilderPreviewCanvas({ draft }: { draft: CustomRackConfig }) {
       <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex justify-between text-[10px] text-gray-400">
         <span>Drag to orbit · scroll to zoom</span>
         <span className="font-mono text-gray-300">
-          {draft.outerWidth.toFixed(2)} × {draft.outerDepth.toFixed(2)} × {draft.outerHeight.toFixed(2)} m
+          {formatCmTriple(draft.outerWidth, draft.outerDepth, draft.outerHeight)}
         </span>
       </div>
     </div>
@@ -303,10 +319,10 @@ export function CustomRackBuilder() {
 
   const validateOuterDims = (cfg: CustomRackConfig = draft): string | null => {
     if (!(cfg.outerWidth >= MIN_RACK_WIDTH)) {
-      return `Width must be at least ${MIN_RACK_WIDTH} m`
+      return `Width must be at least ${formatCm(MIN_RACK_WIDTH)}`
     }
     if (!(cfg.outerDepth >= MIN_RACK_DEPTH)) {
-      return `Depth must be at least ${MIN_RACK_DEPTH} m`
+      return `Depth must be at least ${formatCm(MIN_RACK_DEPTH)}`
     }
     return null
   }
@@ -466,7 +482,7 @@ export function CustomRackBuilder() {
                       setRackName(e.target.value)
                       if (e.target.value.trim()) setNameError(null)
                     }}
-                    placeholder="e.g. Chilled Drinks Bay"
+                    placeholder="e.g. Chilled Drinks Bin"
                     maxLength={80}
                     list="custom-rack-name-suggestions"
                     className={`mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-brand ${
@@ -499,7 +515,7 @@ export function CustomRackBuilder() {
                   Outer dimensions
                 </div>
                 <Toggle
-                  label={`Fit wall (${RETAIL_FIXTURE_HEIGHT.toFixed(1)} m)`}
+                  label={`Fit wall (${formatCm(RETAIL_FIXTURE_HEIGHT)})`}
                   checked={fitWallHeight}
                   onChange={toggleFitWallHeight}
                 />
@@ -510,19 +526,19 @@ export function CustomRackBuilder() {
               </p>
               <div className="grid grid-cols-3 gap-2">
                 <NumInput
-                  label="Width"
+                  label="Width (cm)"
                   value={draft.outerWidth}
                   min={MIN_RACK_WIDTH}
                   onChange={(outerWidth) => patch({ outerWidth })}
                 />
                 <NumInput
-                  label="Depth"
+                  label="Depth (cm)"
                   value={draft.outerDepth}
                   min={MIN_RACK_DEPTH}
                   onChange={(outerDepth) => patch({ outerDepth })}
                 />
                 <NumInput
-                  label="Height"
+                  label="Height (cm)"
                   value={draft.outerHeight}
                   min={0.5}
                   max={5}
@@ -533,10 +549,10 @@ export function CustomRackBuilder() {
                 <p className="text-[11px] text-red-400 font-medium">{dimError}</p>
               )}
               <p className="text-[10px] text-gray-500">
-                Min width {MIN_RACK_WIDTH} m · min depth {MIN_RACK_DEPTH} m
+                Min width {formatCm(MIN_RACK_WIDTH)} · min depth {formatCm(MIN_RACK_DEPTH)}
               </p>
               <NumInput
-                label="Wall thickness"
+                label="Wall thickness (cm)"
                 value={draft.wallThickness}
                 min={0.02}
                 max={0.3}
@@ -597,23 +613,20 @@ export function CustomRackBuilder() {
                 Inner cavity
               </p>
               <p className="text-xs text-white font-mono">
-                {dims.innerWidth.toFixed(2)} × {dims.innerDepth.toFixed(2)} ×{' '}
-                {dims.innerHeight.toFixed(2)} m
+                {formatCmTriple(dims.innerWidth, dims.innerDepth, dims.innerHeight)}
               </p>
               <p className="text-[10px] text-emerald-300/90 mt-1 leading-snug">
                 inner = outer − 2×wall · rows/bins rescale · facings clamp
               </p>
-              <p className="text-[10px] text-gray-400 mt-1">Body {dims.bodyH.toFixed(2)}m</p>
+              <p className="text-[10px] text-gray-400 mt-1">Body {formatCm(dims.bodyH)}</p>
               {draft.header.enabled && (
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  Header W×D×H {dims.headerW.toFixed(2)} × {dims.headerD.toFixed(2)} ×{' '}
-                  {dims.headerH.toFixed(2)} m
+                  Header W×D×H {formatCmTriple(dims.headerW, dims.headerD, dims.headerH)}
                 </p>
               )}
               {draft.footer.enabled && (
                 <p className="text-[10px] text-gray-400">
-                  Footer W×D×H {dims.footerW.toFixed(2)} × {dims.footerD.toFixed(2)} ×{' '}
-                  {dims.footerH.toFixed(2)} m
+                  Footer W×D×H {formatCmTriple(dims.footerW, dims.footerD, dims.footerH)}
                 </p>
               )}
             </div>
@@ -649,7 +662,7 @@ export function CustomRackBuilder() {
               <p className="text-xs font-semibold text-white">Rows</p>
               <p className="text-[10px] text-gray-400 leading-snug">
                 Set how many shelves to create when placing. Heights split the usable cavity
-                evenly (cavity {dims.innerHeight.toFixed(2)} m ÷ rows).
+                evenly (cavity {formatCm(dims.innerHeight)} ÷ rows).
               </p>
               <NumInput
                 label="Number of rows"
@@ -657,13 +670,14 @@ export function CustomRackBuilder() {
                 min={0}
                 max={20}
                 step={1}
+                asLength={false}
                 onChange={(shelfCount) =>
                   patch({ shelfCount: Math.max(0, Math.min(20, Math.round(shelfCount))) })
                 }
               />
               {draft.shelfCount > 0 ? (
                 <p className="text-[11px] text-emerald-300/90 font-medium">
-                  Each row ≈ {(dims.innerHeight / draft.shelfCount).toFixed(3)} m
+                  Each row ≈ {formatCm(dims.innerHeight / draft.shelfCount, 1)}
                 </p>
               ) : (
                 <p className="text-[10px] text-gray-500">

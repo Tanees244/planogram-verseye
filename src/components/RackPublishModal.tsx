@@ -15,6 +15,7 @@ import type {
 import { fetchPublishPreview, fetchPublishRack } from '@/utils/rackPublishApi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
+import { formatCmTriple } from '@/utils/lengthUnits'
 
 interface StoreOption {
   id: string
@@ -57,15 +58,11 @@ function StorePreviewRow({ store, label }: { store: RackPublishStorePreview; lab
       {store.rackPreview?.outer && (
         <p className="text-xs text-gray-600 mt-1">
           Outer{' '}
-          {[
+          {formatCmTriple(
             store.rackPreview.outer.width,
             store.rackPreview.outer.depth,
             store.rackPreview.outer.height,
-          ]
-            .filter((v) => v != null)
-            .map((v) => Number(v).toFixed(2))
-            .join(' × ')}{' '}
-          m
+          )}
         </p>
       )}
       {store.warnings?.map((w, i) => (
@@ -98,7 +95,7 @@ export function RackPublishModal({
   const [stores, setStores] = useState<StoreOption[]>([])
   const [loadingStores, setLoadingStores] = useState(false)
   const [rackCode, setRackCode] = useState(rack.rackCode || 'R-01')
-  const [blueprintName, setBlueprintName] = useState(rack.blueprintName ?? rack.rackCode ?? '')
+  const [rackName, setRackName] = useState(rack.rackName ?? rack.blueprintName ?? rack.rackCode ?? '')
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
   const [preview, setPreview] = useState<RackPublishPreviewResult | null>(null)
   const [publishResult, setPublishResult] = useState<RackPublishResult | null>(null)
@@ -144,10 +141,10 @@ export function RackPublishModal({
     setPublishResult(null)
     setError(null)
     setRackCode(rack.rackCode || 'R-01')
-    setBlueprintName(rack.blueprintName ?? rack.rackCode ?? '')
+    setRackName(rack.rackName ?? rack.blueprintName ?? rack.rackCode ?? '')
     setSelectedStoreIds([])
     void fetchStores()
-  }, [open, rack.id, rack.rackCode, rack.blueprintName, fetchStores])
+  }, [open, rack.id, rack.rackCode, rack.rackName, rack.blueprintName, fetchStores])
 
   const toggleStore = (id: string) => {
     setSelectedStoreIds((prev) =>
@@ -170,7 +167,7 @@ export function RackPublishModal({
       const res = await fetchPublishPreview(serverRackId, {
         storeIds: selectedStoreIds,
         rackCode: rackCode.trim(),
-        blueprintName: blueprintName.trim() || null,
+        rackName: rackName.trim() || null,
       })
       if (!res.success || !res.data) {
         setError(res.message ?? 'Preview failed')
@@ -190,13 +187,13 @@ export function RackPublishModal({
       const res = await fetchPublishRack(serverRackId, {
         storeIds: selectedStoreIds,
         rackCode: rackCode.trim(),
-        blueprintName: blueprintName.trim() || null,
+        rackName: rackName.trim() || null,
       })
       if (!res.success || !res.data) {
         setError(res.message ?? 'Publish failed')
         return
       }
-      if (blueprintName.trim()) rememberUserEnteredName('rack', blueprintName.trim())
+      if (rackName.trim()) rememberUserEnteredName('rack', rackName.trim())
       setPublishResult(res.data)
       setStep('results')
       // Pick up server-set publishedAt / lastUpdated on source + targets
@@ -265,16 +262,16 @@ export function RackPublishModal({
               />
             </FormField>
             <FormField
-              label="Blueprint display name"
+              label="Rack name for copies"
               hint="Suggestions are names you typed before"
             >
               <Input
-                value={blueprintName}
-                onChange={(e) => setBlueprintName(e.target.value)}
+                value={rackName}
+                onChange={(e) => setRackName(e.target.value)}
                 placeholder="Optional"
-                list="publish-blueprint-name-suggestions"
+                list="publish-rack-name-suggestions"
               />
-              <datalist id="publish-blueprint-name-suggestions">
+              <datalist id="publish-rack-name-suggestions">
                 {nameSuggestions.map((n) => (
                   <option key={n} value={n} />
                 ))}

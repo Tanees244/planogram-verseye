@@ -130,5 +130,5 @@ export function heroPlacementBlocked(
   const ctx = findRowContextForBin(racks, binId)
   if (!ctx) return null
   if (isEyeLevelRow(ctx.row, ctx.sideRows)) return null
-  return 'Hero SKUs can only be placed on eye-level rows (≈1.2–1.6 m from the floor, or the middle third of short racks).'
+  return 'Hero SKUs can only be placed on eye-level rows (≈120–160 cm from the floor, or the middle third of short racks).'
 }

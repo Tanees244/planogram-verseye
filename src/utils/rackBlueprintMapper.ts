@@ -189,8 +189,7 @@ export function rackToPlacement(rack: Rack): RackPlacement {
 
 export interface CreateRackBlueprintPayload {
   storeId: string;
-  rackCode: string;
-  blueprintName?: string;
+  rackName: string;
   fixtureType: string;
   isDoubleSided: boolean;
   outer: { width: number; depth: number; height: number };
@@ -204,8 +203,7 @@ export interface CreateRackBlueprintPayload {
 
 export function buildCreateRackPayload(options: {
   storeId: string;
-  rackCode: string;
-  blueprintName?: string;
+  rackName: string;
   fixtureType: FixtureType;
   isDoubleSided: boolean;
   width: number;
@@ -214,7 +212,7 @@ export function buildCreateRackPayload(options: {
   customConfig?: CustomRackConfig;
   placement: RackPlacement;
 }): CreateRackBlueprintPayload | Record<string, unknown> {
-  const { storeId, rackCode, fixtureType, isDoubleSided, width, depth, placement } = options;
+  const { storeId, rackName, fixtureType, isDoubleSided, width, depth, placement } = options;
 
   if (options.customConfig && fixtureType === 'CUSTOM') {
     const cfg = options.customConfig;
@@ -231,8 +229,7 @@ export function buildCreateRackPayload(options: {
     };
     return {
       storeId,
-      rackCode,
-      blueprintName: options.blueprintName ?? rackCode,
+      rackName,
       fixtureType: 'CUSTOM',
       isDoubleSided,
       outer,
@@ -247,8 +244,7 @@ export function buildCreateRackPayload(options: {
 
   return {
     storeId,
-    rackCode,
-    blueprintName: options.blueprintName ?? rackCode,
+    rackName,
     fixtureType: fixtureType ?? 'GONDOLA',
     isDoubleSided,
     width,
@@ -569,11 +565,16 @@ export function buildUpdateRackPayload(
     quadrant: rack.quadrant ?? rack.placement?.quadrant ?? null,
   };
   const fixtureType = rack.fixtureType ?? 'GONDOLA';
+  const rackName =
+    rack.displayName?.trim() ||
+    rack.rackName?.trim() ||
+    rack.blueprintName?.trim() ||
+    rack.rackCode?.trim() ||
+    'Rack';
 
   const payload: Record<string, unknown> = {
     rackId: serverRackId,
-    rackCode: rack.rackCode,
-    blueprintName: rack.blueprintName ?? rack.rackCode,
+    rackName,
     fixtureType,
     isDoubleSided: Boolean(rack.isDoubleSided ?? rack.sides.length > 1),
     outer,

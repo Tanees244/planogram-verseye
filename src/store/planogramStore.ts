@@ -33,6 +33,7 @@ import {
   type CascadeException,
 } from "@/utils/layoutCascade";
 import { maxFacingsInBinVolume } from "@/utils/facingPack";
+import { formatCmPair } from "@/utils/lengthUnits";
 import { applyLocalFaceFillToRack, applySoftFaceFillClampToRack } from "@/utils/faceFill";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
 import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
@@ -234,6 +235,7 @@ export interface Rack {
   id: string;
   rackId: string;
   rackCode: string;
+  rackName?: string | null;
   width: number;
   depth: number;
   height?: string;
@@ -274,7 +276,7 @@ export interface PendingRackParams {
   plankType: string;
   sided?: RackSided;
   rackCode?: string;
-  /** Display name — sent as blueprintName; defaults to rackCode. */
+  /** Display name — sent as rackName. */
   rackName?: string;
   globalLocationId?: string;
   fixtureType?: FixtureType;
@@ -339,7 +341,7 @@ export interface PlanogramState {
   closeCustomRackBuilder: () => void;
   setCustomRackDraft: (patch: Partial<CustomRackConfig> | ((prev: CustomRackConfig) => CustomRackConfig)) => void;
   placeCustomRackFromBuilder: (rackName?: string) => void;
-  /** Display name for the next rack placed (preset click / drag-drop). Sent as blueprintName. */
+  /** Display name for the next rack placed (preset click / drag-drop). Sent as rackName. */
   nextRackName: string;
   setNextRackName: (name: string) => void;
   updateRackCustomConfig: (rackId: string, config: CustomRackConfig) => {
@@ -1009,8 +1011,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         sided: cfg.isDoubleSided ? "two" : "one",
         fixtureType: "CUSTOM",
         customConfig: cloneCustomRackConfig(cfg),
-        rackCode: `CUSTOM-${String(count).padStart(2, "0")}`,
-        rackName: rackName?.trim() || undefined,
+        rackName: rackName?.trim() || `Custom ${String(count).padStart(2, "0")}`,
         globalLocationId: state.selectedStoreId,
       },
       isPlacingRack: true,
@@ -1060,7 +1061,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (width > state.area.width || depth > state.area.depth) {
         return {
           ...state,
-          addRackError: `Rack size (${width} m × ${depth} m) exceeds warehouse floor (${state.area.width} m × ${state.area.depth} m).`,
+          addRackError: `Rack size (${formatCmPair(width, depth)}) exceeds warehouse floor (${formatCmPair(state.area.width, state.area.depth)}).`,
         };
       }
       const minX = pos.x - width / 2;
@@ -1070,7 +1071,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (minX < -halfW || maxX > halfW || minZ < -halfD || maxZ > halfD) {
         return {
           ...state,
-          addRackError: `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m). Reduce size or place inside the floor.`,
+          addRackError: `Rack would extend outside the warehouse floor (${formatCmPair(state.area.width, state.area.depth)}). Reduce size or place inside the floor.`,
         };
       }
 
@@ -1136,7 +1137,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const halfD = state.area.depth / 2;
 
     if (width > state.area.width || depth > state.area.depth) {
-      const msg = `Rack size (${width} m × ${depth} m) exceeds warehouse floor (${state.area.width} m × ${state.area.depth} m).`;
+      const msg = `Rack size (${formatCmPair(width, depth)}) exceeds warehouse floor (${formatCmPair(state.area.width, state.area.depth)}).`;
       set({ addRackError: msg });
       return { success: false, message: msg };
     }
@@ -1152,7 +1153,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         state.area.depth,
       )
     ) {
-      const msg = `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m).`;
+      const msg = `Rack would extend outside the warehouse floor (${formatCmPair(state.area.width, state.area.depth)}).`;
       set({ addRackError: msg });
       return { success: false, message: msg };
     }
@@ -1179,7 +1180,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const maxZ = placeZ + footHalfD;
 
     if (minX < -halfW || maxX > halfW || minZ < -halfD || maxZ > halfD) {
-      const msg = `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m).`;
+      const msg = `Rack would extend outside the warehouse floor (${formatCmPair(state.area.width, state.area.depth)}).`;
       set({ addRackError: msg });
       return { success: false, message: msg };
     }
@@ -1205,10 +1206,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           /* ignore */
         }
       }
+      const resolvedRackName =
+        rackDisplayName ||
+        (finalDims?.fixtureType
+          ? `${FIXTURE_LIBRARY[finalDims.fixtureType]?.label ?? finalDims.fixtureType} 01`
+          : 'Rack');
       const payload = buildCreateRackPayload({
         storeId: globalLocationId || finalDims?.globalLocationId || state.selectedStoreId || '',
-        rackCode: finalDims?.rackCode || `RACK-${Date.now()}`,
-        blueprintName: rackDisplayName || finalDims?.rackCode,
+        rackName: resolvedRackName,
         fixtureType,
         isDoubleSided: (finalDims?.sided || 'one') === 'two',
         width,
@@ -1246,8 +1251,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         if (finalDims?.fixtureType) rack.fixtureType = finalDims.fixtureType;
         if (finalDims?.customConfig) rack.customConfig = cloneCustomRackConfig(finalDims.customConfig);
         rack.placement = placement;
-        if (rackDisplayName || finalDims?.rackCode) {
-          rack.blueprintName = rackDisplayName || finalDims?.rackCode;
+        if (rackDisplayName || resolvedRackName) {
+          const name = rackDisplayName || resolvedRackName;
+          rack.rackName = name;
+          rack.blueprintName = name;
+          rack.displayName = name;
         }
         if (finalDims?.customConfig) {
           rack.outer = {
@@ -1271,6 +1279,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           if (returned.rackId) {
             rack.rackId = returned.rackId;
             rack.id = returned.rackId;
+          }
+          if (typeof returned.rackCode === 'string' && returned.rackCode.trim()) {
+            rack.rackCode = returned.rackCode;
+          }
+          if (typeof returned.rackName === 'string' && returned.rackName.trim()) {
+            rack.rackName = returned.rackName;
+            rack.blueprintName = returned.rackName;
+            rack.displayName = returned.rackName;
           }
           if (Array.isArray(returned.sideIds) && returned.sideIds.length > 0) {
             rack.sides = rack.sides.map((side, idx) => ({
@@ -2559,7 +2575,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       ) {
         return {
           ...state,
-          moveRackError: `Rack would extend outside the warehouse floor (${state.area.width} m × ${state.area.depth} m). Choose a position inside the floor.`,
+          moveRackError: `Rack would extend outside the warehouse floor (${formatCmPair(state.area.width, state.area.depth)}). Choose a position inside the floor.`,
         };
       }
 

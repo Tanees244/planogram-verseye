@@ -117,18 +117,17 @@ export function CameraManager({
     const outward = new Vector3()
     const isShelfPick =
       selectedType === 'bin' || selectedType === 'row' || selectedType === 'product'
+    const isDoubleSided = Boolean(rack?.isDoubleSided)
 
     if (isShelfPick) {
       // Keep the face the user is already looking at — never jump to the rack end.
       outward.copy(cameraOnNegZ ? localNegZ : localPosZ)
-    } else if (rack?.isDoubleSided) {
+    } else if (isDoubleSided) {
       const toFocus = focusCenter.clone().sub(frameCenter)
       const onPosZ = toFocus.dot(localPosZ) >= 0
       outward.copy(onPosZ ? localPosZ : localNegZ)
-    } else if (camFromCenter.lengthSq() > 0.01) {
-      // Whole rack: stay in the current viewing hemisphere along depth
-      outward.copy(cameraOnNegZ ? localNegZ : localPosZ)
     } else {
+      // Single-sided rack: always frame the shopper / open front (−Z), not the back panel.
       outward.copy(localNegZ)
     }
 

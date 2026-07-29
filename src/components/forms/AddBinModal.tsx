@@ -126,7 +126,7 @@ export function AddBinModal({
             onClick={() => {
               void onSaveBins(
                 drafts.map((d) => ({
-                  name: d.name.trim() || 'Bay',
+                  name: d.name.trim() || 'Bin',
                   widthM: d.widthM,
                   depthM: Math.min(d.depthM, depthCapM),
                   heightM: d.heightM,

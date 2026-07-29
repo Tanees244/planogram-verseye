@@ -111,7 +111,14 @@ function metaLine(sku: CatalogSkuRow): string {
   return parts.join(' · ') || sku.categoryName || 'Catalog SKU'
 }
 
-export function ProductPalette() {
+export function ProductPalette({
+  embedded = false,
+  externalSearch,
+}: {
+  embedded?: boolean
+  /** Controlled search from parent (SceneLeftPanel). */
+  externalSearch?: string
+}) {
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const isPlacingProduct = usePlanogramStore((s) => s.isPlacingProduct)
   const pendingProduct = usePlanogramStore((s) => s.pendingProductParams)
@@ -125,12 +132,18 @@ export function ProductPalette() {
 
   const [collapsed, setCollapsed] = useState(false)
   const [search, setSearch] = useState('')
+  const effectiveSearch = externalSearch !== undefined ? externalSearch : search
   const [skus, setSkus] = useState<CatalogSkuRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
 
   useEffect(() => {
+    if (embedded) {
+      setCollapsed(false)
+      setProductPaletteCollapsed(false)
+      return
+    }
     try {
       const stored = window.localStorage.getItem(COLLAPSE_KEY) === '1'
       setCollapsed(stored)
@@ -138,7 +151,7 @@ export function ProductPalette() {
     } catch {
       /* ignore */
     }
-  }, [setProductPaletteCollapsed])
+  }, [setProductPaletteCollapsed, embedded])
 
   const toggleCollapsed = () => {
     const next = !collapsed
@@ -212,12 +225,12 @@ export function ProductPalette() {
   }, [])
 
   useEffect(() => {
-    if (collapsed) return
+    if (collapsed && !embedded) return
     const t = setTimeout(() => {
-      void fetchSkus(search)
-    }, search ? 300 : 0)
+      void fetchSkus(effectiveSearch)
+    }, effectiveSearch ? 300 : 0)
     return () => clearTimeout(t)
-  }, [search, collapsed, fetchSkus])
+  }, [effectiveSearch, collapsed, embedded, fetchSkus])
 
   const onDragStart = (sku: CatalogSkuRow, e: React.DragEvent) => {
     if (!selectedStoreId) {
@@ -231,7 +244,7 @@ export function ProductPalette() {
     startProductPlacement(pending)
   }
 
-  if (collapsed) {
+  if (collapsed && !embedded) {
     return (
       <button
         type="button"
@@ -261,7 +274,13 @@ export function ProductPalette() {
   }
 
   return (
-    <div className={cn(shell, 'relative w-full flex-1 min-h-0 flex flex-col overflow-hidden text-gray-100')}>
+    <div
+      className={cn(
+        !embedded && shell,
+        'relative w-full flex-1 min-h-0 flex flex-col overflow-hidden text-gray-100',
+      )}
+    >
+      {!embedded && (
       <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-emerald-400/25 shrink-0 bg-gradient-to-r from-emerald-500/35 via-emerald-600/15 to-transparent">
         <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-500 text-white shrink-0 shadow-md shadow-emerald-500/50">
           <FiPackage size={16} />
@@ -279,6 +298,7 @@ export function ProductPalette() {
           <FiChevronLeft size={16} />
         </button>
       </div>
+      )}
 
       {!selectedStoreId && (
         <div className="mx-2.5 mt-2.5 px-2.5 py-2 rounded-lg bg-amber-500/15 border border-amber-500/25 text-amber-100 text-[11px] leading-snug">
@@ -321,6 +341,7 @@ export function ProductPalette() {
         </div>
       )}
 
+      {!embedded && (
       <div className="px-2.5 pt-2 shrink-0">
         <div className="relative">
           <FiSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" size={13} />
@@ -332,6 +353,7 @@ export function ProductPalette() {
           />
         </div>
       </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5 scrollbar-thin">
         {loading ? (

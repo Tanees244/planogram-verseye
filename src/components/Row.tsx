@@ -179,8 +179,8 @@ export function Row({
         const existing = row.bins.map((bin, binIndex) => {
           const n = Math.max(row.bins.length, 1)
           const fallbackWidth = safeRackWidth / n
-          const slotWidth = safeDim(bin.width, fallbackWidth)
-          const binWidth = Math.min(slotWidth, safeRackWidth) // keep bins inside row span after reflow
+          const slotWidth = Math.min(safeDim(bin.width, fallbackWidth), safeRackWidth)
+          const binWidth = slotWidth
           const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95)
           // API sometimes stores shelf-board thickness as bin.height — use row
           // cavity for layout so products aren't crushed to a few centimeters.

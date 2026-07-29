@@ -2,6 +2,7 @@
 
 import type { Rack } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
+import { mToCmDisplay } from '@/utils/lengthUnits'
 import {
   downloadTextFile,
   downloadBlob,
@@ -55,9 +56,9 @@ export function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
     'skuId',
     'skuName',
     'frontFacings',
-    'widthM',
-    'depthM',
-    'heightM',
+    'widthCm',
+    'depthCm',
+    'heightCm',
   ]
   const lines = [header.join(',')]
   const esc = (v: string | number | null | undefined) => {
@@ -65,6 +66,8 @@ export function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
     if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
     return s
   }
+  const cm = (m: number | null | undefined) =>
+    m == null || !Number.isFinite(Number(m)) ? '' : mToCmDisplay(Number(m), 1)
   for (const rack of racks) {
     rack.sides.forEach((side, si) => {
       side.rows.forEach((row, ri) => {
@@ -79,9 +82,9 @@ export function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
                 '',
                 '',
                 0,
-                bin.width,
-                bin.depth,
-                bin.height,
+                cm(bin.width),
+                cm(bin.depth),
+                cm(bin.height),
               ].join(','),
             )
             return
@@ -96,9 +99,9 @@ export function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
                 esc(p.id),
                 esc(p.name),
                 Math.max(1, Math.floor(Number(p.quantity) || 1)),
-                p.width,
-                p.depth,
-                p.height,
+                cm(p.width),
+                cm(p.depth),
+                cm(p.height),
               ].join(','),
             )
           }
@@ -130,11 +133,13 @@ export async function exportRacksToXlsx(racks: Rack[], baseName = 'planogram') {
       { header: 'SKU id', key: 'skuId', width: 36 },
       { header: 'SKU name', key: 'skuName', width: 28 },
       { header: 'Front facings', key: 'facings', width: 12 },
-      { header: 'Width m', key: 'width', width: 10 },
-      { header: 'Depth m', key: 'depth', width: 10 },
-      { header: 'Height m', key: 'height', width: 10 },
+      { header: 'Width cm', key: 'width', width: 10 },
+      { header: 'Depth cm', key: 'depth', width: 10 },
+      { header: 'Height cm', key: 'height', width: 10 },
     ]
     sheet.getRow(1).font = { bold: true }
+    const cm = (m: number | null | undefined) =>
+      m == null || !Number.isFinite(Number(m)) ? '' : mToCmDisplay(Number(m), 1)
 
     for (const rack of racks) {
       const rackName = rack.blueprintName || rack.rackCode || rack.id
@@ -151,9 +156,9 @@ export async function exportRacksToXlsx(racks: Rack[], baseName = 'planogram') {
                 skuId: '',
                 skuName: '',
                 facings: 0,
-                width: bin.width,
-                depth: bin.depth,
-                height: bin.height,
+                width: cm(bin.width),
+                depth: cm(bin.depth),
+                height: cm(bin.height),
               })
               return
             }
@@ -167,9 +172,9 @@ export async function exportRacksToXlsx(racks: Rack[], baseName = 'planogram') {
                 skuId: p.id,
                 skuName: p.name,
                 facings: Math.max(1, Math.floor(Number(p.quantity) || 1)),
-                width: p.width,
-                depth: p.depth,
-                height: p.height,
+                width: cm(p.width),
+                depth: cm(p.depth),
+                height: cm(p.height),
               })
             }
           })
@@ -205,6 +210,170 @@ export function exportScenePng(baseName = 'planogram-scene') {
   } catch {
     toast.error('Could not capture canvas (browser blocked toDataURL)')
   }
+}
+
+/** First linked shelf on a rack (planogram / ideal image). */
+export function primaryShelfIdForRack(rack: Rack): string | null {
+  for (const side of rack.sides ?? []) {
+    const id = side.shelfId?.trim()
+    if (id) return id
+  }
+  return null
+}
+
+async function exportAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  try {
+    const { getPlanogramTokenFromCookie } = await import('@verseye/utils')
+    const t = getPlanogramTokenFromCookie()
+    if (t) headers.Authorization = `Bearer ${t}`
+  } catch {
+    /* ignore */
+  }
+  return headers
+}
+
+function storageKeyFromSignedUrl(url: string): string | null {
+  try {
+    const parts = new URL(url).pathname.split('/').filter(Boolean)
+    if (parts.length < 2) return null
+    const key = parts.slice(1).join('/')
+    return key && !key.includes('..') ? key : null
+  } catch {
+    return null
+  }
+}
+
+/** Same-origin proxy URL for ideal image fetch (avoids CORS / expired signatures). */
+function proxiedIdealFetchUrl(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return trimmed
+  if (trimmed.startsWith('/')) return trimmed
+  if (/^https?:\/\//i.test(trimmed)) {
+    const key = storageKeyFromSignedUrl(trimmed)
+    if (key) return `/api/files/image?key=${encodeURIComponent(key)}`
+    return `/api/files/image?url=${encodeURIComponent(trimmed)}`
+  }
+  return `/api/files/image?key=${encodeURIComponent(trimmed)}`
+}
+
+function pickIdealImageRef(data: Record<string, unknown>): string | null {
+  const planogram =
+    data.planogram && typeof data.planogram === 'object'
+      ? (data.planogram as Record<string, unknown>)
+      : null
+  const images = Array.isArray(data.images) ? data.images : []
+  const fromImages = images.find(
+    (i) =>
+      i &&
+      typeof i === 'object' &&
+      (i as { type?: string }).type === 'ideal' &&
+      typeof (i as { url?: string }).url === 'string',
+  ) as { url?: string; storageKey?: string } | undefined
+
+  const candidates = [
+    data.idealImageUrl,
+    data.ideal_image_url,
+    data.idealImageStorageKey,
+    data.ideal_image_storage_key,
+    planogram?.idealImageUrl,
+    planogram?.idealImageStorageKey,
+    fromImages?.url,
+    fromImages?.storageKey,
+  ]
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim()
+  }
+  return null
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function imageFormatFromDataUrl(dataUrl: string): 'PNG' | 'JPEG' {
+  if (/^data:image\/jpe?g/i.test(dataUrl)) return 'JPEG'
+  return 'PNG'
+}
+
+/**
+ * Load shelf ideal planogram image as a data URL for PNG / PDF / PPTX embeds.
+ * Returns null when the shelf has no ideal image (caller may fall back to scene).
+ */
+export async function fetchIdealImageDataUrl(
+  shelfId: string,
+): Promise<{ dataUrl: string; filenameBase: string } | null> {
+  if (!shelfId) return null
+  try {
+    const headers = await exportAuthHeaders()
+    const res = await fetch(`/api/layout/shelves/${encodeURIComponent(shelfId)}`, {
+      headers,
+      cache: 'no-store',
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok || json?.isRequestSuccess === false) return null
+    const data = (json?.data ?? json) as Record<string, unknown>
+    const ref = pickIdealImageRef(data)
+    if (!ref) return null
+
+    const imgRes = await fetch(proxiedIdealFetchUrl(ref), {
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    if (!imgRes.ok) return null
+    const blob = await imgRes.blob()
+    const dataUrl = await blobToDataUrl(blob)
+    const name =
+      (typeof data.name === 'string' && data.name) ||
+      (typeof data.planogramName === 'string' && data.planogramName) ||
+      'ideal-planogram'
+    return { dataUrl, filenameBase: name }
+  } catch {
+    return null
+  }
+}
+
+/** Prefer ideal planogram image for a rack; fall back to 3D scene capture. */
+async function resolveExportImageDataUrl(
+  racks: Rack[],
+): Promise<{ dataUrl: string; source: 'ideal' | 'scene' } | null> {
+  if (racks.length === 1) {
+    const shelfId = primaryShelfIdForRack(racks[0])
+    if (shelfId) {
+      const ideal = await fetchIdealImageDataUrl(shelfId)
+      if (ideal) return { dataUrl: ideal.dataUrl, source: 'ideal' }
+    }
+  }
+  const shot = captureSceneDataUrl()
+  return shot ? { dataUrl: shot, source: 'scene' } : null
+}
+
+/** PNG: ideal planogram image when the rack has one; otherwise scene capture. */
+export async function exportRackPng(rack: Rack, baseName?: string) {
+  const shelfId = primaryShelfIdForRack(rack)
+  const name =
+    baseName ?? rack.blueprintName ?? rack.rackCode ?? rack.rackName ?? 'rack'
+  if (shelfId) {
+    const ideal = await fetchIdealImageDataUrl(shelfId)
+    if (ideal) {
+      const fmt = imageFormatFromDataUrl(ideal.dataUrl)
+      const ext = fmt === 'JPEG' ? 'jpg' : 'png'
+      const a = document.createElement('a')
+      a.href = ideal.dataUrl
+      a.download = sanitizeFilename(name, ext)
+      a.click()
+      toast.success('Exported ideal planogram PNG')
+      return
+    }
+    toast('No ideal image — exporting 3D scene capture instead', { icon: 'ℹ️' })
+  }
+  exportScenePng(name)
 }
 
 function flattenRows(racks: Rack[]) {
@@ -302,12 +471,12 @@ export async function exportRacksToPdf(racks: Rack[], baseName = 'planogram') {
     }
     doc.setTextColor(0)
 
-    const shot = captureSceneDataUrl()
-    if (shot) {
+    const image = await resolveExportImageDataUrl(racks)
+    if (image) {
       try {
-        doc.addImage(shot, 'PNG', 14, 32, 260, 115)
+        doc.addImage(image.dataUrl, imageFormatFromDataUrl(image.dataUrl), 14, 32, 260, 115)
       } catch {
-        /* canvas may be tainted */
+        /* canvas may be tainted / unsupported format */
       }
     }
 
@@ -393,18 +562,33 @@ export async function exportRacksToPptx(racks: Rack[], baseName = 'planogram') {
     } catch {
       /* ignore */
     }
-    const shot = captureSceneDataUrl()
-    if (shot) {
-      s1.addImage({ data: shot, x: 0.5, y: 1.55, w: 9, h: 4.0 })
+    const image = await resolveExportImageDataUrl(racks)
+    if (image) {
+      s1.addImage({ data: image.dataUrl, x: 0.5, y: 1.55, w: 9, h: 4.0 })
+      if (image.source === 'ideal') {
+        s1.addText('Ideal planogram image', {
+          x: 0.5,
+          y: 5.6,
+          w: 9,
+          h: 0.25,
+          fontSize: 10,
+          color: '666666',
+        })
+      }
     } else {
-      s1.addText('Open the 3D scene before export to include a shelf image.', {
-        x: 0.5,
-        y: 2.5,
-        w: 9,
-        h: 0.4,
-        fontSize: 14,
-        color: '999999',
-      })
+      s1.addText(
+        racks.length === 1
+          ? 'No ideal planogram image — Save as planogram, or open the 3D scene to capture.'
+          : 'Open the 3D scene before export to include a shelf image.',
+        {
+          x: 0.5,
+          y: 2.5,
+          w: 9,
+          h: 0.4,
+          fontSize: 14,
+          color: '999999',
+        },
+      )
     }
 
     const s2 = pptx.addSlide()
@@ -455,9 +639,6 @@ export async function exportRacksToPptx(racks: Rack[], baseName = 'planogram') {
 /**
  * Download the shelf planogram ideal image (PNG/JPEG) when the API exposes idealImageUrl.
  * Falls back gracefully if the field is missing.
- *
- * TODO: When backend documents a dedicated GET /planogram payload shape, prefer that
- * endpoint over shelf detail for idealImageUrl resolution.
  */
 export async function downloadIdealImageFromShelf(
   shelfId: string,
@@ -468,51 +649,18 @@ export async function downloadIdealImageFromShelf(
     return { success: false, message: 'No shelf id' }
   }
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' }
-    try {
-      const { getPlanogramTokenFromCookie } = await import('@verseye/utils')
-      const t = getPlanogramTokenFromCookie()
-      if (t) headers.Authorization = `Bearer ${t}`
-    } catch {
-      /* ignore */
-    }
-
-    const res = await fetch(`/api/layout/shelves/${encodeURIComponent(shelfId)}`, {
-      headers,
-      cache: 'no-store',
-    })
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok || json?.isRequestSuccess === false) {
-      const msg = json?.message || 'Failed to load planogram'
-      toast.error(msg)
-      return { success: false, message: msg }
-    }
-    const data = json?.data ?? json
-    const url =
-      data?.idealImageUrl ??
-      data?.ideal_image_url ??
-      data?.planogram?.idealImageUrl ??
-      data?.images?.find?.((i: { type?: string; url?: string }) => i?.type === 'ideal')?.url
-
-    if (!url || typeof url !== 'string') {
+    const ideal = await fetchIdealImageDataUrl(shelfId)
+    if (!ideal) {
       const msg = 'No ideal image URL on this planogram'
       toast.error(msg)
       return { success: false, message: msg }
     }
-
-    const imgRes = await fetch(url, {
-      headers,
-      credentials: 'include',
-      cache: 'no-store',
-    })
-    if (!imgRes.ok) {
-      toast.error(`Failed to download ideal image (${imgRes.status})`)
-      return { success: false, message: `HTTP ${imgRes.status}` }
-    }
-    const blob = await imgRes.blob()
-    const ct = blob.type || imgRes.headers.get('content-type') || 'image/png'
-    const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg' : ct.includes('webp') ? 'webp' : 'png'
-    downloadBlob(blob, sanitizeFilename(options?.filename ?? data?.name ?? 'ideal-planogram', ext))
+    const fmt = imageFormatFromDataUrl(ideal.dataUrl)
+    const ext = fmt === 'JPEG' ? 'jpg' : 'png'
+    const a = document.createElement('a')
+    a.href = ideal.dataUrl
+    a.download = sanitizeFilename(options?.filename ?? ideal.filenameBase, ext)
+    a.click()
     toast.success('Downloaded ideal image')
     return { success: true }
   } catch {
@@ -525,8 +673,19 @@ export function usePlanogramExport() {
   const area = usePlanogramStore((s) => s.area)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
+  const selectedId = usePlanogramStore((s) => s.selectedId)
+  const selectedType = usePlanogramStore((s) => s.selectedType)
+
+  const getSelectedRack = (): Rack | null => {
+    if (selectedType !== 'rack' || !selectedId) return null
+    return (
+      area.racks.find((r) => r.id === selectedId || r.rackId === selectedId) ?? null
+    )
+  }
 
   return {
+    /** True when a rack is selected — PNG / PDF / PowerPoint use that rack + ideal image. */
+    hasSelectedRack: selectedType === 'rack' && Boolean(selectedId),
     exportStore(format: Exclude<PlanogramFileFormat, 'legacy-json' | 'unknown'>) {
       exportRacksAs(area.racks, format, {
         planogramName: selectedStoreName ?? 'Store planogram',
@@ -557,15 +716,28 @@ export function usePlanogramExport() {
       return exportRacksToXlsx([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
     },
     exportSceneImage(name?: string) {
+      const rack = getSelectedRack()
+      if (rack) {
+        void exportRackPng(rack, name)
+        return
+      }
       exportScenePng(name ?? selectedStoreName ?? 'planogram-scene')
     },
     exportStorePdf() {
+      const rack = getSelectedRack()
+      if (rack) {
+        return exportRacksToPdf([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
+      }
       return exportRacksToPdf(area.racks, selectedStoreName ?? 'store-planogram')
     },
     exportRackPdf(rack: Rack) {
       return exportRacksToPdf([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
     },
     exportStorePptx() {
+      const rack = getSelectedRack()
+      if (rack) {
+        return exportRacksToPptx([rack], rack.blueprintName ?? rack.rackCode ?? 'rack')
+      }
       return exportRacksToPptx(area.racks, selectedStoreName ?? 'store-planogram')
     },
     exportRackPptx(rack: Rack) {

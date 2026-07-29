@@ -7,11 +7,11 @@ import { FIXTURE_LIBRARY, FIXTURE_TYPES, type FixtureType } from '@/components/f
 import { Spinner } from '@/components/Spinner'
 import { getUserEnteredNames } from '@/utils/userEnteredNames'
 import { MIN_RACK_DEPTH, MIN_RACK_WIDTH } from '@/constants/dimensions'
+import { cmInputFromM, formatCm, mToCmDisplay } from '@/utils/lengthUnits'
 
 export interface RackFormState {
   width: string
   depth: string
-  rackCode: string
   rackName: string
   plankType: string
   sided: 'one' | 'two'
@@ -70,7 +70,7 @@ export function AddRackModal({
       open={open}
       onClose={onClose}
       title="Add Rack"
-      subtitle={`Configure a new fixture on the ${areaWidth} m × ${areaDepth} m floor.`}
+      subtitle={`Configure a new fixture on the ${formatCm(areaWidth, 0)} × ${formatCm(areaDepth, 0)} floor.`}
       maxWidth="2xl"
       footer={
         <>
@@ -110,23 +110,17 @@ export function AddRackModal({
             {locationsError && <p className="text-xs text-amber-600 mt-1">{locationsError}</p>}
           </FormField>
 
-          <FormField label="Rack Code" required error={errors.rackCode}>
-            <Input
-              placeholder="Enter rack code"
-              value={form.rackCode}
-              error={!!errors.rackCode}
-              onChange={(e) => set({ rackCode: e.target.value })}
-            />
-          </FormField>
-
           <FormField
             label="Rack Name"
-            hint="Display name — suggestions are names you typed before"
+            required
+            error={errors.rackName}
+            hint="Display name — unique per store. Rack code is auto-generated."
             className="sm:col-span-2"
           >
             <Input
               placeholder="e.g. Dairy end cap"
               value={form.rackName}
+              error={!!errors.rackName}
               list="rack-name-suggestions"
               onChange={(e) => set({ rackName: e.target.value })}
             />
@@ -150,8 +144,8 @@ export function AddRackModal({
                 const def = FIXTURE_LIBRARY[fixtureType]
                 set({
                   fixtureType,
-                  width: String(def.defaultWidth),
-                  depth: String(def.defaultDepth),
+                  width: cmInputFromM(def.defaultWidth, 0),
+                  depth: cmInputFromM(def.defaultDepth, 0),
                   sided: def.defaultSided,
                 })
               }}
@@ -165,30 +159,30 @@ export function AddRackModal({
           </FormField>
 
           <FormField
-            label="Width (m)"
+            label="Width (cm)"
             required
             error={errors.width}
-            hint={`Minimum ${MIN_RACK_WIDTH} m`}
+            hint={`Minimum ${mToCmDisplay(MIN_RACK_WIDTH, 0)} cm`}
           >
             <Input
               inputMode="decimal"
               value={form.width}
-              placeholder="2.7"
+              placeholder={cmInputFromM(2.7, 0)}
               error={!!errors.width}
               onChange={(e) => set({ width: e.target.value })}
             />
           </FormField>
 
           <FormField
-            label="Depth (m)"
+            label="Depth (cm)"
             required
             error={errors.depth}
-            hint={`Minimum ${MIN_RACK_DEPTH} m`}
+            hint={`Minimum ${mToCmDisplay(MIN_RACK_DEPTH, 0)} cm`}
           >
             <Input
               inputMode="decimal"
               value={form.depth}
-              placeholder="1.1"
+              placeholder={cmInputFromM(1.1, 0)}
               error={!!errors.depth}
               onChange={(e) => set({ depth: e.target.value })}
             />

@@ -17,7 +17,7 @@ import { resolveProductModelUrl } from '@/utils/productModelUrl'
 import { ProductGlbModel, preloadProductGlb } from '@/components/ProductGlbModel'
 
 class GlbLoadBoundary extends Component<
-  { onError: () => void; children: ReactNode },
+  { onError: () => void; children: ReactNode; fallback: ReactNode },
   { hasError: boolean }
 > {
   state = { hasError: false }
@@ -26,12 +26,13 @@ class GlbLoadBoundary extends Component<
     return { hasError: true }
   }
 
-  componentDidCatch() {
+  componentDidCatch(error: unknown) {
+    console.warn('[Product] GLB load failed, using box fallback', error)
     this.props.onError()
   }
 
   render() {
-    if (this.state.hasError) return null
+    if (this.state.hasError) return this.props.fallback
     return this.props.children
   }
 }
@@ -100,6 +101,10 @@ function ProductBoxFallback({
   )
 }
 
+/** Shared across Product instances — avoid N parallel 502s for the same broken GLB. */
+const glbPreflightCache = new Map<string, { ok: boolean; at: number }>()
+const GLB_PREFLIGHT_TTL_MS = 60_000
+
 export function Product({ product, position, rowId, binId, forceSimple = false }: ProductProps) {
   const meshRef = useRef<Mesh>(null)
   const [hovered, setHovered] = useState(false)
@@ -122,14 +127,25 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
     setGlbReady(false)
     if (!modelUrl || forceSimple) return
     let alive = true
-    // Lightweight preflight (HEAD) so useGLTF never throws an uncaught 502.
-    fetch(modelUrl, { method: 'HEAD', cache: 'no-store' })
+
+    const cached = glbPreflightCache.get(modelUrl)
+    if (cached && Date.now() - cached.at < GLB_PREFLIGHT_TTL_MS) {
+      if (cached.ok) setGlbReady(true)
+      else setGlbFailed(true)
+      return
+    }
+
+    // Real GET preflight (not optimistic HEAD) — avoid mounting useGLTF on 502.
+    fetch(modelUrl, { method: 'GET', cache: 'no-store', headers: { Range: 'bytes=0-0' } })
       .then((res) => {
         if (!alive) return
-        if (res.ok) setGlbReady(true)
+        const ok = res.ok || res.status === 206
+        glbPreflightCache.set(modelUrl, { ok, at: Date.now() })
+        if (ok) setGlbReady(true)
         else setGlbFailed(true)
       })
       .catch(() => {
+        glbPreflightCache.set(modelUrl, { ok: false, at: Date.now() })
         if (alive) setGlbFailed(true)
       })
     return () => {
@@ -232,7 +248,23 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
   return (
     <group position={position}>
       {useGlb && modelUrl ? (
-        <GlbLoadBoundary onError={() => setGlbFailed(true)}>
+        <GlbLoadBoundary
+          onError={() => setGlbFailed(true)}
+          fallback={
+            <ProductBoxFallback
+              product={product}
+              width={width}
+              height={height}
+              depth={depth}
+              meshRef={meshRef}
+              texture={texture}
+              isSelected={isSelected}
+              hovered={hovered}
+              onSelect={handleSelect}
+              setHovered={setHovered}
+            />
+          }
+        >
           <Suspense
             fallback={
               <ProductBoxFallback

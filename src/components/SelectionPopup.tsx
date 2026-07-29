@@ -10,13 +10,9 @@ import { safePosition } from '@/utils/safeDimensions'
 import { useEffect, useMemo, useState } from 'react'
 import { displayRackName } from '@/utils/displayRackName'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
+import { formatCm, formatCmPair, formatCmTriple } from '@/utils/lengthUnits'
 
 type PopupKind = 'product' | 'bin' | 'row' | 'rack'
-
-function cm(m: number | undefined | null) {
-  if (typeof m !== 'number' || !Number.isFinite(m)) return '—'
-  return `${(m * 100).toFixed(0)} cm`
-}
 
 export function SelectionPopup() {
   const { selectedId, selectedType, area } = usePlanogramStore()
@@ -138,7 +134,7 @@ export function SelectionPopup() {
         title: data.name || 'SKU',
         accent: data.color || '#34d399',
         lines: [
-          `${cm(data.width)} × ${cm(data.depth)} × ${cm(data.height)}`,
+          formatCmTriple(data.width, data.depth, data.height),
           data.__qty > 1 ? `${data.__qty} facings` : null,
           data.brandName || null,
         ].filter(Boolean),
@@ -150,7 +146,7 @@ export function SelectionPopup() {
         title: data.binName || 'Bin',
         accent: '#38bdf8',
         lines: [
-          `${cm(data.width)} × ${cm(data.depth)} × ${cm(data.height)}`,
+          formatCmTriple(data.width, data.depth, data.height),
           data.__skuCount
             ? `${data.__skuCount} SKU · ${data.__facings} facings`
             : 'Empty — attach a product',
@@ -161,7 +157,7 @@ export function SelectionPopup() {
     if (kind === 'row') {
       return {
         eyebrow: 'Row',
-        title: `Row · ${cm(data.height)} high`,
+        title: `Row · ${formatCm(data.height)} high`,
         accent: '#a78bfa',
         lines: [
           `${data.__binCount} bin${data.__binCount === 1 ? '' : 's'}`,
@@ -175,7 +171,7 @@ export function SelectionPopup() {
       accent: '#60a5fa',
       lines: [
         data.rackCode ? `Code ${data.rackCode}` : null,
-        `${Number(data.width).toFixed(2)} × ${Number(data.depth).toFixed(2)} m`,
+        formatCmPair(Number(data.width), Number(data.depth)),
         data.fixtureType ? String(data.fixtureType).replace(/_/g, ' ') : null,
       ].filter(Boolean),
     }

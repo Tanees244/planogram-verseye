@@ -5,6 +5,7 @@ import {
   type ProductSizePreset,
 } from '@/constants/dimensions'
 import { cn } from '@/lib/cn'
+import { formatCmTriple } from '@/utils/lengthUnits'
 
 export function ProductSizePresetPicker({
   onSelect,
@@ -31,7 +32,7 @@ export function ProductSizePresetPicker({
             key={preset.id}
             type="button"
             onClick={() => onSelect(preset)}
-            title={`${preset.width} × ${preset.depth} × ${preset.height} m`}
+            title={formatCmTriple(preset.width, preset.depth, preset.height)}
             className={cn(
               'rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
               dark

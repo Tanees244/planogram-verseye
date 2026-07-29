@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { FiArrowLeft, FiLayers, FiPackage, FiBox, FiTrash2, FiUpload } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { formatPlanogramDateTime, planogramStatusFromShelf, type ShelfDetail } from '@/types/shelf'
+import { formatCm } from '@/utils/lengthUnits'
 import { PlanogramElevation2D, type ElevationRow } from '@/components/PlanogramThumb'
 
 interface SkuRow {
@@ -399,7 +400,7 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
                                   <td className="px-4 py-2 text-gray-600">
                                     {sku.position &&
                                     (sku.position.x !== null || sku.position.y !== null)
-                                      ? `${sku.position.x === null ? 'auto' : `${sku.position.x.toFixed(3)} m`} × ${sku.position.y === null ? 'auto' : `${sku.position.y.toFixed(3)} m`}`
+                                      ? `${sku.position.x === null ? 'auto' : formatCm(sku.position.x, 1)} × ${sku.position.y === null ? 'auto' : formatCm(sku.position.y, 1)}`
                                       : 'Auto'}
                                   </td>
                                   <td className="px-4 py-2 text-gray-600">

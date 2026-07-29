@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { DoubleSide } from 'three'
 import { Html } from '@react-three/drei'
 import { FLOOR_GRID_SIZE_M } from '@/utils/rackPlacement'
+import { formatCmPair } from '@/utils/lengthUnits'
 
 /**
  * Floor snap grid — only while placing / dragging / moving a fixture.
@@ -105,7 +106,7 @@ export function PlacementGrid({
               }}
             >
               {fixtureLabel ? `${fixtureLabel} · ` : ''}
-              {fixtureWidth!.toFixed(2)}m × {fixtureDepth!.toFixed(2)}m
+              {formatCmPair(fixtureWidth!, fixtureDepth!)}
               <div style={{ fontSize: 10, fontWeight: 500, color: '#93c5fd', marginTop: 2 }}>
                 Grid {FLOOR_GRID_SIZE_M * 100}cm · snap to cells
               </div>

@@ -8,6 +8,7 @@ import {
     FiChevronRight
 } from 'react-icons/fi'
 import { Category, Product } from '../types/product-management'
+import { formatCmTriple } from '@/utils/lengthUnits'
 
 interface ProductManagementModalProps {
     isOpen: boolean
@@ -218,7 +219,7 @@ export default function ProductManagementModal({ isOpen, onClose }: ProductManag
                                                 <span className="font-bold text-gray-900">{typeof product.price === 'number' ? `$${product.price.toFixed(2)}` : '—'}</span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">
-                                                {product.height || 0}m × {product.width || 0}m × {product.depth || 0}m
+                                                {formatCmTriple(product.width || 0, product.depth || 0, product.height || 0)}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${product.status === 'Active' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'

@@ -43,7 +43,7 @@ export function CustomRackSlotLayer({
             key={row.id}
             row={row}
             position={[0, bodyFloorY + centers[i], cavityZ]}
-            rackWidth={safeDim(row.width, innerW)}
+            rackWidth={innerW}
             rackDepth={innerD * 0.95}
             hideBackWall
           />
@@ -69,7 +69,7 @@ export function CustomRackSlotLayer({
                 key={row.id}
                 row={row}
                 position={[0, bodyFloorY + centers[i], shelfOffsetZ]}
-                rackWidth={safeDim(row.width ?? row.span, innerW)}
+                rackWidth={innerW}
                 rackDepth={sideDepth * 0.95}
                 hideBackWall
                 openBothSides

@@ -218,8 +218,15 @@ export function unwrapRackPayload(raw: any): any {
     const rack = raw.rack
     return {
       ...rack,
-      blueprintName: raw.name ?? rack.blueprintName,
-      displayName: raw.displayName ?? raw.display_name ?? rack.displayName,
+      rackName: raw.rackName ?? raw.rack_name ?? rack.rackName,
+      blueprintName: raw.name ?? raw.rackName ?? raw.rack_name ?? rack.rackName ?? rack.blueprintName,
+      displayName:
+        raw.displayName ??
+        raw.display_name ??
+        raw.rackName ??
+        raw.rack_name ??
+        rack.displayName ??
+        rack.rackName,
       sides: rack.sides ?? rack.layout?.sides ?? [],
     }
   }
@@ -396,10 +403,18 @@ export function normalizeRack(rawInput: any): Rack {
     height: raw.height != null ? String(raw.height) : String(outerHeight),
     fixtureType,
     customConfig,
-    blueprintName: raw.blueprintName ?? raw.blueprint_name ?? undefined,
+    rackName: raw.rackName ?? raw.rack_name ?? undefined,
+    blueprintName:
+      raw.rackName ??
+      raw.rack_name ??
+      raw.blueprintName ??
+      raw.blueprint_name ??
+      undefined,
     displayName:
       raw.displayName ??
       raw.display_name ??
+      raw.rackName ??
+      raw.rack_name ??
       raw.blueprintName ??
       raw.blueprint_name ??
       undefined,

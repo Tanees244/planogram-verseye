@@ -16,7 +16,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiMaximize2, FiGitMerge, FiCopy, FiClipboard, FiCamera } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiGitMerge, FiCopy, FiClipboard, FiCamera } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import AttachProductToBinModal from "./AttachProductToBinModal";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -36,7 +36,6 @@ import { BinItemTagPosmPanel } from '@/components/BinItemTagPosmPanel'
 import { RowFaceFillChip } from '@/components/RowFaceFillChip'
 import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
-import { RackReflowModal } from '@/components/RackReflowModal'
 import { MultiRackReflowModal } from '@/components/MultiRackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
@@ -49,7 +48,15 @@ import {
 import { maxBinDepthM } from '@/utils/rackBlueprintMapper'
 import { cn } from '@/lib/cn'
 import { displayRackName } from '@/utils/displayRackName'
-export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizontal' | 'sidebar' }) {
+import { cmInputFromM } from '@/utils/lengthUnits'
+export function ContextAddButton({
+  layout = 'horizontal',
+  hidePosmPanel = false,
+}: {
+  layout?: 'horizontal' | 'sidebar'
+  /** When true, rack / row / bin POSM is shown in the POSM library tab instead. */
+  hidePosmPanel?: boolean
+}) {
   const isSidebar = layout === 'sidebar';
   const {
     selectedId,
@@ -100,7 +107,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [addingBin, setAddingBin] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [showReflowModal, setShowReflowModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
   const [showSavePlanogramModal, setShowSavePlanogramModal] = useState(false);
 
@@ -167,7 +173,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
   const [isRackFormValid, setIsRackFormValid] = useState(false);
 
   const [rowForm, setRowForm] = useState({
-    height: String(GROCERY_SHELF_SPACING),
+    height: cmInputFromM(GROCERY_SHELF_SPACING),
     count: '1',
   });
 
@@ -200,14 +206,13 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       setLocationValidationError(errs.location ?? null)
       return false
     }
-    const w = parseFloat(rackForm.width)
-    const d = parseFloat(rackForm.depth)
+    const w = (parseFloat(rackForm.width) || 0) / 100
+    const d = (parseFloat(rackForm.depth) || 0) / 100
     const res = await addRackToServer(
       position,
       {
-        width: w,
-        depth: d,
-        rackCode: rackForm.rackCode,
+        width: w || DEFAULT_RACK_WIDTH,
+        depth: d || DEFAULT_RACK_DEPTH,
         rackName: rackForm.rackName,
         plankType: rackForm.plankType,
         sided: rackForm.fixtureType === 'GONDOLA' ? rackForm.sided : 'one',
@@ -216,7 +221,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       selectedLocationId,
     )
     if (res.success) {
-      const name = (rackForm.rackName || rackForm.rackCode || '').trim()
+      const name = (rackForm.rackName || '').trim()
       if (name) {
         void import('@/utils/userEnteredNames').then(({ rememberUserEnteredName }) => {
           rememberUserEnteredName('rack', name)
@@ -235,9 +240,8 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
       return
     }
     setPendingRackParams({
-      width: parseFloat(rackForm.width) || DEFAULT_RACK_WIDTH,
-      depth: parseFloat(rackForm.depth) || DEFAULT_RACK_DEPTH,
-      rackCode: rackForm.rackCode,
+      width: (parseFloat(rackForm.width) || 0) / 100 || DEFAULT_RACK_WIDTH,
+      depth: (parseFloat(rackForm.depth) || 0) / 100 || DEFAULT_RACK_DEPTH,
       rackName: rackForm.rackName,
       globalLocationId: selectedLocationId,
       plankType: rackForm.plankType,
@@ -260,7 +264,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             isSidebar ? 'w-full min-h-full' : 'items-start',
           )}
         >
-          {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
+          {rack && !hidePosmPanel && <RackPosmPanel rack={rack} dark={isSidebar} />}
           {rack && (
             <div
               className={cn(
@@ -394,14 +398,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             <ActionBtn
               variant="primary"
               fullWidth={isSidebar}
-              onClick={() => setShowReflowModal(true)}
-              title="ApplyRackReflow — resize this rack (POST .../reflow)"
-            >
-              <FiMaximize2 /> Reflow preview
-            </ActionBtn>
-            <ActionBtn
-              variant="secondary"
-              fullWidth={isSidebar}
               onClick={() => setShowMultiReflowModal(true)}
               title="ApplyMultiRackReflow — map onto existing racks (POST .../reflow-to-racks)"
             >
@@ -502,7 +498,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
                 )
                 const remaining = Math.max(0.1, bodyH - used)
                 setRowForm({
-                  height: String(Number(remaining.toFixed(3))),
+                  height: cmInputFromM(remaining),
                   count: '1',
                 })
                 setShowRowModal(true)
@@ -538,7 +534,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
             if (!selectedId) return;
             setAddingRow(true);
             try {
-              const h = parseFloat(rowForm.height) || GROCERY_SHELF_SPACING;
+              const h = parseFloat(rowForm.height) / 100 || GROCERY_SHELF_SPACING;
               const n = Math.max(1, Math.min(20, Math.floor(Number(rowForm.count) || 1)));
               let added = 0;
               let lastMsg: string | undefined;
@@ -587,11 +583,6 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               rack={rack}
               open={showPublishModal}
               onClose={() => setShowPublishModal(false)}
-            />
-            <RackReflowModal
-              rack={rack}
-              open={showReflowModal}
-              onClose={() => setShowReflowModal(false)}
             />
             <MultiRackReflowModal
               rack={rack}
@@ -709,7 +700,7 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
               />
             </div>
           )}
-          {row && <RowDividerPosmPanel row={row} dark={isSidebar} />}
+          {row && !hidePosmPanel && <RowDividerPosmPanel row={row} dark={isSidebar} />}
           <ActionBar
             label="Row selected"
             subtitle="Shelf row actions"
@@ -841,7 +832,9 @@ export function ContextAddButton({ layout = 'horizontal' }: { layout?: 'horizont
     return (
       <>
         <div className="space-y-2 w-full">
-          {selectedBin && <BinItemTagPosmPanel bin={selectedBin} dark={isSidebar} />}
+          {selectedBin && !hidePosmPanel && (
+            <BinItemTagPosmPanel bin={selectedBin} dark={isSidebar} />
+          )}
           <BinInventoryPanel
             binId={selectedId}
             dark={isSidebar}

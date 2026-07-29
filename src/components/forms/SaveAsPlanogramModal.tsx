@@ -182,7 +182,7 @@ export function SaveAsPlanogramModal({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Ideal image *</p>
           <p className="text-[11px] text-gray-500 leading-snug">
-            Take a photo of this rack face or choose an existing image.
+            Take a photo, or snip/screenshot this rack face and upload the image.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
@@ -201,7 +201,7 @@ export function SaveAsPlanogramModal({
               className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               <FiImage size={14} />
-              Choose file
+              Upload / Snip screenshot
             </button>
             {file && (
               <button
@@ -238,6 +238,9 @@ export function SaveAsPlanogramModal({
             className="hidden"
             onChange={(e) => pickFile(e.target.files?.[0])}
           />
+          <p className="text-[11px] text-gray-500">
+            Tip: after you snip, use <b>Upload / Snip screenshot</b> to attach it.
+          </p>
           {previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

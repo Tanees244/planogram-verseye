@@ -99,7 +99,8 @@ export function rackOverlapsOthers(
 }
 
 /**
- * Snap a rack against the nearest sales-floor wall and rotate it to face inward.
+ * Snap a rack against the nearest sales-floor wall and rotate it so the
+ * shopper front (local −Z) faces the aisle / inward — back panel to the wall.
  * When not near a wall, snap X/Z to the floor grid for aisle alignment.
  */
 export function snapRackToWall(
@@ -130,28 +131,34 @@ export function snapRackToWall(
     }
   }
 
+  // Local −Z = open/shopper front. Yaw so −Z points into the store (away from wall).
   if (min === distBack) {
-    const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, 0)
+    // Floor −Z wall → face +Z (aisle)
+    const rot = Math.PI
+    const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
     return {
       x: snapToGrid(clamp(point.x, -halfW + hw, halfW - hw)),
       z: -halfD + hd + margin,
-      rotationY: 0,
+      rotationY: rot,
       snapped: true,
     }
   }
 
   if (min === distFront) {
-    const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, Math.PI)
+    // Floor +Z wall → face −Z (aisle)
+    const rot = 0
+    const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
     return {
       x: snapToGrid(clamp(point.x, -halfW + hw, halfW - hw)),
       z: halfD - hd - margin,
-      rotationY: Math.PI,
+      rotationY: rot,
       snapped: true,
     }
   }
 
   if (min === distLeft) {
-    const rot = Math.PI / 2
+    // Floor −X wall → face +X
+    const rot = -Math.PI / 2
     const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
     return {
       x: -halfW + hw + margin,
@@ -161,7 +168,8 @@ export function snapRackToWall(
     }
   }
 
-  const rot = -Math.PI / 2
+  // Floor +X wall → face −X
+  const rot = Math.PI / 2
   const { halfW: hw, halfD: hd } = getRotatedFootprintHalf(rackWidth, rackDepth, rot)
   return {
     x: halfW - hw - margin,

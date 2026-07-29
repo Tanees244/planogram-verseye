@@ -14,14 +14,6 @@ export function buildPendingRackFromFixture(
   const def = FIXTURE_LIBRARY[fixtureType]
   const count =
     state.area.racks.filter((r) => resolveFixtureType(r) === fixtureType).length + 1
-  const codePrefix =
-    fixtureType === 'GONDOLA'
-      ? 'GONDOLA'
-      : fixtureType === 'FREEZER'
-        ? 'FREEZER'
-        : fixtureType === 'PEGBOARD'
-          ? 'PEGBOARD'
-          : def.label.replace(/\s+/g, '-').replace(/\//g, '').toUpperCase()
 
   return {
     width: def.defaultWidth * WAREHOUSE_SCALE,
@@ -30,7 +22,8 @@ export function buildPendingRackFromFixture(
     plankType: 'standard',
     sided: def.defaultSided,
     fixtureType,
-    rackCode: `${codePrefix}-${String(count).padStart(2, '0')}`,
+    // Display name for create (BE auto-generates rackCode). Do not invent codes here.
+    rackName: `${def.label} ${String(count).padStart(2, '0')}`,
     globalLocationId: state.selectedStoreId ?? undefined,
   }
 }

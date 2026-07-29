@@ -4,6 +4,8 @@
  * Soft mode: underfill allowed; overfill rejected (tolerance 1 cm).
  */
 
+import { formatCm } from '@/utils/lengthUnits'
+
 export const FACE_FILL_TOLERANCE_M = 0.01
 
 export type FaceFillProduct = {
@@ -155,7 +157,7 @@ export function rowFaceFillState(
     issues.push({
       severity: 'error',
       code: 'RowSpanOverflow',
-      message: `Bin widths (${used.toFixed(3)}m) must equal available space (${span.toFixed(3)}m)`,
+      message: `Bin widths (${formatCm(used, 1)}) must equal available space (${formatCm(span, 1)})`,
       rowId: row.id,
     })
     return { state: 'overfill', remainingSpanM, issues }
@@ -189,7 +191,7 @@ export function rowFaceFillState(
         issues.push({
           severity: 'error',
           code: 'ProductExceedsBin',
-          message: `Product facing width (${pw.toFixed(3)}m) exceeds bin width (${binW.toFixed(3)}m)`,
+          message: `Product facing width (${formatCm(pw, 1)}) exceeds bin width (${formatCm(binW, 1)})`,
           rowId: row.id,
           binId: bin.id,
         })
@@ -201,7 +203,7 @@ export function rowFaceFillState(
       issues.push({
         severity: 'error',
         code: 'BinFaceOverfilled',
-        message: `Product facing width (${occupied.toFixed(3)}m) exceeds bin width (${binW.toFixed(3)}m)`,
+        message: `Product facing width (${formatCm(occupied, 1)}) exceeds bin width (${formatCm(binW, 1)})`,
         rowId: row.id,
         binId: bin.id,
       })
@@ -210,7 +212,7 @@ export function rowFaceFillState(
       issues.push({
         severity: 'error',
         code: 'BinFaceUnderfilled',
-        message: `Product facing width (${occupied.toFixed(3)}m) leaves empty front space on bin (${binW.toFixed(3)}m)`,
+        message: `Product facing width (${formatCm(occupied, 1)}) leaves empty front space on bin (${formatCm(binW, 1)})`,
         rowId: row.id,
         binId: bin.id,
       })
@@ -222,7 +224,7 @@ export function rowFaceFillState(
     issues.push({
       severity: 'error',
       code: 'RowFaceUnderfilled',
-      message: `Bin widths (${used.toFixed(3)}m) must equal available space (${span.toFixed(3)}m)`,
+      message: `Bin widths (${formatCm(used, 1)}) must equal available space (${formatCm(span, 1)})`,
       rowId: row.id,
     })
     return { state: anyOverfill ? 'overfill' : 'row_gap', remainingSpanM, issues }
