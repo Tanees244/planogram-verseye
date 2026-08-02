@@ -26,17 +26,35 @@ function rewriteImageStorageUrl(url: string): string {
       /* ignore bad env */
     }
   }
-  // MinIO on :32004 is plain HTTP; signed https:// links fail TLS in Node.
-  try {
-    const u = new URL(out)
-    if (u.protocol === 'https:') {
-      u.protocol = 'http:'
-      out = u.toString()
+  // Only downgrade when explicitly asked: staging serves TLS on :32004 and
+  // answers plain HTTP with 400. `fetchBinary` retries over HTTP if TLS fails.
+  if (
+    process.env.OBJECT_STORAGE_FORCE_HTTP === '1' ||
+    process.env.OBJECT_STORAGE_FORCE_HTTP === 'true'
+  ) {
+    try {
+      const u = new URL(out)
+      if (u.protocol === 'https:') {
+        u.protocol = 'http:'
+        out = u.toString()
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
   }
   return out
+}
+
+/** HTTP variant of an https URL, for storage that isn't actually serving TLS. */
+function asHttpUrl(url: string): string | null {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:') return null
+    u.protocol = 'http:'
+    return u.toString()
+  } catch {
+    return null
+  }
 }
 
 function pickDownloadUrl(payload: Record<string, unknown>): string | null {
@@ -54,22 +72,39 @@ function pickDownloadUrl(payload: Record<string, unknown>): string | null {
 
 async function fetchBinary(url: string): Promise<Response> {
   const target = rewriteImageStorageUrl(url)
+  const host = (() => {
+    try {
+      return new URL(target).host
+    } catch {
+      return ''
+    }
+  })()
+
+  const get = (u: string) =>
+    fetch(u, { cache: 'no-store', redirect: 'follow', credentials: 'omit' })
+
   let upstream: globalThis.Response
   try {
-    upstream = await fetch(target, { cache: 'no-store', redirect: 'follow', credentials: 'omit' })
+    upstream = await get(target)
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'fetch failed'
-    const host = (() => {
+    const httpFallback = asHttpUrl(target)
+    if (httpFallback) {
       try {
-        return new URL(target).host
+        upstream = await get(httpFallback)
       } catch {
-        return ''
+        const msg = e instanceof Error ? e.message : 'fetch failed'
+        console.error('[files/image] storage fetch failed', { host, msg })
+        return new NextResponse(`Fetch failed from storage${host ? ` (${host})` : ''}`, {
+          status: 502,
+        })
       }
-    })()
-    console.error('[files/image] storage fetch failed', { host, msg })
-    return new NextResponse(`Fetch failed from storage${host ? ` (${host})` : ''}`, {
-      status: 502,
-    })
+    } else {
+      const msg = e instanceof Error ? e.message : 'fetch failed'
+      console.error('[files/image] storage fetch failed', { host, msg })
+      return new NextResponse(`Fetch failed from storage${host ? ` (${host})` : ''}`, {
+        status: 502,
+      })
+    }
   }
   if (!upstream.ok) {
     console.error('[files/image] upstream', upstream.status, target.slice(0, 120))

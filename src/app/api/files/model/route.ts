@@ -75,9 +75,10 @@ function maybeRewriteStorageUrl(url: string): string {
     }
   }
 
-  // MinIO on :32004 is plain HTTP; signed https:// links fail TLS in Node.
+  // Only downgrade when explicitly asked: some MinIO deployments are plain HTTP,
+  // but staging serves TLS on the same port and rejects HTTP with 400. A TLS
+  // failure below retries over HTTP anyway.
   const forceHttp =
-    Boolean(publicOrigin) ||
     process.env.OBJECT_STORAGE_FORCE_HTTP === '1' ||
     process.env.OBJECT_STORAGE_FORCE_HTTP === 'true'
   if (forceHttp) {

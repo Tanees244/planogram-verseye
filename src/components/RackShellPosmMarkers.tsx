@@ -1,8 +1,7 @@
 'use client'
 
-import { Suspense, useMemo } from 'react'
-import { Edges, useTexture } from '@react-three/drei'
-import { DoubleSide, SRGBColorSpace, type Texture } from 'three'
+import { Edges } from '@react-three/drei'
+import { DoubleSide } from 'three'
 import type { RackShell, RackSurfacePosm } from '@/types/rackBlueprint'
 import {
   computeCustomRackDimensions,
@@ -10,6 +9,7 @@ import {
   type CustomRackConfig,
 } from '@/components/fixtures/customRackTypes'
 import { usePosmImageSrc } from '@/hooks/usePosmImageSrc'
+import { usePosmTexture } from '@/hooks/usePosmTexture'
 
 const POSM_TYPE_COLORS: Record<string, string> = {
   Standee: '#8e44ad',
@@ -44,37 +44,6 @@ function PosmColorPlaque({
   )
 }
 
-function PosmImagePlane({
-  url,
-  position,
-  size,
-  rotation,
-}: {
-  url: string
-  position: [number, number, number]
-  size: [number, number]
-  rotation?: [number, number, number]
-}) {
-  const texture = useTexture(url) as Texture
-  useMemo(() => {
-    texture.colorSpace = SRGBColorSpace
-    texture.needsUpdate = true
-  }, [texture])
-
-  return (
-    <mesh position={position} rotation={rotation} raycast={() => null}>
-      <planeGeometry args={size} />
-      <meshStandardMaterial
-        map={texture}
-        transparent
-        toneMapped={false}
-        side={DoubleSide}
-        depthWrite={false}
-      />
-    </mesh>
-  )
-}
-
 function PosmSurface({
   posm,
   position,
@@ -88,15 +57,23 @@ function PosmSurface({
   rotation?: [number, number, number]
 }) {
   const imageUrl = usePosmImageSrc(posm)
-  if (!imageUrl) {
+  const texture = usePosmTexture(imageUrl)
+
+  if (!texture) {
     return <PosmColorPlaque posm={posm} position={position} size={size} rotation={rotation} />
   }
 
-  const planeSize: [number, number] = [size[0], size[1]]
   return (
-    <Suspense fallback={<PosmColorPlaque posm={posm} position={position} size={size} rotation={rotation} />}>
-      <PosmImagePlane url={imageUrl} position={position} size={planeSize} rotation={rotation} />
-    </Suspense>
+    <mesh position={position} rotation={rotation} raycast={() => null}>
+      <planeGeometry args={[size[0], size[1]]} />
+      <meshStandardMaterial
+        map={texture}
+        transparent
+        toneMapped={false}
+        side={DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
   )
 }
 
@@ -139,6 +116,8 @@ export function RackShellPosmMarkers({
         posm={shell.headerPosm}
         position={[0, headerCenterY, headerZ - headerSize.depth / 2 - 0.02]}
         size={[Math.min(headerSize.width * 0.92, w * 0.92), dims.headerH * 0.88, 0.012]}
+        // Plane fronts face +Z; turn it toward the aisle (−Z) or the art reads mirrored.
+        rotation={[0, Math.PI, 0]}
       />,
     )
   }
@@ -150,6 +129,7 @@ export function RackShellPosmMarkers({
         posm={shell.footerPosm}
         position={[0, footerCenterY, footerZ - footerSize.depth / 2 - 0.02]}
         size={[Math.min(footerSize.width * 0.92, w * 0.92), dims.footerH * 0.88, 0.012]}
+        rotation={[0, Math.PI, 0]}
       />,
     )
   }

@@ -1,26 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { Edges } from '@react-three/drei'
-import {
-  DoubleSide,
-  SRGBColorSpace,
-  TextureLoader,
-  type Texture,
-} from 'three'
-import { getPlanogramTokenFromCookie } from '@verseye/utils'
+import { DoubleSide } from 'three'
 import type { RackSurfacePosm } from '@/types/rackBlueprint'
 import { usePosmImageSrc } from '@/hooks/usePosmImageSrc'
-
-function imageAuthHeaders(): HeadersInit {
-  try {
-    const t = getPlanogramTokenFromCookie()
-    if (t) return { Authorization: `Bearer ${t}` }
-  } catch {
-    /* ignore */
-  }
-  return {}
-}
+import { usePosmTexture } from '@/hooks/usePosmTexture'
 
 const POSM_TYPE_COLORS: Record<string, string> = {
   Standee: '#8e44ad',
@@ -40,58 +24,7 @@ function TalkerImage({
   /** Local Z of the plaque front face (negative = toward aisle / camera). */
   frontZ: number
 }) {
-  const [texture, setTexture] = useState<Texture | null>(null)
-
-  useEffect(() => {
-    let active = true
-    let objectUrl: string | null = null
-    let loaded: Texture | null = null
-
-    setTexture(null)
-
-    void (async () => {
-      try {
-        const res = await fetch(url, {
-          credentials: 'include',
-          headers: imageAuthHeaders(),
-          cache: 'no-store',
-        })
-        if (!res.ok) throw new Error(`POSM image ${res.status}`)
-        const blob = await res.blob()
-        if (!active) return
-
-        // TextureLoader + Image (not ImageBitmap) — correct flipY for Three.js UVs.
-        objectUrl = URL.createObjectURL(blob)
-        const loader = new TextureLoader()
-        loader.load(
-          objectUrl,
-          (tex) => {
-            if (!active) {
-              tex.dispose()
-              return
-            }
-            tex.colorSpace = SRGBColorSpace
-            tex.anisotropy = 4
-            tex.needsUpdate = true
-            loaded = tex
-            setTexture(tex)
-          },
-          undefined,
-          () => {
-            if (active) setTexture(null)
-          },
-        )
-      } catch {
-        if (active) setTexture(null)
-      }
-    })()
-
-    return () => {
-      active = false
-      loaded?.dispose()
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [url])
+  const texture = usePosmTexture(url)
 
   if (!texture) return null
 
