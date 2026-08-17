@@ -12,7 +12,13 @@ import {
 } from '@/constants/dimensions'
 import { safeDim } from '@/utils/safeDimensions'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
-import { canonicalFileCacheKey, resolveProductModelUrl } from '@/utils/productModelUrl'
+import { resolveProductModelUrl } from '@/utils/productModelUrl'
+import {
+  ensureGlbReady,
+  isGlbFailed,
+  isGlbReady,
+  subscribeGlbReady,
+} from '@/utils/glbLoadQueue'
 import { ProductGlbModel, preloadProductGlb } from '@/components/ProductGlbModel'
 import {
   acquireProductTexture,
@@ -133,38 +139,22 @@ function ProductBoxFallback({
 }
 
 /** Shared across Product instances — one probe per unique GLB, not per facing. */
-const glbPreflightCache = new Map<string, { ok: boolean; at: number }>()
-const glbPreflightInflight = new Map<string, Promise<boolean>>()
-const GLB_PREFLIGHT_TTL_MS = 60_000
+function useGlbAvailability(modelUrl: string | null, forceSimple: boolean) {
+  const [, tick] = useState(0)
 
-function preflightGlb(url: string): Promise<boolean> {
-  const key = canonicalFileCacheKey(url)
-  const cached = glbPreflightCache.get(key)
-  if (cached && Date.now() - cached.at < GLB_PREFLIGHT_TTL_MS) {
-    return Promise.resolve(cached.ok)
+  useEffect(() => {
+    if (!modelUrl || forceSimple) return
+    if (isGlbReady(modelUrl) || isGlbFailed(modelUrl)) return
+
+    void ensureGlbReady(modelUrl)
+    return subscribeGlbReady(modelUrl, () => tick((n) => n + 1))
+  }, [modelUrl, forceSimple])
+
+  if (!modelUrl || forceSimple) return { ready: false, failed: false }
+  return {
+    ready: isGlbReady(modelUrl),
+    failed: isGlbFailed(modelUrl),
   }
-  let pending = glbPreflightInflight.get(key)
-  if (!pending) {
-    pending = fetch(url, {
-      method: 'GET',
-      cache: 'force-cache',
-      headers: { Range: 'bytes=0-0' },
-    })
-      .then((res) => {
-        const ok = res.ok || res.status === 206
-        glbPreflightCache.set(key, { ok, at: Date.now() })
-        return ok
-      })
-      .catch(() => {
-        glbPreflightCache.set(key, { ok: false, at: Date.now() })
-        return false
-      })
-      .finally(() => {
-        glbPreflightInflight.delete(key)
-      })
-    glbPreflightInflight.set(key, pending)
-  }
-  return pending
 }
 
 export function Product({ product, position, rowId, binId, forceSimple = false }: ProductProps) {
@@ -181,28 +171,22 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
   const height = safeDim(product.height, DEFAULT_PRODUCT_HEIGHT)
   const depth = safeDim(product.depth, DEFAULT_PRODUCT_DEPTH)
   const modelUrl = resolveProductModelUrl(product)
-  const [glbReady, setGlbReady] = useState(false)
-  const useGlb = Boolean(modelUrl && !glbFailed && !forceSimple && glbReady)
+  const glbAvailability = useGlbAvailability(modelUrl, forceSimple)
+  const useGlb = Boolean(
+    modelUrl && !glbFailed && !forceSimple && glbAvailability.ready && !glbAvailability.failed,
+  )
 
   useEffect(() => {
     setGlbFailed(false)
-    setGlbReady(false)
-    if (!modelUrl || forceSimple) return
-    let alive = true
-
-    void preflightGlb(modelUrl).then((ok) => {
-      if (!alive) return
-      if (ok) setGlbReady(true)
-      else setGlbFailed(true)
-    })
-    return () => {
-      alive = false
-    }
   }, [modelUrl, forceSimple])
 
   useEffect(() => {
-    if (modelUrl && !forceSimple && glbReady) preloadProductGlb(modelUrl)
-  }, [modelUrl, forceSimple, glbReady])
+    if (glbAvailability.failed) setGlbFailed(true)
+  }, [glbAvailability.failed])
+
+  useEffect(() => {
+    if (modelUrl && !forceSimple && glbAvailability.ready) preloadProductGlb(modelUrl)
+  }, [modelUrl, forceSimple, glbAvailability.ready])
 
   useEffect(() => {
     if (useGlb) {

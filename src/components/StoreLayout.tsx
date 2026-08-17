@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/form'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { authHeaders, fetchStoreLayoutRacks, placeRacksOnFloor } from '@/utils/storeLayoutLoader'
 import { parseLocationListResponse } from '@/utils/locationList'
+import { preloadRackGlbs } from '@/utils/glbLoadQueue'
 
 interface Branch {
   id: string
@@ -105,6 +106,7 @@ export default function StoreLayout() {
           selectedStoreId,
         )
         usePlanogramStore.setState((s) => ({ area: { ...s.area, racks: placed } }))
+        preloadRackGlbs(placed)
         // Drop the old local placement cache — load is API-only now.
         try {
           window.localStorage.removeItem('planogram.rackPlacements')

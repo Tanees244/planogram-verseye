@@ -3178,6 +3178,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       );
 
       set({ area: { ...area, racks: placed } });
+      const { preloadRackGlbs } = await import('@/utils/glbLoadQueue');
+      preloadRackGlbs(placed);
       return { success: true };
     } catch {
       return { success: false, message: 'Failed to reload store layout' };

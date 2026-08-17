@@ -1,12 +1,13 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { getToken } from '@/app/api/utils/getToken'
-
-const API_BASE_URL = process.env.API_BASE_URL
+import {
+  resolvePresignedDownloadUrl,
+  storageKeyFromSignedUrl,
+} from '@/app/api/utils/presignedDownload'
 
 /**
  * Staging often signs https://aisleris-staging…:32004 while images should be
- * fetched from a reachable MinIO IP. Keep path + query (signature) intact.
+ * fetched from a reachable MinIO IP.
  *
  * OBJECT_STORAGE_IMAGE_ORIGIN=http://163.61.91.156:32004
  */
@@ -26,8 +27,6 @@ function rewriteImageStorageUrl(url: string): string {
       /* ignore bad env */
     }
   }
-  // Only downgrade when explicitly asked: staging serves TLS on :32004 and
-  // answers plain HTTP with 400. `fetchBinary` retries over HTTP if TLS fails.
   if (
     process.env.OBJECT_STORAGE_FORCE_HTTP === '1' ||
     process.env.OBJECT_STORAGE_FORCE_HTTP === 'true'
@@ -45,7 +44,6 @@ function rewriteImageStorageUrl(url: string): string {
   return out
 }
 
-/** HTTP variant of an https URL, for storage that isn't actually serving TLS. */
 function asHttpUrl(url: string): string | null {
   try {
     const u = new URL(url)
@@ -55,19 +53,6 @@ function asHttpUrl(url: string): string | null {
   } catch {
     return null
   }
-}
-
-function pickDownloadUrl(payload: Record<string, unknown>): string | null {
-  const candidates = [
-    payload.url,
-    payload.presignedUrl,
-    payload.downloadUrl,
-    payload.signedUrl,
-  ]
-  for (const c of candidates) {
-    if (typeof c === 'string' && /^https?:\/\//i.test(c.trim())) return c.trim()
-  }
-  return null
 }
 
 async function fetchBinary(url: string): Promise<Response> {
@@ -122,73 +107,46 @@ async function fetchBinary(url: string): Promise<Response> {
   })
 }
 
+async function fetchViaPresignedKey(req: NextRequest, key: string): Promise<Response> {
+  const resolved = await resolvePresignedDownloadUrl(req, key, 'files/image')
+  if (!resolved.ok) {
+    return new NextResponse(resolved.message, { status: resolved.status })
+  }
+  return fetchBinary(resolved.url)
+}
+
 /**
  * Same-origin image proxy for UI + WebGL textures.
- * GET /api/files/image?url=<https://...>
+ * Prefer `key` — resolves via presigned-download API (same as GLB models).
  * GET /api/files/image?key=<objectStorageKey>
+ * GET /api/files/image?url=<https://...>  (infers key when possible)
  */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const url = searchParams.get('url')
-  const key = searchParams.get('key')
+  const keyParam = searchParams.get('key')
+
+  if (keyParam?.trim()) {
+    try {
+      return await fetchViaPresignedKey(req, keyParam.trim())
+    } catch {
+      return new NextResponse('Image proxy failed', { status: 502 })
+    }
+  }
 
   if (url && /^https?:\/\//i.test(url)) {
+    const inferredKey = storageKeyFromSignedUrl(url)
+    if (inferredKey) {
+      try {
+        return await fetchViaPresignedKey(req, inferredKey)
+      } catch {
+        /* fall through to direct fetch */
+      }
+    }
     try {
       return await fetchBinary(url)
     } catch {
       return new NextResponse('Fetch failed', { status: 502 })
-    }
-  }
-
-  if (key && API_BASE_URL) {
-    try {
-      const token = await getToken(req)
-      if (!token) {
-        return new NextResponse('Unauthorized', { status: 401 })
-      }
-
-      const presignRes = await fetch(`${API_BASE_URL}/api/v1/files/presigned-download`, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ objectKey: key }),
-        cache: 'no-store',
-      })
-
-      const presignText = await presignRes.text()
-      let presignJson: Record<string, unknown> = {}
-      try {
-        presignJson = presignText ? JSON.parse(presignText) : {}
-      } catch {
-        /* ignore */
-      }
-
-      const inner =
-        (presignJson.data && typeof presignJson.data === 'object'
-          ? (presignJson.data as Record<string, unknown>)
-          : null) ??
-        (presignJson.result && typeof presignJson.result === 'object'
-          ? (presignJson.result as Record<string, unknown>)
-          : null) ??
-        presignJson
-
-      const downloadUrl =
-        (typeof presignJson.data === 'string' && /^https?:\/\//i.test(presignJson.data)
-          ? presignJson.data
-          : null) || pickDownloadUrl(inner)
-
-      if (!presignRes.ok || !downloadUrl) {
-        return new NextResponse('Could not resolve image download URL', {
-          status: presignRes.status || 502,
-        })
-      }
-
-      return await fetchBinary(downloadUrl)
-    } catch {
-      return new NextResponse('Image proxy failed', { status: 502 })
     }
   }
 
