@@ -38,6 +38,21 @@ export const AISLE_WALKING = 1.2
 export const AISLE_CART = 2.2
 export const AISLE_FORKLIFT = 3.5
 
+/** White shelf board (row floor mesh). Center Y is `-rowHeight/2 + SHELF_BOARD_CENTER_Y`. */
+export const SHELF_BOARD_THICKNESS = 0.06
+export const SHELF_BOARD_CENTER_Y = 0.03
+
+/**
+ * Dark front price-rail / black lip on each shelf (meters).
+ * Center Y is `-rowHeight/2 + SHELF_FRONT_LIP_CENTER_Y`.
+ * Center Z is the shopper-facing shelf front.
+ */
+export const SHELF_FRONT_LIP_HEIGHT = 0.08
+export const SHELF_FRONT_LIP_DEPTH = 0.06
+export const SHELF_FRONT_LIP_CENTER_Y = 0.06
+/** Bin front face sits this far behind the shelf front (toward products). */
+export const SHELF_BIN_FRONT_INSET = 0.04
+
 /** Default bin on a retail shelf (one bay section). */
 export const DEFAULT_BIN_WIDTH = 0.9
 export const DEFAULT_BIN_DEPTH = 0.45

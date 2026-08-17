@@ -18,6 +18,14 @@ import {
 import { packFacingsInBin, type FacingPackSlot } from "@/utils/facingPack";
 import { resolveIsStackable } from "@/utils/stackableSku";
 import { heroPlacementBlockedOnRow } from "@/utils/heroSku";
+import {
+  SHELF_BIN_FRONT_INSET,
+  SHELF_BOARD_CENTER_Y,
+  SHELF_BOARD_THICKNESS,
+  SHELF_FRONT_LIP_CENTER_Y,
+  SHELF_FRONT_LIP_DEPTH,
+  SHELF_FRONT_LIP_HEIGHT,
+} from "@/constants/dimensions";
 
 interface RowProps {
   row: RowType;
@@ -35,8 +43,7 @@ interface RowProps {
 
 /** Place a bin so its front face sits on the shopper-facing shelf lip. */
 function frontAlignedShelfZ(shelfCenterZ: number, shelfDepth: number, binDepth: number) {
-  const lipInset = 0.04
-  return shelfCenterZ - shelfDepth / 2 + lipInset + binDepth / 2
+  return shelfCenterZ - shelfDepth / 2 + SHELF_BIN_FRONT_INSET + binDepth / 2
 }
 
 export function Row({
@@ -289,11 +296,11 @@ export function Row({
       <mesh
         ref={meshRef}
         userData={{ id: row.id, type: 'row' }}
-        position={[0, -rowHeight / 2 + 0.03, z]}
+        position={[0, -rowHeight / 2 + SHELF_BOARD_CENTER_Y, z]}
         onClick={selectRow}
         {...rowHoverProps}
       >
-        <boxGeometry args={[safeRackWidth, 0.06, safeRackDepth]} />
+        <boxGeometry args={[safeRackWidth, SHELF_BOARD_THICKNESS, safeRackDepth]} />
         <meshStandardMaterial
           color="#FFFFFF"
           metalness={0.35}
@@ -326,12 +333,12 @@ export function Row({
           lineWidth={isSelected || highlightPlacement ? 2.5 : 2}
         />
       </mesh>
-      {/* Visible front lip */}
+      {/* Visible front lip (black row) */}
       <mesh
-        position={[0, -rowHeight / 2 + 0.06, z - safeRackDepth / 2]}
+        position={[0, -rowHeight / 2 + SHELF_FRONT_LIP_CENTER_Y, z - safeRackDepth / 2]}
         raycast={() => null}
       >
-        <boxGeometry args={[safeRackWidth, 0.08, 0.06]} />
+        <boxGeometry args={[safeRackWidth, SHELF_FRONT_LIP_HEIGHT, SHELF_FRONT_LIP_DEPTH]} />
         <meshStandardMaterial color="#34495e" metalness={0.5} roughness={0.4} />
       </mesh>
       {/*
@@ -399,7 +406,7 @@ export function Row({
             xOffset = xLeft + slotWidth / 2
             xLeft += slotWidth
           }
-          const binY = -rowHeight / 2 + binHeightUse / 2 + 0.03
+          const binY = -rowHeight / 2 + binHeightUse / 2 + SHELF_BOARD_CENTER_Y
           const binZ = frontAlignedShelfZ(z, safeRackDepth, binDepth)
           const legacyFallback =
             !anyBinTag && binIndex === 0 ? row.dividerPosm : null
@@ -429,7 +436,7 @@ export function Row({
           const previewH =
             rawH <= 0.05 ? maxBinH : Math.min(rawH, maxBinH)
           const gx = xLeft + previewW / 2
-          const gy = -rowHeight / 2 + previewH / 2 + 0.03
+          const gy = -rowHeight / 2 + previewH / 2 + SHELF_BOARD_CENTER_Y
           const gz = frontAlignedShelfZ(z, safeRackDepth, previewD)
           const overflows = gx + previewW / 2 > xRight + 0.002
           ghost = (
@@ -465,7 +472,7 @@ export function Row({
           const gx = fromRight
             ? xRight - previewW / 2
             : xLeft + previewW / 2
-          const gy = -rowHeight / 2 + previewH / 2 + 0.03
+          const gy = -rowHeight / 2 + previewH / 2 + SHELF_BOARD_CENTER_Y
           const gz = frontAlignedShelfZ(z, safeRackDepth, previewD)
           skuGhost = (
             <group position={[gx, gy, gz]} raycast={() => null}>

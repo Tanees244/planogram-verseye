@@ -197,6 +197,21 @@ export function Bin({
     0,
   )
 
+  let posmOffsetX = 0
+  if (productPositions.length > 0 && packedPositions.length > 0) {
+    let minX = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    for (let i = 0; i < productPositions.length; i++) {
+      const x = productPositions[i][0]
+      const w = packedPositions[i]?.width ?? 0.08
+      minX = Math.min(minX, x - w / 2)
+      maxX = Math.max(maxX, x + w / 2)
+    }
+    if (Number.isFinite(minX) && Number.isFinite(maxX) && maxX > minX) {
+      posmOffsetX = (minX + maxX) / 2
+    }
+  }
+
   let previewSlots: {
     pos: [number, number, number]
     w: number
@@ -457,6 +472,7 @@ export function Bin({
         rowWidth={actualBinWidth}
         rowHeight={actualBinHeight}
         shelfZ={-actualBinDepth / 2}
+        offsetX={posmOffsetX}
         onSelect={(e) => {
           e.stopPropagation()
           const firstSku = bin.products[0]

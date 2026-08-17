@@ -23,10 +23,10 @@ export const PLACEMENT_QTY_SOFT_MAX = 9999
 export function binContentWidthM(
   bin: {
     width?: number
-    products: Array<{ id?: string; width?: number; quantity?: number }>
+    products?: Array<{ id?: string; width?: number; quantity?: number }> | null
   },
 ): number {
-  const p = bin.products[0]
+  const p = bin.products?.[0]
   if (!p) return 0
   const skuW = Number(p.width)
   const slotW = Number(bin.width)
@@ -120,7 +120,7 @@ export function inferPlacementAnchor(
   let xRight = half
   for (const b of bins) {
     const w = Array.isArray(b.products)
-      ? binContentWidthM(b)
+      ? binContentWidthM({ width: b.width, products: b.products })
       : Number(b.width) || 0
     if (!(w > 0)) continue
     if (b.anchor === 'right') xRight -= w
