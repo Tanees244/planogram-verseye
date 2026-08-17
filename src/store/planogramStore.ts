@@ -100,6 +100,8 @@ export interface Product {
   isHero?: boolean;
   /** Stackable — front face shows vertical stacks (client policy). */
   isStackable?: boolean;
+  /** Target share-of-shelf % for compliance checks. */
+  sosPercentTarget?: number | null;
 }
 
 export interface PendingProductParams {
@@ -122,6 +124,8 @@ export interface PendingProductParams {
   isHero?: boolean;
   /** Stackable — pack stacks on the front face. */
   isStackable?: boolean;
+  /** Target share-of-shelf % for compliance checks. */
+  sosPercentTarget?: number | null;
 }
 
 /** Live ghost facings while Attach Product modal quantity/dims change. */
@@ -350,6 +354,9 @@ export interface PlanogramState {
   /** Non-interactive dummy racks along the walls, tiled so joins are visible. */
   wallGuidesVisible: boolean;
   setWallGuidesVisible: (visible: boolean) => void;
+  /** Step-by-step onboarding overlay for new users. */
+  guidedMode: boolean;
+  setGuidedMode: (on: boolean, options?: { persist?: boolean }) => void;
   fixturePaletteCollapsed: boolean;
   productPaletteCollapsed: boolean;
   setFixturePaletteCollapsed: (collapsed: boolean) => void;
@@ -831,6 +838,21 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   setRoofVisible: (visible) => set({ roofVisible: visible }),
   wallGuidesVisible: false,
   setWallGuidesVisible: (visible) => set({ wallGuidesVisible: visible }),
+  guidedMode: false,
+  setGuidedMode: (on, options) => {
+    if (options?.persist !== false && typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('planogram.guidedMode', on ? '1' : '0')
+      } catch {
+        /* ignore */
+      }
+    }
+    set({ guidedMode: on })
+    if (on) {
+      get().setRoofVisible(false)
+      get().setWallGuidesVisible(false)
+    }
+  },
   fixturePaletteCollapsed: false,
   productPaletteCollapsed: false,
   setFixturePaletteCollapsed: (collapsed) => set({ fixturePaletteCollapsed: collapsed }),

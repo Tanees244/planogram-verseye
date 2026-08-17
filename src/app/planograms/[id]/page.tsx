@@ -8,6 +8,7 @@ import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { formatPlanogramDateTime, planogramStatusFromShelf, type ShelfDetail } from '@/types/shelf'
 import { formatCm } from '@/utils/lengthUnits'
 import { PlanogramElevation2D, type ElevationRow } from '@/components/PlanogramThumb'
+import { OpenInEditorLink } from '@/components/OpenInEditorLink'
 
 interface SkuRow {
   skuId?: string
@@ -210,8 +211,8 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
     : []
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="min-h-full">
+      <div className="max-w-5xl mx-auto px-6 py-8 pb-16">
         <div className="flex items-center gap-4 mb-8">
           <Link
             href="/planograms"
@@ -230,7 +231,14 @@ export default function PlanogramDetailPage({ params }: { params: Promise<{ id: 
             )}
           </div>
           {detail && (
-            <div className="ml-auto flex items-center gap-2 shrink-0">
+            <div className="ml-auto flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              <OpenInEditorLink
+                storeId={detail.storeId}
+                storeName={detail.storeName}
+                rackId={detail.rackId}
+                shelfId={detail.id}
+                label="Open in 3D editor"
+              />
               <input
                 ref={idealFileRef}
                 type="file"

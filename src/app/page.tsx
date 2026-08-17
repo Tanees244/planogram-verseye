@@ -2,6 +2,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { Suspense, useEffect } from 'react'
 import { SceneLeftPanel } from '@/components/SceneLeftPanel'
 import { SceneTopBar } from '@/components/SceneTopBar'
 import { PlanogramClipboardHotkeys } from '@/components/PlanogramClipboardHotkeys'
@@ -10,6 +11,8 @@ import { ProductPlacementConfirm } from '@/components/ProductPlacementConfirm'
 import { Spinner } from '@/components/Spinner'
 import { usePlanogramStore } from '@/store/planogramStore'
 import StoreLayout from '@/components/StoreLayout'
+import { EditorDeepLinkHandler } from '@/components/EditorDeepLinkHandler'
+import { GuidedOnboardingOverlay, hydrateGuidedModeFromStorage } from '@/components/GuidedOnboarding'
 
 const Scene3D = dynamic(() => import('@/components/Scene3D').then((m) => ({ default: m.Scene3D })), {
   ssr: false,
@@ -21,8 +24,15 @@ export default function Home() {
   const isLoadingStoreLayout = usePlanogramStore((s) => s.isLoadingStoreLayout)
   const selectedStoreName = usePlanogramStore((s) => s.selectedStoreName)
 
+  useEffect(() => {
+    hydrateGuidedModeFromStorage()
+  }, [])
+
   return (
-    <div className="w-screen h-screen relative">
+    <div className="w-screen h-screen relative overflow-hidden">
+      <Suspense fallback={null}>
+        <EditorDeepLinkHandler />
+      </Suspense>
       <div className="absolute top-4 left-4 bottom-4 z-[100] min-h-0">
         <SceneLeftPanel />
       </div>
@@ -30,6 +40,7 @@ export default function Home() {
       <StoreLayout />
       <CustomRackBuilder />
       <PlanogramClipboardHotkeys />
+      <GuidedOnboardingOverlay />
 
       <SceneTopBar className="absolute top-4 right-4 z-[100]" />
       <div className="absolute bottom-24 right-4 z-[100]">

@@ -16,7 +16,7 @@ interface Location {
   isArchived: boolean;
 }
 import { Button } from "@verseye/ui";
-import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiGitMerge, FiCopy, FiClipboard, FiCamera } from "react-icons/fi";
+import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiGitMerge, FiCopy, FiClipboard, FiCamera, FiCheckCircle } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
 import { resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import { BinInventoryPanel } from "./BinInventoryPanel";
@@ -34,6 +34,9 @@ import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
 import { RowFaceFillChip } from '@/components/RowFaceFillChip'
 import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
+import { ComplianceChecklist } from '@/components/ComplianceChecklist'
+import { Modal } from '@/components/ui/Modal'
+import { Btn } from '@/components/ui/form'
 import { MultiRackReflowModal } from '@/components/MultiRackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
 import { resolveFixtureType } from '@/components/fixtures/types'
@@ -105,6 +108,7 @@ export function ContextAddButton({
   const [addingBin, setAddingBin] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
   const [showSavePlanogramModal, setShowSavePlanogramModal] = useState(false);
 
@@ -404,6 +408,14 @@ export function ContextAddButton({
             <ActionBtn
               variant="secondary"
               fullWidth={isSidebar}
+              onClick={() => setShowComplianceModal(true)}
+              title="Review face fill, hero placement, SOS, and POSM before publish"
+            >
+              <FiCheckCircle /> Check compliance
+            </ActionBtn>
+            <ActionBtn
+              variant="secondary"
+              fullWidth={isSidebar}
               onClick={() => setShowPublishModal(true)}
               title="Clone rack to other stores"
             >
@@ -582,6 +594,20 @@ export function ContextAddButton({
               open={showPublishModal}
               onClose={() => setShowPublishModal(false)}
             />
+            <Modal
+              open={showComplianceModal}
+              onClose={() => setShowComplianceModal(false)}
+              title="Compliance checklist"
+              subtitle="Review this rack before saving or copying to other stores."
+              maxWidth="lg"
+              footer={
+                <Btn variant="primary" onClick={() => setShowComplianceModal(false)}>
+                  Done
+                </Btn>
+              }
+            >
+              <ComplianceChecklist rack={rack} />
+            </Modal>
             <MultiRackReflowModal
               rack={rack}
               open={showMultiReflowModal}

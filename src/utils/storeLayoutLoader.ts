@@ -145,6 +145,14 @@ export function normalizeSkus(skus: any[]): any[] {
                 : null,
       }),
       isHero: Boolean(p.isHero ?? p.heroSku ?? p.sku?.isHero),
+      sosPercentTarget:
+        typeof p.sosPercentTarget === 'number'
+          ? p.sosPercentTarget
+          : typeof p.sos_percent_target === 'number'
+            ? p.sos_percent_target
+            : typeof p.sku?.sosPercentTarget === 'number'
+              ? p.sku.sosPercentTarget
+              : null,
     }
   })
 }

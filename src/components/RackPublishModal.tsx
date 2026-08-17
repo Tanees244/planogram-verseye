@@ -13,6 +13,8 @@ import type {
   RackPublishStorePreview,
 } from '@/types/rackPublish'
 import { fetchPublishPreview, fetchPublishRack } from '@/utils/rackPublishApi'
+import { evaluateRackCompliance } from '@/utils/planogramCompliance'
+import { ComplianceChecklist } from '@/components/ComplianceChecklist'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
 import { formatCmTriple } from '@/utils/lengthUnits'
@@ -22,7 +24,7 @@ interface StoreOption {
   name: string
 }
 
-type Step = 'configure' | 'preview' | 'results'
+type Step = 'compliance' | 'configure' | 'preview' | 'results'
 
 function authHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json' }
@@ -101,7 +103,10 @@ export function RackPublishModal({
   const [publishResult, setPublishResult] = useState<RackPublishResult | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [acknowledgeErrors, setAcknowledgeErrors] = useState(false)
   const [nameSuggestions, setNameSuggestions] = useState<string[]>([])
+
+  const compliance = useMemo(() => evaluateRackCompliance(rack), [rack])
 
   useEffect(() => {
     if (open) setNameSuggestions(getUserEnteredNames('rack'))
@@ -136,10 +141,11 @@ export function RackPublishModal({
 
   useEffect(() => {
     if (!open) return
-    setStep('configure')
+    setStep('compliance')
     setPreview(null)
     setPublishResult(null)
     setError(null)
+    setAcknowledgeErrors(false)
     setRackCode(rack.rackCode || 'R-01')
     setRackName(rack.rackName ?? rack.blueprintName ?? rack.rackCode ?? '')
     setSelectedStoreIds([])
@@ -221,6 +227,15 @@ export function RackPublishModal({
           <Btn variant="ghost" onClick={onClose} disabled={busy}>
             Close
           </Btn>
+          {step === 'compliance' && (
+            <Btn
+              variant="primary"
+              onClick={() => setStep('configure')}
+              disabled={!compliance.ready && !acknowledgeErrors}
+            >
+              Continue to publish
+            </Btn>
+          )}
           {step === 'configure' && (
             <Btn variant="primary" onClick={handlePreview} disabled={busy || loadingStores}>
               {busy ? <Spinner /> : null}
@@ -250,6 +265,25 @@ export function RackPublishModal({
           <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
             {error}
           </p>
+        )}
+
+        {step === 'compliance' && (
+          <>
+            <ComplianceChecklist rack={rack} />
+            {!compliance.ready && (
+              <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acknowledgeErrors}
+                  onChange={(e) => setAcknowledgeErrors(e.target.checked)}
+                  className="mt-0.5 rounded border-gray-300"
+                />
+                <span>
+                  I understand there are blocking issues and want to continue anyway.
+                </span>
+              </label>
+            )}
+          </>
         )}
 
         {step === 'configure' && (

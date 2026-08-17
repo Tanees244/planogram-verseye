@@ -7,7 +7,9 @@ import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { formatPlanogramDateTime, planogramStatusFromShelf, shelfListRackDisplayName, type ShelfListItem } from '@/types/shelf'
 import { PlanogramThumb } from '@/components/PlanogramThumb'
+import { OpenInEditorLink } from '@/components/OpenInEditorLink'
 import { getUserEnteredNames, rememberUserEnteredName } from '@/utils/userEnteredNames'
+import { parseLocationListResponse } from '@/utils/locationList'
 
 function asArray(value: unknown): unknown[] {
   if (!value) return []
@@ -107,6 +109,7 @@ export default function PlanogramsPage() {
 
   const [stores, setStores] = useState<{ id: string; name: string }[]>([])
   const [storeId, setStoreId] = useState(selectedStoreId ?? '')
+  const [storesError, setStoresError] = useState<string | null>(null)
   const [items, setItems] = useState<ShelfListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -126,20 +129,31 @@ export default function PlanogramsPage() {
     let cancelled = false
     ;(async () => {
       try {
+        setStoresError(null)
         const res = await fetch('/api/locations/list?page=1&pageSize=100', {
           headers: authHeaders(),
         })
         const json = await res.json().catch(() => ({}))
-        const list = asArray(json?.data ?? json).map((s: any) => ({
-          id: String(s.id ?? s.branchId ?? ''),
-          name: String(s.name ?? s.locationCode ?? s.branchName ?? 'Store'),
+        if (!res.ok || json?.isRequestSuccess === false || json?.success === false) {
+          if (!cancelled) {
+            setStores([])
+            setStoresError(json?.message || 'Failed to load stores')
+          }
+          return
+        }
+        const list = parseLocationListResponse(json).map((s) => ({
+          id: s.id,
+          name: s.name,
         }))
         if (!cancelled) {
-          setStores(list.filter((s) => s.id))
+          setStores(list)
           if (!storeId && list[0]?.id) setStoreId(list[0].id)
         }
       } catch {
-        /* non-fatal */
+        if (!cancelled) {
+          setStores([])
+          setStoresError('Could not connect to server. Please try again.')
+        }
       }
     })()
     return () => {
@@ -212,8 +226,8 @@ export default function PlanogramsPage() {
     stores.find((s) => s.id === storeId)?.name ?? selectedStoreName ?? 'Store'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="min-h-full">
+      <div className="max-w-6xl mx-auto px-6 py-8 pb-16">
         <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             <Link
@@ -246,6 +260,12 @@ export default function PlanogramsPage() {
             ))}
           </select>
         </div>
+
+        {storesError ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {storesError}
+          </div>
+        ) : null}
 
         <div className="relative max-w-md mb-6">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -350,13 +370,24 @@ export default function PlanogramsPage() {
                     </span>
                     <span className="truncate">{formatPlanogramDateTime(p.lastUpdated)}</span>
                   </div>
-                  <Link
-                    href={`/planograms/${p.id}`}
-                    onClick={() => rememberUserEnteredName('planogram', p.name)}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#2C5282] hover:underline"
-                  >
-                    Open <FiChevronRight size={12} />
-                  </Link>
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <Link
+                      href={`/planograms/${p.id}`}
+                      onClick={() => rememberUserEnteredName('planogram', p.name)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#2C5282] hover:underline"
+                    >
+                      View details <FiChevronRight size={12} />
+                    </Link>
+                    <OpenInEditorLink
+                      storeId={p.storeId || storeId}
+                      storeName={p.storeName || storeLabel}
+                      rackId={p.rackId}
+                      shelfId={p.id}
+                      variant="secondary"
+                      label="Edit in 3D"
+                      className="px-2 py-1 text-xs"
+                    />
+                  </div>
                 </div>
               </div>
             ))}

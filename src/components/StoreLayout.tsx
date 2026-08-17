@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/form'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { authHeaders, fetchStoreLayoutRacks, placeRacksOnFloor } from '@/utils/storeLayoutLoader'
+import { parseLocationListResponse } from '@/utils/locationList'
 
 interface Branch {
   id: string
@@ -24,6 +25,7 @@ export default function StoreLayout() {
 
   const [branches, setBranches] = useState<Branch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
+  const [branchesError, setBranchesError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   /** Last selected store — used to cancel “Change store” and close the picker. */
   const [dismissTo, setDismissTo] = useState<{ id: string; name: string | null } | null>(null)
@@ -52,21 +54,23 @@ export default function StoreLayout() {
     let mounted = true
     ;(async () => {
       setLoadingBranches(true)
+      setBranchesError(null)
       try {
         const headers = await authHeaders()
         const res = await fetch('/api/locations/list?page=1&pageSize=200', { headers })
         const json = await res.json().catch(() => ({}))
         if (!mounted) return
-        const list = json?.data?.locations ?? json?.data ?? []
-        const mapped: Branch[] = (Array.isArray(list) ? list : []).map((b: any) => ({
-          id: b.id,
-          name: b.name ?? b.locationCode ?? b.id,
-          address: b.address,
-          storeType: b.storeType,
-        }))
-        setBranches(mapped)
+        if (!res.ok || json?.isRequestSuccess === false || json?.success === false) {
+          setBranches([])
+          setBranchesError(json?.message || 'Failed to load stores')
+          return
+        }
+        setBranches(parseLocationListResponse(json))
       } catch {
-        /* ignore */
+        if (mounted) {
+          setBranches([])
+          setBranchesError('Could not connect to server. Please try again.')
+        }
       } finally {
         if (mounted) setLoadingBranches(false)
       }
@@ -158,7 +162,9 @@ export default function StoreLayout() {
             <p className="text-sm">Loading stores…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <p className="py-12 text-center text-sm text-gray-400">No stores found.</p>
+          <p className="py-12 text-center text-sm text-gray-400">
+            {branchesError ?? 'No stores found.'}
+          </p>
         ) : (
           filtered.map((b) => (
             <button

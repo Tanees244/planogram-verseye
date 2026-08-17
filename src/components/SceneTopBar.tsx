@@ -13,8 +13,10 @@ import {
   FiUpload,
   FiX,
   FiZoomIn,
+  FiLayers,
 } from 'react-icons/fi'
 import { RoofToggle } from '@/components/ui/RoofToggle'
+import { GuidedOnboardingToggle } from '@/components/GuidedOnboarding'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 import { PANEL_SHELL } from '@/lib/uiShell'
@@ -219,6 +221,8 @@ export function SceneTopBar({ className }: { className?: string }) {
     return (
       <>
         <div className={cn('flex flex-col items-end gap-2', className)}>
+        <div className="flex items-center gap-2">
+          <GuidedOnboardingToggle />
         <button
           type="button"
           onClick={() => toggleOpen(true)}
@@ -245,6 +249,7 @@ export function SceneTopBar({ className }: { className?: string }) {
             <span className="w-2.5 h-2.5 rounded-full bg-brand animate-pulse shrink-0" />
           )}
         </button>
+        </div>
         </div>
         <ImportPlanogramModal open={importOpen} onClose={() => setImportOpen(false)} />
       </>
@@ -323,6 +328,14 @@ export function SceneTopBar({ className }: { className?: string }) {
         >
           Open full import page
         </Link>
+        <Link
+          href="/planograms"
+          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
+        >
+          <FiLayers size={14} />
+          Browse planograms
+        </Link>
+        <GuidedOnboardingToggle className="w-full justify-center" />
 
         <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] overflow-hidden">
           <button
