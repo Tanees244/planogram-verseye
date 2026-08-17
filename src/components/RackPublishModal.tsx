@@ -214,7 +214,7 @@ export function RackPublishModal({
       open={open}
       onClose={onClose}
       title="Copy rack to stores"
-      subtitle="Creates a 1:1 clone — shell, rows, bins, SKUs, POSM (no floor placement). Not a reflow."
+      subtitle="Creates a 1:1 clone — shell, rows, SKUs, POSM (no floor placement). Not a reflow."
       maxWidth="lg"
       footer={
         <>

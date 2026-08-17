@@ -25,7 +25,6 @@ import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
-import { AddBinModal } from '@/components/forms/AddBinModal'
 import { Btn } from '@/components/ui/form'
 import {
   DEFAULT_PRODUCT_DEPTH,
@@ -46,14 +45,11 @@ export function TraditionalView() {
     addRack,
     addRow,
     addRowToServer,
-    addBinToServer,
-    addBin,
     addProduct,
     updateDimensions,
     deleteRack,
     deleteRackFromServer,
     deleteRowFromServer,
-    deleteBinFromServer,
     deleteProduct,
     deleteProductFromServer,
     setPendingRackParams,
@@ -73,16 +69,12 @@ export function TraditionalView() {
   const [expandedBins, setExpandedBins] = useState<Set<string>>(new Set())
   const [showAddRackModal, setShowAddRackModal] = useState(false)
   const [showAddRowModal, setShowAddRowModal] = useState(false)
-  const [showAddBinModal, setShowAddBinModal] = useState(false)
   const [selectedArea, setSelectedArea] = useState(false)
   const [selectedRackId, setSelectedRackId] = useState<string | null>(null)
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
   const [selectedBinId, setSelectedBinId] = useState<string | null>(null)
   const [showProductMgmtModal, setShowProductMgmtModal] = useState(false)
   const [showAttachProductModal, setShowAttachProductModal] = useState(false)
-  const [binNameError, setBinNameError] = useState<string | null>(null)
   const [addingRow, setAddingRow] = useState(false)
-  const [addingBin, setAddingBin] = useState(false)
 
   const [rackForm, setRackForm] = useState<RackFormState>(defaultRackForm)
   const [rackFormErrors, setRackFormErrors] = useState<Record<string, string | null>>({})
@@ -190,7 +182,7 @@ export function TraditionalView() {
             <Spinner />
             <div>
               <p className="text-sm font-semibold">Attaching product…</p>
-              <p className="text-[11px] text-gray-500">Updating bin inventory and refreshing layout</p>
+              <p className="text-[11px] text-gray-500">Updating shelf inventory and refreshing layout</p>
             </div>
           </div>
         </div>
@@ -209,7 +201,7 @@ export function TraditionalView() {
               <p className="text-[11px] text-gray-500 truncate max-w-[240px]">
                 {selectedStoreName
                   ? `Fetching fixtures for ${selectedStoreName}`
-                  : 'Fetching fixtures, shelves, bins, and products'}
+                  : 'Fetching fixtures, shelves, and products'}
               </p>
             </div>
           </div>
@@ -357,22 +349,11 @@ export function TraditionalView() {
                             </div>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedRowId(resolveEntityId(row.id) ?? String(row.id))
-                                  setShowAddBinModal(true)
-                                }}
-                                className="px-3 py-1.5 bg-[#2C5282] text-white rounded-lg text-xs font-medium hover:bg-[#1A365D] transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
-                              >
-                                <FiPlus className="text-xs" />
-                                Bin
-                              </button>
-                              <button
                                 onClick={async (e) => {
                                   e.stopPropagation()
                                   if (
                                     !window.confirm(
-                                      'Delete this row? All bins and products on it will be removed.',
+                                      'Delete this row? All products on it will be removed.',
                                     )
                                   ) {
                                     return
@@ -395,7 +376,7 @@ export function TraditionalView() {
                                 <RowDimensionsField row={row} dark={false} showLabel={false} />
                                 <span className="text-gray-500">
                                   | Depth: {formatCm(rack.customConfig ? (rack.customConfig.outerDepth - rack.customConfig.wallThickness * 2) * 0.95 : rack.depth * 0.9)}
-                                  {" | "}Bins: {row.bins.length}
+                                  {" | "}SKUs: {row.bins.reduce((n, b) => n + b.products.length, 0)}
                                 </span>
                               </div>
                               {row.bins.map((bin) => (
@@ -438,16 +419,16 @@ export function TraditionalView() {
                                         <FiChevronRight className="text-sm text-gray-400" />
                                       )}
                                       <FiBox className="text-sm text-[#2C5282]" />
-                                      <span className="text-xs font-medium text-gray-800">
-                                        {bin.binName || `Bin ${String(bin.id).slice(0, 8)}`}
-                                      </span>
+                                        <span className="text-xs font-medium text-gray-800">
+                                          Products
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation()
                                           if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bin.id)) {
-                                            alert('This bin has no server id yet. Refresh the store layout or re-create the bin.')
+                                            alert('This shelf slot has no server id yet. Refresh the store layout.')
                                             return
                                           }
                                           setSelectedBinId(bin.id)
@@ -458,16 +439,6 @@ export function TraditionalView() {
                                         <FiPlus className="text-xs" />
                                         Product
                                       </button>
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation()
-                                          const res = await deleteBinFromServer(bin.id)
-                                          if (!res.success) alert(res.message)
-                                        }}
-                                        className="px-3 py-1.5 bg-[#e1e7ef] text-white rounded-lg text-xs font-medium hover:bg-white transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
-                                      >
-                                        <FiTrash2 className="text-xs text-red-600" />
-                                      </button>
                                     </div>
                                   </div>
 
@@ -475,7 +446,7 @@ export function TraditionalView() {
                                     expandedBins.has(bin.id) && (
                                       <div className="mt-2 pl-4 pr-2">
                                         <div className="text-xs text-gray-600 mb-2 px-2">
-                                          Bin dims: {formatCmTriple(bin.width, bin.depth, bin.height)}
+                                          Shelf: {formatCmTriple(bin.width, bin.depth, bin.height)}
                                           {" · "}
                                           Products: {bin.products.length} SKU{bin.products.length === 1 ? '' : 's'}
                                           {totalProductFacings(bin.products) > bin.products.length
@@ -497,7 +468,7 @@ export function TraditionalView() {
                                               e.dataTransfer.effectAllowed = 'move'
                                             }}
                                             className="p-2.5 mb-2 bg-white border border-gray-200 rounded-lg flex items-center justify-between hover:shadow-sm transition-all cursor-grab active:cursor-grabbing"
-                                            title="Drag onto another bin to move this SKU"
+                                            title="Drag onto another shelf to move this SKU"
                                           >
                                             <div className="flex items-center gap-3">
                                               {product.imageUrl ? (
@@ -638,81 +609,6 @@ export function TraditionalView() {
             else setShowAddRowModal(false)
           } finally {
             setAddingRow(false)
-          }
-        }}
-      />
-
-      <AddBinModal
-        open={showAddBinModal}
-        onClose={() => setShowAddBinModal(false)}
-        {...(() => {
-          if (!selectedRowId) return {}
-          const rack = area.racks.find((r: Rack) =>
-            r.sides.some((s: RackSide) => s.rows.some((row: Row) => row.id === selectedRowId)),
-          )
-          const row = rack?.sides
-            .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedRowId))
-            ?.rows.find((r: Row) => r.id === selectedRowId)
-          if (!rack || !row) return {}
-          const rowW =
-            (typeof row.width === 'number' && row.width > 0 && row.width) ||
-            (typeof row.span === 'number' && row.span > 0 && row.span) ||
-            rack.width * 0.85
-          return {
-            rowWidthM: rowW,
-            rowDepthM: Number(rack.depth) > 0 ? Number(rack.depth) : DEFAULT_RACK_DEPTH,
-            rowHeightM: Number(row.height) > 0 ? Number(row.height) : GROCERY_SHELF_SPACING,
-            occupiedWidthM: row.bins.reduce(
-              (sum: number, b: Bin) => sum + (Number(b.width) || 0),
-              0,
-            ),
-            existingBins: row.bins.map((b: Bin) => ({
-              id: b.id,
-              name: b.binName || 'Bin',
-              widthM: Number(b.width) || 0.1,
-              heightM: Number(b.height) || undefined,
-            })),
-          }
-        })()}
-        error={binNameError}
-        isSubmitting={addingBin}
-        onSaveBins={async (bins) => {
-          if (!selectedRowId) return
-          if (!bins.length) {
-            setBinNameError('Add at least one bin box')
-            return
-          }
-          setAddingBin(true)
-          setBinNameError(null)
-          try {
-            let lastBinId: string | undefined
-            for (const bin of bins) {
-              const res = await addBinToServer(
-                selectedRowId,
-                undefined,
-                undefined,
-                undefined,
-                bin.name,
-                { width: bin.widthM, depth: bin.depthM, height: bin.heightM },
-                { quiet: true },
-              )
-              if (!res.success) {
-                setBinNameError(res.message ?? 'Failed to add bin')
-                return
-              }
-              if ((res as { binId?: string }).binId) {
-                lastBinId = (res as { binId?: string }).binId
-              }
-            }
-            if (lastBinId) setSelectedBinId(lastBinId)
-            setShowAddBinModal(false)
-            toast.success(
-              bins.length === 1
-                ? 'Bin created'
-                : `${bins.length} bins created on this row`,
-            )
-          } finally {
-            setAddingBin(false)
           }
         }}
       />

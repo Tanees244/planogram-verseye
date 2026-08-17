@@ -53,9 +53,13 @@ export function SceneLeftPanel() {
 
   // Auto-surface structure tools for the clicked object; POSM stays its own tab.
   useEffect(() => {
-    if (selectedType === 'rack' || selectedType === 'row' || selectedType === 'bin') {
-      setTab('racks')
-    }
+    setTab((current) => {
+      if (current === 'posm' || current === 'products') return current
+      if (selectedType === 'rack' || selectedType === 'row' || selectedType === 'bin') {
+        return 'racks'
+      }
+      return current
+    })
   }, [selectedType])
 
   const searchPlaceholder =

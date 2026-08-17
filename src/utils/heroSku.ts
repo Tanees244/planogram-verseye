@@ -125,10 +125,43 @@ export function heroPlacementBlocked(
   skuId: string | null | undefined,
   binId: string,
   racks: Parameters<typeof findRowContextForBin>[0],
+  flags?: { isHero?: boolean | null; heroSku?: boolean | null },
 ): string | null {
-  if (!skuId || !isHeroSkuId(skuId)) return null
   const ctx = findRowContextForBin(racks, binId)
   if (!ctx) return null
+  return heroPlacementBlockedOnRow(skuId, ctx.row.id, racks, flags)
+}
+
+const HERO_EYE_LEVEL_MESSAGE =
+  'Hero SKUs can only be placed on eye-level shelves (≈120–160 cm from the floor, or the middle third of short racks). Pick an eye-level row.'
+
+export function findRowContextForRowId(
+  racks: Parameters<typeof findRowContextForBin>[0],
+  rowId: string,
+): { row: { id: string; height?: number | null; yStart?: number | null; yEnd?: number | null }; sideRows: typeof racks[0]['sides'][0]['rows'] } | null {
+  for (const rack of racks) {
+    for (const side of rack.sides) {
+      const row = side.rows.find((r) => r.id === rowId)
+      if (row) return { row, sideRows: side.rows }
+    }
+  }
+  return null
+}
+
+/** Same eye-level rule, checked against a row before a shelf slot exists. */
+export function heroPlacementBlockedOnRow(
+  skuId: string | null | undefined,
+  rowId: string,
+  racks: Parameters<typeof findRowContextForBin>[0],
+  flags?: { isHero?: boolean | null; heroSku?: boolean | null },
+): string | null {
+  const hero =
+    flags?.isHero === true ||
+    flags?.heroSku === true ||
+    Boolean(skuId && isHeroSkuId(skuId))
+  if (!hero || !skuId) return null
+  const ctx = findRowContextForRowId(racks, rowId)
+  if (!ctx) return null
   if (isEyeLevelRow(ctx.row, ctx.sideRows)) return null
-  return 'Hero SKUs can only be placed on eye-level rows (≈120–160 cm from the floor, or the middle third of short racks).'
+  return HERO_EYE_LEVEL_MESSAGE
 }

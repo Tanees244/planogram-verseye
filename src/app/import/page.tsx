@@ -27,7 +27,7 @@ import {
   FiTrash2,
 } from 'react-icons/fi'
 
-const ACCEPT = '.psa,.plm,.json,application/json,text/plain'
+const ACCEPT = '.psa,.psm,.plm,.pla,.json,application/json,text/plain'
 
 export default function ImportPage() {
   const router = useRouter()
@@ -410,11 +410,11 @@ export default function ImportPage() {
             </h3>
             <ul className="space-y-2.5 text-sm text-slate-600 leading-relaxed">
               <li>
-                <strong className="text-slate-900 font-mono">.plm</strong> — Planogram Layout Model
+                <strong className="text-slate-900 font-mono">.plm / .pla</strong> — Planogram Layout Model
                 (JSON). Full round-trip for fixtures, shelves, bins, products, and facings.
               </li>
               <li>
-                <strong className="text-slate-900 font-mono">.psa</strong> — JDA Space Planning
+                <strong className="text-slate-900 font-mono">.psa / .psm</strong> — JDA Space Planning
                 compatible interchange (tab-delimited).
               </li>
               <li>

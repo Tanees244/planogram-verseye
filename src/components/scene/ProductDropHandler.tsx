@@ -9,6 +9,8 @@ import {
   PRODUCT_MOVE_MIME,
   type ProductMoveDragPayload,
 } from '@/components/ProductPalette'
+import { findRowPlacementContext, binDimsForPack, inferPlacementAnchor } from '@/utils/productRowPlacement'
+import { resolveIsStackable } from '@/utils/stackableSku'
 import toast from 'react-hot-toast'
 
 function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | null {
@@ -38,7 +40,48 @@ function findBinIdFromIntersects(intersects: THREE.Intersection[]): string | nul
   return null
 }
 
-function raycastBinAt(
+function findRowIdFromIntersects(intersects: THREE.Intersection[]): string | null {
+  for (const hit of intersects) {
+    let obj: THREE.Object3D | null = hit.object
+    while (obj) {
+      const id = obj.userData?.id
+      const type = obj.userData?.type
+      if (typeof id === 'string' && id.length > 0) {
+        if (type === 'row') return id
+        // Bin → parent row
+        const state = usePlanogramStore.getState()
+        for (const rack of state.area.racks) {
+          for (const side of rack.sides) {
+            for (const row of side.rows) {
+              if (row.id === id) return id
+              if (row.bins.some((b) => b.id === id)) return row.id
+            }
+          }
+        }
+      }
+      obj = obj.parent
+    }
+  }
+  return null
+}
+
+function inferAnchorFromHits(intersects: THREE.Intersection[], rowId: string): 'left' | 'right' {
+  const ctx = findRowPlacementContext(usePlanogramStore.getState().area.racks, rowId)
+  if (!ctx) return 'left'
+  for (const hit of intersects) {
+    let obj: THREE.Object3D | null = hit.object
+    while (obj) {
+      if (obj.userData?.type === 'row' && obj.userData?.id === rowId) {
+        const local = obj.worldToLocal(hit.point.clone())
+        return inferPlacementAnchor(local.x, ctx.rowSpan, ctx.row.bins)
+      }
+      obj = obj.parent
+    }
+  }
+  return 'left'
+}
+
+function raycastAt(
   clientX: number,
   clientY: number,
   el: HTMLCanvasElement,
@@ -46,13 +89,12 @@ function raycastBinAt(
   mouse: THREE.Vector2,
   camera: THREE.Camera,
   scene: THREE.Scene,
-): string | null {
+): THREE.Intersection[] {
   const rect = el.getBoundingClientRect()
   mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1
   mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(mouse, camera)
-  const hits = raycaster.intersectObjects(scene.children, true)
-  return findBinIdFromIntersects(hits)
+  return raycaster.intersectObjects(scene.children, true)
 }
 
 function hasProductDragType(dt: DataTransfer | null): boolean {
@@ -60,10 +102,20 @@ function hasProductDragType(dt: DataTransfer | null): boolean {
   return dt.types.includes(PRODUCT_DRAG_MIME) || dt.types.includes(PRODUCT_MOVE_MIME)
 }
 
-/** HTML drag-and-drop: palette SKU (copy) or existing bin SKU (move) onto a bin mesh. */
+function rowAllowedWhilePlacing(rowId: string): boolean {
+  const state = usePlanogramStore.getState()
+  if (state.selectedType !== 'rack' || !state.selectedId) return true
+  return state.area.racks.some(
+    (r) =>
+      r.id === state.selectedId &&
+      r.sides.some((s) => s.rows.some((row) => row.id === rowId)),
+  )
+}
+
+/** HTML drag-and-drop: palette SKU onto a shelf/row, or move between bins. */
 export function ProductDropHandler() {
   const { camera, gl, scene } = useThree()
-  const placeProductOnBin = usePlanogramStore((s) => s.placeProductOnBin)
+  const setProductPlacementTarget = usePlanogramStore((s) => s.setProductPlacementTarget)
   const startProductPlacement = usePlanogramStore((s) => s.startProductPlacement)
   const moveBinInventoryToBin = usePlanogramStore((s) => s.moveBinInventoryToBin)
   const cancelMovingBinInventory = usePlanogramStore((s) => s.cancelMovingBinInventory)
@@ -79,7 +131,7 @@ export function ProductDropHandler() {
     let dragActive = false
     let moveSourceBinId: string | null = null
 
-    const dimsForHover = (): { width: number; depth: number; height: number } | null => {
+    const dimsForHover = (): { width: number; depth: number; height: number; isStackable?: boolean; id?: string } | null => {
       const state = usePlanogramStore.getState()
       if (moveSourceBinId) {
         for (const rack of state.area.racks) {
@@ -92,6 +144,8 @@ export function ProductDropHandler() {
                   width: Number(p.width) || 0.1,
                   depth: Number(p.depth) || 0.1,
                   height: Number(p.height) || 0.1,
+                  isStackable: p.isStackable,
+                  id: p.id,
                 }
               }
             }
@@ -105,6 +159,8 @@ export function ProductDropHandler() {
         width: pending.width,
         depth: pending.depth,
         height: pending.height,
+        isStackable: pending.isStackable,
+        id: pending.id,
       }
     }
 
@@ -112,23 +168,68 @@ export function ProductDropHandler() {
       rafId = 0
       if (!dragActive) return
 
-      const binId = raycastBinAt(lastClientX, lastClientY, el, raycaster, mouse, camera, scene)
+      const hits = raycastAt(lastClientX, lastClientY, el, raycaster, mouse, camera, scene)
+
+      if (moveSourceBinId) {
+        const binId = findBinIdFromIntersects(hits)
+        const dims = dimsForHover()
+        if (!binId || !dims) {
+          setProductDropHover(null)
+          return
+        }
+        const fit = usePlanogramStore.getState().canProductFitInBin(binId, {
+          width: dims.width,
+          depth: dims.depth,
+          height: dims.height,
+          quantity: 1,
+        })
+        setProductDropHover({
+          binId,
+          fits: fit.fits,
+          reason: fit.reason,
+        })
+        return
+      }
+
+      const rowId = findRowIdFromIntersects(hits)
       const dims = dimsForHover()
-      if (!binId || !dims) {
+      if (!rowId || !dims || !rowAllowedWhilePlacing(rowId)) {
         setProductDropHover(null)
         return
       }
 
-      const fit = usePlanogramStore.getState().canProductFitInBin(binId, {
-        width: dims.width,
-        depth: dims.depth,
-        height: dims.height,
-        quantity: 1,
-      })
+      const state = usePlanogramStore.getState()
+      const ctx = findRowPlacementContext(state.area.racks, rowId)
+      if (!ctx) {
+        setProductDropHover({ rowId, fits: false, reason: 'Shelf not found' })
+        return
+      }
+      const stackable = resolveIsStackable(dims.id, { isStackable: dims.isStackable })
+      const facings = Math.max(1, Math.floor(ctx.remainingWidth / dims.width + 1e-6))
+      const depthRows = Math.max(1, Math.floor(ctx.availableDepth / dims.depth + 1e-6))
+      const stack = Math.max(
+        1,
+        stackable ? Math.floor(ctx.rowHeight / dims.height + 1e-6) : 1,
+      )
+      const pending = state.pendingProductParams
+      if (!pending) {
+        setProductDropHover(null)
+        return
+      }
+      const sized = binDimsForPack(
+        pending,
+        facings,
+        depthRows,
+        stack,
+        ctx.remainingWidth,
+        ctx.availableDepth,
+        ctx.rowHeight,
+      )
       setProductDropHover({
-        binId,
-        fits: fit.fits,
-        reason: fit.reason,
+        rowId,
+        fits: sized.fits,
+        reason: sized.reason,
+        anchor: inferAnchorFromHits(hits, rowId),
       })
     }
 
@@ -159,6 +260,9 @@ export function ProductDropHandler() {
       const isMove = e.dataTransfer?.types.includes(PRODUCT_MOVE_MIME)
       e.dataTransfer!.dropEffect = isMove ? 'move' : 'copy'
       dragActive = true
+      if (isMove) {
+        moveSourceBinId = usePlanogramStore.getState().movingInventoryFromBinId
+      }
       scheduleHoverUpdate(e)
     }
 
@@ -176,7 +280,7 @@ export function ProductDropHandler() {
       e.preventDefault()
       e.stopPropagation()
 
-      const binId = raycastBinAt(e.clientX, e.clientY, el, raycaster, mouse, camera, scene)
+      const hits = raycastAt(e.clientX, e.clientY, el, raycaster, mouse, camera, scene)
       clearHover()
 
       if (moveRaw) {
@@ -187,6 +291,7 @@ export function ProductDropHandler() {
           return
         }
         if (!payload?.sourceBinId) return
+        const binId = findBinIdFromIntersects(hits)
         if (!binId) {
           cancelMovingBinInventory()
           toast.error('Drop onto a target bin')
@@ -212,13 +317,19 @@ export function ProductDropHandler() {
 
       startProductPlacement(pending)
 
-      if (!binId) {
+      const rowId = findRowIdFromIntersects(hits)
+      if (!rowId || !rowAllowedWhilePlacing(rowId)) {
         usePlanogramStore.setState({
-          addProductError: 'Drop the product onto a bin (select/add a bin first).',
+          addProductError: 'Drop the product onto a shelf (row).',
         })
         return
       }
-      await placeProductOnBin(binId)
+      const res = setProductPlacementTarget(rowId, {
+        anchor: inferAnchorFromHits(hits, rowId),
+      })
+      if (!res.success && res.message) {
+        toast.error(res.message)
+      }
     }
 
     const onDragEnd = () => {
@@ -226,11 +337,9 @@ export function ProductDropHandler() {
       clearHover()
     }
 
-    // Sync move mode when drag starts elsewhere (inventory panel sets MIME + startMoving)
     const onWindowDragOver = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes(PRODUCT_MOVE_MIME)) return
       if (!moveSourceBinId) {
-        // Best-effort: store already has movingInventoryFromBinId from dragstart
         moveSourceBinId = usePlanogramStore.getState().movingInventoryFromBinId
       }
     }
@@ -254,7 +363,7 @@ export function ProductDropHandler() {
     camera,
     gl,
     scene,
-    placeProductOnBin,
+    setProductPlacementTarget,
     startProductPlacement,
     moveBinInventoryToBin,
     cancelMovingBinInventory,

@@ -39,7 +39,7 @@ export function GondolaFixture({
         [-halfW + post / 2, halfD - post / 2],
         [halfW - post / 2, halfD - post / 2],
       ].map(([x, z], i) => (
-        <mesh key={`post-${i}`} position={[x, 0, z]} {...bind}>
+        <mesh key={`post-${i}`} position={[x, 0, z]} userData={{ type: 'rack-wall', wall: x < 0 ? 'left' : 'right' }} {...bind}>
           <boxGeometry args={[post, rackHeight, post]} />
           <meshStandardMaterial {...metal(hovered, isSelected)} />
         </mesh>
@@ -53,7 +53,11 @@ export function GondolaFixture({
       </mesh>
 
       {/* Kick plate / base */}
-      <mesh position={[0, -rackHeight / 2 + 0.08, 0]} {...bind}>
+      <mesh
+        position={[0, -rackHeight / 2 + 0.08, 0]}
+        userData={{ type: 'rack-wall', wall: 'footer' }}
+        {...bind}
+      >
         <boxGeometry args={[rack.width, 0.16, rack.depth]} />
         <meshStandardMaterial {...metal(hovered, isSelected)} />
         <Edges color={hovered ? '#2C5282' : '#1a252f'} lineWidth={2} />

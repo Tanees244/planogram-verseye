@@ -3,6 +3,12 @@ import { NextResponse } from 'next/server'
 import { getToken } from '@/app/api/utils/getToken'
 
 const API_BASE_URL = process.env.API_BASE_URL
+const PRESIGN_CACHE_TTL_MS = 120_000
+const PRESIGN_RATE_LIMIT_COOLDOWN_MS = 15_000
+type PresignCacheEntry = { url: string; expiresAt: number }
+const presignCache = new Map<string, PresignCacheEntry>()
+const presignInflight = new Map<string, Promise<{ ok: true; url: string } | { ok: false; status: number; message: string }>>()
+let presign429Until = 0
 
 /** HTTP headers must be ByteString (Latin-1). Strip anything outside that. */
 function asciiHeader(value: string, max = 200): string {
@@ -224,6 +230,20 @@ async function resolvePresignedDownloadUrl(
   req: NextRequest,
   key: string,
 ): Promise<{ ok: true; url: string } | { ok: false; status: number; message: string }> {
+  const now = Date.now()
+  const cached = presignCache.get(key)
+  if (cached && cached.expiresAt > now) {
+    return { ok: true, url: cached.url }
+  }
+  if (presign429Until > now) {
+    // When backend starts rate-limiting, reuse the most recent URL if available.
+    if (cached?.url) return { ok: true, url: cached.url }
+    return { ok: false, status: 429, message: 'Model presign is temporarily rate-limited; retry shortly' }
+  }
+  const running = presignInflight.get(key)
+  if (running) return running
+
+  const task = (async (): Promise<{ ok: true; url: string } | { ok: false; status: number; message: string }> => {
   if (!API_BASE_URL) {
     return { ok: false, status: 502, message: 'API_BASE_URL is not configured' }
   }
@@ -273,6 +293,12 @@ async function resolvePresignedDownloadUrl(
       : null) || pickDownloadUrl(inner)
 
   if (!presignRes.ok || !downloadUrl) {
+    if (presignRes.status === 429) {
+      presign429Until = Date.now() + PRESIGN_RATE_LIMIT_COOLDOWN_MS
+      if (cached?.url) {
+        return { ok: true, url: cached.url }
+      }
+    }
     const snippet = asciiHeader(presignText, 180)
     const message = `Could not resolve model download URL (${presignRes.status})${snippet ? `: ${snippet}` : ''}`
     console.error('[files/model]', message, { key })
@@ -282,7 +308,19 @@ async function resolvePresignedDownloadUrl(
       message,
     }
   }
+  presignCache.set(key, {
+    url: downloadUrl,
+    expiresAt: Date.now() + PRESIGN_CACHE_TTL_MS,
+  })
   return { ok: true, url: downloadUrl }
+  })()
+
+  presignInflight.set(key, task)
+  try {
+    return await task
+  } finally {
+    presignInflight.delete(key)
+  }
 }
 
 async function fetchViaPresignedKey(

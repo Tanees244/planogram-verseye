@@ -21,11 +21,30 @@ export function PosmPalette({ search = '' }: { search?: string }) {
   const racks = usePlanogramStore((s) => s.area.racks)
   const { items, loading, error, refetch } = usePosmItems(selectedStoreId)
   const [showCreate, setShowCreate] = useState(false)
+  const setPosmDragActive = usePlanogramStore((s) => s.setPosmDragActive)
 
-  const rack =
-    selectedType === 'rack' && selectedId
-      ? racks.find((r) => r.id === selectedId) ?? null
-      : null
+  const rack = (() => {
+    if (selectedType === 'rack' && selectedId) {
+      return racks.find((r) => r.id === selectedId) ?? null
+    }
+    if (selectedType === 'row' && selectedId) {
+      for (const r of racks) {
+        if (r.sides.some((s) => s.rows.some((rw) => rw.id === selectedId))) return r
+      }
+    }
+    if ((selectedType === 'bin' || selectedType === 'product') && selectedId) {
+      for (const r of racks) {
+        for (const s of r.sides) {
+          for (const rw of s.rows) {
+            if (rw.bins.some((b) => b.id === selectedId || b.products.some((p) => p.id === selectedId))) {
+              return r
+            }
+          }
+        }
+      }
+    }
+    return racks.length === 1 ? racks[0] : null
+  })()
   const selectedRow =
     selectedType === 'row' && selectedId
       ? (() => {
@@ -89,7 +108,7 @@ export function PosmPalette({ search = '' }: { search?: string }) {
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-          Catalog · drag onto bin / row
+          Catalog · drag onto header, footer, wall, or shelf
         </p>
         <button
           type="button"
@@ -134,23 +153,24 @@ export function PosmPalette({ search = '' }: { search?: string }) {
               type="button"
               draggable
               onDragStart={(e) => {
-                e.dataTransfer.setData(
-                  POSM_DRAG_MIME,
-                  JSON.stringify({
-                    id: p.id,
-                    name: p.name,
-                    posmType: p.posmType,
-                    imageUrl: p.imageUrl ?? null,
-                    imageStorageKey: p.imageStorageKey ?? null,
-                  }),
-                )
+                const payload = JSON.stringify({
+                  id: p.id,
+                  name: p.name,
+                  posmType: p.posmType,
+                  imageUrl: p.imageUrl ?? null,
+                  imageStorageKey: p.imageStorageKey ?? null,
+                })
+                e.dataTransfer.setData(POSM_DRAG_MIME, payload)
+                e.dataTransfer.setData('text/plain', payload)
                 e.dataTransfer.effectAllowed = 'copy'
+                setPosmDragActive(true)
               }}
+              onDragEnd={() => setPosmDragActive(false)}
               className={cn(
                 'w-full flex items-center gap-2.5 p-2 rounded-xl border text-left',
                 'bg-white/[0.04] border-white/10 hover:bg-white/10 cursor-grab active:cursor-grabbing',
               )}
-              title="Drag onto a bin or row"
+              title="Drag onto header, footer, side wall, or shelf"
             >
               <span className="w-9 h-9 rounded-lg bg-violet-500/20 text-violet-200 flex items-center justify-center shrink-0 overflow-hidden">
                 {thumb ? (

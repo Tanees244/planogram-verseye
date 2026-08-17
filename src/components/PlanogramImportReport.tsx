@@ -22,7 +22,7 @@ export function PlanogramImportReport({ report }: { report: ImportReport }) {
           <p className="text-sm text-gray-600 mt-1">
             Format: <span className="font-mono uppercase">{report.format}</span>
             {' · '}
-            {report.racksImported} racks, {report.rowsImported} shelves, {report.binsImported} bins,{' '}
+            {report.racksImported} racks, {report.rowsImported} shelves, {report.binsImported} shelf slots,{' '}
             {report.facingsImported} facings
           </p>
         </div>

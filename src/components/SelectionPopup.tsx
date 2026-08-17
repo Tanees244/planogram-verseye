@@ -117,6 +117,7 @@ export function SelectionPopup() {
               ...row,
               __rackName: displayRackName(r),
               __binCount: row.bins.length,
+              __skuCount: row.bins.reduce((n, b) => n + b.products.length, 0),
             })
             setKind('row')
             return
@@ -142,14 +143,14 @@ export function SelectionPopup() {
     }
     if (kind === 'bin') {
       return {
-        eyebrow: 'Bin',
-        title: data.binName || 'Bin',
+        eyebrow: 'Shelf',
+        title: data.binName || 'Shelf',
         accent: '#38bdf8',
         lines: [
           formatCmTriple(data.width, data.depth, data.height),
           data.__skuCount
             ? `${data.__skuCount} SKU · ${data.__facings} facings`
-            : 'Empty — attach a product',
+            : 'Empty shelf',
           data.__rackName || null,
         ].filter(Boolean),
       }
@@ -160,7 +161,9 @@ export function SelectionPopup() {
         title: `Row · ${formatCm(data.height)} high`,
         accent: '#a78bfa',
         lines: [
-          `${data.__binCount} bin${data.__binCount === 1 ? '' : 's'}`,
+          data.__skuCount != null
+            ? `${data.__skuCount} SKU${data.__skuCount === 1 ? '' : 's'}`
+            : null,
           data.__rackName || null,
         ].filter(Boolean),
       }

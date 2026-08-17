@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { FiPackage } from 'react-icons/fi'
-import { resolveProductModelUrl } from '@/utils/productModelUrl'
+import { resolveProductModelUrl, storageKeyFromSignedUrl } from '@/utils/productModelUrl'
 import { getGlbThumbnail } from '@/utils/glbThumbnail'
 import { cn } from '@/lib/cn'
 
@@ -64,16 +64,24 @@ export function resolveSkuVisual(sku: SkuVisualFields): SkuVisual {
   })
 
   let imageSrc: string | null = null
-  if (sku.imageUrl && !isGlbRef(sku.imageUrl)) {
+  const imageKey =
+    (sku.imageStorageKey && !isGlbRef(sku.imageStorageKey) ? sku.imageStorageKey : null) ||
+    (imageAttachment?.storageKey && !isGlbRef(imageAttachment.storageKey)
+      ? imageAttachment.storageKey
+      : null) ||
+    (imageAttachment?.objectKey && !isGlbRef(imageAttachment.objectKey)
+      ? imageAttachment.objectKey
+      : null) ||
+    (sku.imageUrl && !isGlbRef(sku.imageUrl) ? storageKeyFromSignedUrl(sku.imageUrl) : null) ||
+    (imageAttachment?.url && !isGlbRef(imageAttachment.url)
+      ? storageKeyFromSignedUrl(imageAttachment.url)
+      : null)
+  if (imageKey) {
+    imageSrc = `/api/files/image?key=${encodeURIComponent(imageKey)}`
+  } else if (sku.imageUrl && !isGlbRef(sku.imageUrl)) {
     imageSrc = `/api/files/image?url=${encodeURIComponent(sku.imageUrl)}`
-  } else if (sku.imageStorageKey && !isGlbRef(sku.imageStorageKey)) {
-    imageSrc = `/api/files/image?key=${encodeURIComponent(sku.imageStorageKey)}`
   } else if (imageAttachment?.url) {
     imageSrc = `/api/files/image?url=${encodeURIComponent(imageAttachment.url)}`
-  } else if (imageAttachment?.storageKey || imageAttachment?.objectKey) {
-    imageSrc = `/api/files/image?key=${encodeURIComponent(
-      (imageAttachment.storageKey ?? imageAttachment.objectKey)!,
-    )}`
   }
 
   return { imageSrc, modelSrc }

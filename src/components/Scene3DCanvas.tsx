@@ -8,6 +8,7 @@ import { Area } from "@/components/Area";
 import { CameraManager } from "@/components/CameraManager";
 import { SelectionPopup } from "@/components/SelectionPopup";
 import { SceneAtmosphere, SceneLighting } from "@/components/scene/SceneAtmosphere";
+import { SceneCaptureBridge } from "@/components/scene/SceneCaptureBridge";
 import { WAREHOUSE_SCALE } from "@/constants/warehouse";
 import { FloorDropHandler } from "@/components/scene/FloorDropHandler";
 import { ProductDropHandler } from "@/components/scene/ProductDropHandler";
@@ -25,9 +26,10 @@ export function Scene3DCanvas() {
       shadows={false}
       dpr={[1, 1.25]}
       performance={{ min: 0.5 }}
-      gl={{ powerPreference: 'high-performance', antialias: true }}
+      gl={{ powerPreference: 'high-performance', antialias: true, preserveDrawingBuffer: true }}
     >
       <SceneAtmosphere theme={sceneTheme} />
+      <SceneCaptureBridge />
       <PerspectiveCamera makeDefault position={[30 * S, 25 * S, 30 * S]} fov={50} />
       <SceneLighting theme={sceneTheme} />
       <CameraControls

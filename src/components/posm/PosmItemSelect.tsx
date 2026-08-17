@@ -3,6 +3,7 @@
 import type { PosmItemListItem } from '@/types/rackBlueprint'
 import { cn } from '@/lib/cn'
 import { POSM_DRAG_MIME } from '@/components/scene/PosmDropHandler'
+import { usePlanogramStore } from '@/store/planogramStore'
 
 export function PosmItemSelect({
   label,
@@ -24,6 +25,7 @@ export function PosmItemSelect({
   hint?: string
 }) {
   const selected = items.find((p) => p.id === value)
+  const setPosmDragActive = usePlanogramStore((s) => s.setPosmDragActive)
 
   return (
     <div className="space-y-1">
@@ -74,18 +76,19 @@ export function PosmItemSelect({
               type="button"
               draggable={!disabled}
               onDragStart={(e) => {
-                e.dataTransfer.setData(
-                  POSM_DRAG_MIME,
-                  JSON.stringify({
-                    id: p.id,
-                    name: p.name,
-                    posmType: p.posmType,
-                    imageUrl: p.imageUrl ?? null,
-                    imageStorageKey: p.imageStorageKey ?? null,
-                  }),
-                )
+                const payload = JSON.stringify({
+                  id: p.id,
+                  name: p.name,
+                  posmType: p.posmType,
+                  imageUrl: p.imageUrl ?? null,
+                  imageStorageKey: p.imageStorageKey ?? null,
+                })
+                e.dataTransfer.setData(POSM_DRAG_MIME, payload)
+                e.dataTransfer.setData('text/plain', payload)
                 e.dataTransfer.effectAllowed = 'copy'
+                setPosmDragActive(true)
               }}
+              onDragEnd={() => setPosmDragActive(false)}
               onClick={() => onChange(p.id)}
               className={cn(
                 'text-[10px] px-1.5 py-0.5 rounded border cursor-grab active:cursor-grabbing',
@@ -97,7 +100,7 @@ export function PosmItemSelect({
                     ? 'border-white/10 text-gray-300 hover:bg-white/5'
                     : 'border-gray-200 text-gray-600 hover:bg-gray-50',
               )}
-              title="Drag onto a row in the 3D scene"
+              title="Drag onto header, footer, wall, or shelf"
             >
               {p.name}
             </button>

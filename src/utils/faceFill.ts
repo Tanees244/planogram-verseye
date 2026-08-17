@@ -5,11 +5,14 @@
  */
 
 import { formatCm } from '@/utils/lengthUnits'
+import { maxFacingsInBinVolume } from '@/utils/facingPack'
 
 export const FACE_FILL_TOLERANCE_M = 0.01
 
 export type FaceFillProduct = {
   width?: number | null
+  depth?: number | null
+  height?: number | null
   quantity?: number | null
   isActive?: boolean | null
 }
@@ -398,6 +401,57 @@ export function fillBinFrontFacings<
     if (!grew) break
     guard += 1
   }
+  return { ...bin, products: next }
+}
+
+/**
+ * After bin/row/rack resize: keep depth×stack quantities when they still fit,
+ * clamp to W×D×H capacity, and only grow to fill the front face when underfilled.
+ * Unlike {@link fillBinFrontFacings}, this does not wipe volume packs down to front-only.
+ */
+export function refitBinVolumeFacings<
+  T extends FaceFillBin & {
+    depth?: number | null
+    height?: number | null
+    products?: Array<
+      FaceFillProduct & {
+        name?: string
+        depth?: number | null
+        height?: number | null
+      }
+    > | null
+  },
+>(bin: T): T {
+  const products = (bin.products ?? []).filter((p) => p?.isActive !== false)
+  if (products.length === 0) return bin
+  const binW = Number(bin.width)
+  const binD = Number(bin.depth)
+  const binH = Number(bin.height)
+  if (!(binW > 0)) return bin
+
+  const next = products.map((p) => {
+    const w = Number(p.width)
+    const d = Number(p.depth)
+    const h = Number(p.height)
+    const cur = Math.max(0, Math.floor(Number(p.quantity) || 0))
+    if (!(w > 0)) return { ...p, quantity: Math.max(1, cur) }
+
+    const front = suggestedFaceFacings(binW, w)
+    let volumeMax = front
+    if (binD > 0 && binH > 0 && d > 0 && h > 0) {
+      volumeMax = Math.max(
+        front,
+        maxFacingsInBinVolume(binW, binD, binH, w, d, h),
+      )
+    }
+
+    // Preserve intentional depth/stack packs; clamp if cavity shrank.
+    let qty = Math.min(Math.max(cur, 1), Math.max(1, volumeMax))
+    // Exact face fill: grow only when under the front line and volume allows.
+    if (qty < front && volumeMax >= front) qty = front
+    return { ...p, quantity: qty }
+  })
+
   return { ...bin, products: next }
 }
 

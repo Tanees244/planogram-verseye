@@ -35,14 +35,14 @@ export interface FacingPackResult {
   fits: boolean
 }
 
-/** Soft cap for rendered meshes (capacity math still uses full maxFit). */
-export const FACING_PACK_VISUAL_LIMIT = 72
+/** Soft cap only for extreme catalogs — pack/render use full quantity. */
+export const FACING_PACK_VISUAL_LIMIT = 5000
 
 /**
  * Max full GLB clones per bin. Extra facings use cheap boxes/textures.
  * Prefer front-row slots so more facings read clearly on the shelf face.
  */
-export const MAX_GLB_FACINGS_PER_BIN = 24
+export const MAX_GLB_FACINGS_PER_BIN = 48
 
 
 function safePositive(n: number, fallback = 0.08): number {
@@ -125,6 +125,10 @@ export function packFacingsInBin(options: {
    * `stackFirst`: across → stack up → depth — stackable SKUs show stacks on the front face.
    */
   packOrder?: 'depthFirst' | 'stackFirst'
+  /** Pack columns from the left (default) or right edge of the bin. */
+  align?: 'left' | 'right'
+  /** When false, never stack vertically (one layer only). */
+  stackable?: boolean
 }): FacingPackResult {
   const wallThick = options.wallThick ?? 0
   const lipHeight = options.lipHeight ?? 0
@@ -158,6 +162,9 @@ export function packFacingsInBin(options: {
     depthRows = 1
     stackLayers = 1
   }
+  if (options.stackable === false) {
+    stackLayers = 1
+  }
 
   const maxFitAbsolute = cols * depthRows * stackLayers
 
@@ -179,27 +186,38 @@ export function packFacingsInBin(options: {
 
   const qty = Math.max(0, Math.floor(options.quantity) || 0)
 
+  // Expand extra quantity into depth, never extra stack layers — stacks must
+  // stay within the shelf opening.
+  let visCols = Math.max(1, useCols)
+  let visDepth = Math.max(1, depthRows)
+  let visStack = Math.max(1, stackLayers)
+  if (options.stackable === false) visStack = 1
+  if (qty > 0) {
+    const stackFirstExpand = options.packOrder === 'stackFirst' && options.stackable !== false
+    if (stackFirstExpand) {
+      const frontCap = Math.max(1, visCols * visStack)
+      visDepth = Math.max(visDepth, Math.ceil(qty / frontCap))
+    } else {
+      const plane = Math.max(1, visCols * visStack)
+      visDepth = Math.max(visDepth, Math.ceil(qty / plane))
+    }
+  }
+
   // How many vertical layers this quantity will actually occupy (for visual scale).
   const stackFirst = options.packOrder === 'stackFirst'
-  const gridColsForQty = Math.max(1, useCols)
   const layersForQty = stackFirst
     ? Math.min(
-        stackLayers,
+        visStack,
         Math.max(
           1,
-          Math.ceil(
-            Math.min(qty || 1, gridColsForQty * Math.max(stackLayers, 1)) / gridColsForQty,
-          ),
+          Math.ceil(Math.min(qty || 1, visCols * Math.max(visStack, 1)) / visCols),
         ),
       )
     : Math.min(
-        stackLayers,
+        visStack,
         Math.max(
           1,
-          Math.ceil(
-            Math.min(qty || 1, freeMax || qty || 1) /
-              Math.max(1, gridColsForQty * depthRows),
-          ),
+          Math.ceil((qty || 1) / Math.max(1, visCols * visDepth)),
         ),
       )
 
@@ -210,10 +228,8 @@ export function packFacingsInBin(options: {
   const placeableH = Math.max(0.001, binH - Math.max(lipHeight, 0))
   const packScale = Math.min(
     1,
-    placeableW / Math.max(useCols * fw, 0.001),
-    placeableD / Math.max(depthRows * fd, 0.001),
-    // Only reserve height for layers we actually place — don't squash products
-    // to leave empty upper stack capacity.
+    placeableW / Math.max(visCols * fw, 0.001),
+    placeableD / Math.max(visDepth * fd, 0.001),
     placeableH / Math.max(layersForQty * fh, 0.001),
   )
   fw *= packScale
@@ -221,39 +237,46 @@ export function packFacingsInBin(options: {
   fd *= packScale
 
   const shelfFloorY = -binH / 2 + Math.max(lipHeight, inset * 0.5, 0.001)
-  const startX = -binW / 2 + inset + usedW
+  const alignRight = options.align === 'right'
+  const startX = alignRight
+    ? binW / 2 - inset - usedW
+    : -binW / 2 + inset + usedW
   const frontZ = -binD / 2 + inset
 
   const slots: FacingPackSlot[] = []
-  const limit = Math.max(0, options.visualLimit ?? FACING_PACK_VISUAL_LIMIT)
+  // No silent truncation — materialize every facing (callers may pass a lower visualLimit).
+  const limit = Math.max(
+    0,
+    options.visualLimit ?? Math.max(qty, FACING_PACK_VISUAL_LIMIT),
+  )
   const renderCount = Math.min(qty, limit)
   for (let i = 0; i < renderCount; i++) {
     const globalIndex = occupied + i
     const overflow = i >= freeMax
     const idx = occupied > 0 ? globalIndex : i
-    const gridCols = Math.max(1, useCols)
+    const gridCols = Math.max(1, visCols)
     let col: number
     let depthRow: number
     let layer: number
     if (stackFirst) {
       // across → stack → depth (front face shows vertical stacks)
-      const frontPlane = gridCols * Math.max(1, stackLayers)
+      const frontPlane = gridCols * Math.max(1, visStack)
       depthRow = Math.floor(idx / Math.max(frontPlane, 1))
       const rem = idx % Math.max(frontPlane, 1)
       col = rem % gridCols
       layer = Math.floor(rem / gridCols)
     } else {
-      const fp = gridCols * depthRows
+      const fp = gridCols * visDepth
       layer = Math.floor(idx / Math.max(fp, 1))
       const rem = idx % Math.max(fp, 1)
       col = rem % gridCols
       depthRow = Math.floor(rem / gridCols)
     }
-    const clampedLayer = Math.min(Math.max(0, layer), Math.max(stackLayers - 1, 0))
-    const clampedDepth = Math.min(Math.max(0, depthRow), Math.max(depthRows - 1, 0))
-    const x = startX + col * fw + fw / 2
-    const y = shelfFloorY + clampedLayer * fh + fh / 2
-    const z = frontZ + clampedDepth * fd + fd / 2
+    const x = alignRight
+      ? startX - col * fw - fw / 2
+      : startX + col * fw + fw / 2
+    const y = shelfFloorY + layer * fh + fh / 2
+    const z = frontZ + depthRow * fd + fd / 2
     slots.push({
       index: i,
       x,
@@ -263,9 +286,9 @@ export function packFacingsInBin(options: {
       height: fh,
       depth: fd,
       col,
-      depthRow: clampedDepth,
-      layer: clampedLayer,
-      overflow: overflow || layer >= stackLayers,
+      depthRow,
+      layer,
+      overflow: overflow || layer >= stackLayers || depthRow >= depthRows,
     })
   }
 
@@ -277,6 +300,77 @@ export function packFacingsInBin(options: {
     slots,
     packScale,
     fits: qty <= freeMax,
+  }
+}
+
+/**
+ * Explicit W×D×H grid that fills the bin box (placement preview).
+ * Every cell gets a slot so depth and stack read as full — no visual-limit truncation.
+ */
+export function packExplicitGrid(options: {
+  binWidth: number
+  binHeight: number
+  binDepth: number
+  facing: FacingPackItem
+  cols: number
+  depthRows: number
+  stackLayers: number
+}): FacingPackResult {
+  const binW = safePositive(options.binWidth, 0.35)
+  const binH = safePositive(options.binHeight, 0.35)
+  const binD = safePositive(options.binDepth, 0.35)
+  const cols = Math.max(1, Math.floor(options.cols))
+  const depthRows = Math.max(1, Math.floor(options.depthRows))
+  const stackLayers = Math.max(1, Math.floor(options.stackLayers))
+
+  const fw0 = safePositive(options.facing.width)
+  const fh0 = safePositive(options.facing.height, 0.27)
+  const fd0 = safePositive(options.facing.depth)
+
+  // Stretch cell size to fill the bin so the volume looks packed.
+  const fw = binW / cols
+  const fh = binH / stackLayers
+  const fd = binD / depthRows
+  const packScale = Math.min(fw / fw0, fh / fh0, fd / fd0, 1)
+  const drawW = fw0 * packScale
+  const drawH = fh0 * packScale
+  const drawD = fd0 * packScale
+
+  const shelfFloorY = -binH / 2
+  const startX = -binW / 2
+  const frontZ = -binD / 2
+  const maxFit = cols * depthRows * stackLayers
+  const slots: FacingPackSlot[] = []
+  let index = 0
+  for (let layer = 0; layer < stackLayers; layer++) {
+    for (let depthRow = 0; depthRow < depthRows; depthRow++) {
+      for (let col = 0; col < cols; col++) {
+        slots.push({
+          index,
+          x: startX + col * fw + fw / 2,
+          y: shelfFloorY + layer * fh + fh / 2,
+          z: frontZ + depthRow * fd + fd / 2,
+          width: drawW,
+          height: drawH,
+          depth: drawD,
+          col,
+          depthRow,
+          layer,
+          overflow: false,
+        })
+        index += 1
+      }
+    }
+  }
+
+  return {
+    cols,
+    depthRows,
+    stackLayers,
+    maxFit,
+    slots,
+    packScale,
+    fits: true,
   }
 }
 

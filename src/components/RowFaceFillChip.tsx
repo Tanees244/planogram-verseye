@@ -12,7 +12,7 @@ const LABELS: Record<RowFaceFillState, string> = {
   row_gap: 'Unused shelf width',
   bin_gap: 'Add facings',
   overfill: 'Overfilled',
-  empty: 'Add bins',
+  empty: 'Empty shelf',
 }
 
 const STYLES: Record<RowFaceFillState, string> = {
@@ -46,7 +46,7 @@ export function RowFaceFillChip({
         STYLES[state],
         className,
       )}
-      title="Front face fill (linear facings across bin width)"
+      title="Front face fill (linear facings across the shelf)"
     >
       {LABELS[state]}
       {extra}

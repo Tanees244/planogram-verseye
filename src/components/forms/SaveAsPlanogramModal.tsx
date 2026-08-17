@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FiCamera, FiImage, FiX } from 'react-icons/fi'
+import { FiCamera, FiImage, FiMonitor, FiX } from 'react-icons/fi'
 import type { Rack } from '@/store/planogramStore'
 import { Modal } from '@/components/ui/Modal'
 import { Btn, FormField, Input } from '@/components/ui/form'
@@ -12,6 +12,7 @@ import {
   updateShelfName,
   uploadShelfIdealImage,
 } from '@/utils/saveShelfPlanogramApi'
+import { captureScenePngFile } from '@/utils/planogramExport'
 
 export type SaveAsPlanogramModalProps = {
   open: boolean
@@ -182,17 +183,26 @@ export function SaveAsPlanogramModal({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-gray-700">Ideal image *</p>
           <p className="text-[11px] text-gray-500 leading-snug">
-            Take a photo, or snip/screenshot this rack face and upload the image.
+            Capture the 3D rack in this app or upload a snip.
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               disabled={busy}
-              onClick={() => cameraRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              onClick={() => {
+                const snap = captureScenePngFile(
+                  `${displayRackName(rack).replace(/\s+/g, '-')}-ideal`,
+                )
+                if (!snap) {
+                  setError('Could not capture the 3D scene. Orbit the rack into view and try again.')
+                  return
+                }
+                pickFile(snap)
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
             >
-              <FiCamera size={14} />
-              Take photo
+              <FiMonitor size={14} />
+              Capture 3D snapshot
             </button>
             <button
               type="button"
@@ -239,7 +249,7 @@ export function SaveAsPlanogramModal({
             onChange={(e) => pickFile(e.target.files?.[0])}
           />
           <p className="text-[11px] text-gray-500">
-            Tip: after you snip, use <b>Upload / Snip screenshot</b> to attach it.
+            Tip: <b>Capture 3D snapshot</b> uses the current camera view of this scene.
           </p>
           {previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -269,7 +279,7 @@ export function SaveAsPlanogramModal({
             onChange={(e) => setSaveLayoutFirst(e.target.checked)}
           />
           <span>
-            Save rack layout first so ideal order matches current bins / SKUs
+            Save rack layout first so ideal order matches current shelves / SKUs
           </span>
         </label>
 

@@ -4,6 +4,9 @@
  * Renders a GLB into a small PNG data-URL using ONE shared offscreen
  * WebGL renderer. Lists can then show 3D previews as plain <img> tags
  * without hitting the browser's WebGL-context limit.
+ *
+ * Bytes + PNG are cached by storage key so 500 SKUs that share one model
+ * trigger a single /api/files/model request.
  */
 
 import {
@@ -18,10 +21,12 @@ import {
   WebGLRenderer,
 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { canonicalFileCacheKey, resolveProductModelUrl } from '@/utils/productModelUrl'
 
 const THUMB_SIZE = 160
 
-const cache = new Map<string, Promise<string | null>>()
+const thumbCache = new Map<string, Promise<string | null>>()
+const glbBytesCache = new Map<string, Promise<ArrayBuffer>>()
 
 let renderer: WebGLRenderer | null = null
 let loader: GLTFLoader | null = null
@@ -45,10 +50,39 @@ function getLoader(): GLTFLoader {
   return loader
 }
 
-async function renderThumbnail(url: string): Promise<string | null> {
+function proxyUrlFor(src: string): string {
+  const key = canonicalFileCacheKey(src)
+  if (key && !key.startsWith('/') && !/^https?:\/\//i.test(key)) {
+    return `/api/files/model?key=${encodeURIComponent(key)}`
+  }
+  return resolveProductModelUrl({ modelUrl: src }) ?? src
+}
+
+/** One network fetch per unique GLB (shared by list thumbs and later 3D). */
+export function fetchSharedGlbBytes(src: string): Promise<ArrayBuffer> {
+  const key = canonicalFileCacheKey(src)
+  let pending = glbBytesCache.get(key)
+  if (!pending) {
+    pending = fetch(proxyUrlFor(src), {
+      credentials: 'include',
+      cache: 'force-cache',
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(`glb ${res.status}`)
+      return res.arrayBuffer()
+    })
+    glbBytesCache.set(key, pending)
+    pending.catch(() => {
+      glbBytesCache.delete(key)
+    })
+  }
+  return pending
+}
+
+async function renderThumbnail(src: string): Promise<string | null> {
   if (typeof window === 'undefined') return null
   try {
-    const gltf = await getLoader().loadAsync(url)
+    const bytes = await fetchSharedGlbBytes(src)
+    const gltf = await getLoader().parseAsync(bytes, '')
     const model = gltf.scene
 
     const scene = new Scene()
@@ -62,14 +96,13 @@ async function renderThumbnail(url: string): Promise<string | null> {
     scene.add(fill)
     scene.add(model)
 
-    // Frame the model with a slight top-down 3/4 angle
     const box = new Box3().setFromObject(model)
     const center = box.getCenter(new Vector3())
     const size = box.getSize(new Vector3())
     const radius = Math.max(size.x, size.y, size.z, 0.001) * 0.5
 
     const camera = new PerspectiveCamera(38, 1, radius / 100, radius * 100)
-    const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.35
+    const dist = (radius / Math.tan((camera.fov * Math.PI) / 360)) * 1.35
     camera.position.set(
       center.x + dist * 0.55,
       center.y + dist * 0.4,
@@ -81,7 +114,6 @@ async function renderThumbnail(url: string): Promise<string | null> {
     r.render(scene, camera)
     const dataUrl = r.domElement.toDataURL('image/png')
 
-    // Free GPU resources held by this model
     model.traverse((child: any) => {
       child.geometry?.dispose?.()
       const mats = Array.isArray(child.material) ? child.material : [child.material]
@@ -98,12 +130,25 @@ async function renderThumbnail(url: string): Promise<string | null> {
   }
 }
 
-/** Cached GLB → PNG data-URL. Returns null when the model can't be loaded. */
+/** Cached GLB → PNG data-URL. Same model file is fetched and rendered once. */
 export function getGlbThumbnail(url: string): Promise<string | null> {
-  let pending = cache.get(url)
+  const key = canonicalFileCacheKey(url)
+  let pending = thumbCache.get(key)
   if (!pending) {
     pending = renderThumbnail(url)
-    cache.set(url, pending)
+    thumbCache.set(key, pending)
   }
   return pending
+}
+
+/** Warm unique models from a SKU list (no-op for duplicates). */
+export function preloadGlbThumbnails(urls: Array<string | null | undefined>) {
+  const seen = new Set<string>()
+  for (const url of urls) {
+    if (!url) continue
+    const key = canonicalFileCacheKey(url)
+    if (seen.has(key)) continue
+    seen.add(key)
+    void getGlbThumbnail(url)
+  }
 }

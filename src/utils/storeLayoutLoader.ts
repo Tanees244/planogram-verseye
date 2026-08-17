@@ -196,6 +196,22 @@ function resolveBinDimensions(
   }
 }
 
+/** Right-edge slots stay on the right after reload; otherwise pack from the left. */
+function inferBinAnchor(
+  b: { xStart?: unknown; xEnd?: unknown; width?: unknown },
+  rowSpan: number,
+): 'left' | 'right' | undefined {
+  const span = Number(rowSpan)
+  const xStart = Number(b.xStart)
+  const width = Number(b.width)
+  if (!(span > 0) || !Number.isFinite(xStart) || xStart < 0) return undefined
+  const xEnd = Number.isFinite(Number(b.xEnd))
+    ? Number(b.xEnd)
+    : xStart + (Number.isFinite(width) && width > 0 ? width : 0)
+  if (xStart > 0.04 && xEnd >= span - 0.04) return 'right'
+  return 'left'
+}
+
 function enrichShell(raw: any): RackShell | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   return {
@@ -236,7 +252,7 @@ export function unwrapRackPayload(raw: any): any {
 // Renderable facings per SKU. Matches FACING_PACK_VISUAL_LIMIT so a bin
 // filled to capacity actually shows every unit instead of a truncated
 // front slice that looks empty/floating.
-const MAX_FACINGS = 1500
+const MAX_FACINGS = 5000
 
 /** Expands each SKU into N renderable facings based on its quantity (for 3D shelf display). */
 export function expandProductsByQuantity<
@@ -319,6 +335,7 @@ export function normalizeRack(rawInput: any): Rack {
         const binFallback = computeBinDims(width, depth, binsRaw.length || 1)
         const bins = binsRaw.map((b: any) => {
           const binDims = resolveBinDimensions(b, rowHeight, binFallback)
+          const spanForAnchor = safeDim(rowWidth, width * 0.85)
           return {
             id: resolveEntityId(b.binId) ?? resolveEntityId(b.id) ?? generateId(),
             width: binDims.width,
@@ -326,6 +343,7 @@ export function normalizeRack(rawInput: any): Rack {
             height: binDims.height,
             binName: b.binName ?? b.name ?? b.binCode ?? undefined,
             products: normalizeBinProducts(b),
+            anchor: inferBinAnchor(b, spanForAnchor),
             itemTagPosmItemId:
               b.itemTagPosmItemId ??
               (typeof b.itemTagPosm?.id === 'string' ? b.itemTagPosm.id : null) ??

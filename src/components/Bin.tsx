@@ -11,9 +11,11 @@ import { Product } from "./Product";
 import { ProductPlacementPreview } from "./ProductPlacementPreview";
 import { RowDividerPosmMesh } from "./RowDividerPosmMesh";
 import { expandProductsByQuantity, resolveProductFacingId } from "@/utils/storeLayoutLoader";
-import { packFacingsInBin, packMixedFacingsInBin, MAX_GLB_FACINGS_PER_BIN } from "@/utils/facingPack";
+import { packFacingsInBin, packMixedFacingsInBin } from "@/utils/facingPack";
+import { inferPlacementAnchor } from "@/utils/productRowPlacement";
+import { clampRowSpanToInner } from "@/utils/rackBlueprintMapper";
 import { safeDim } from "@/utils/safeDimensions";
-import { isStackableSkuId } from "@/utils/stackableSku";
+import { isStackableSkuId, resolveIsStackable } from "@/utils/stackableSku";
 import type { RackSurfacePosm } from "@/types/rackBlueprint";
 
 interface BinProps {
@@ -42,7 +44,7 @@ export function Bin({
     selectedId,
     setSelected,
     isPlacingProduct,
-    placeProductOnBin,
+    setProductPlacementTarget,
     productDropHover,
     pendingProductParams,
     setProductDropHover,
@@ -55,11 +57,17 @@ export function Bin({
 
   const isSelected = selectedId === bin.id;
   const placing = isPlacingProduct || Boolean(movingInventoryFromBinId);
-  const dropHover = productDropHover?.binId === bin.id;
+  const dropHover =
+    productDropHover?.binId === bin.id ||
+    (isPlacingProduct && productDropHover?.rowId === rowId);
   const dropFits = productDropHover?.fits ?? true;
   const isMoveSource = movingInventoryFromBinId === bin.id;
+  // Bin-local facing ghosts only for move / attach-modal; row placement ghosts live on Row.
   const showPlacementPreview =
-    Boolean(pendingProductParams) && placing && (dropHover || hovered);
+    Boolean(pendingProductParams) &&
+    Boolean(movingInventoryFromBinId) &&
+    placing &&
+    (dropHover || hovered);
   const attachPreview =
     attachFacingPreview?.binId === bin.id ? attachFacingPreview : null;
 
@@ -107,14 +115,16 @@ export function Bin({
     col: number
   }[] = []
 
+  const firstProduct = facings[0]
+  const binStackable = Boolean(
+    firstProduct &&
+      resolveIsStackable(resolveProductFacingId(firstProduct.id), {
+        isStackable: firstProduct.isStackable,
+      }),
+  )
+  const packAlign = 'left'
+
   if (uniformPack && firstDim && facingDims.length > 0) {
-    const stackable = facings.some(
-      (p) =>
-        p.isStackable === true ||
-        (p.isStackable !== false &&
-          typeof window !== 'undefined' &&
-          isStackableSkuId(resolveProductFacingId(p.id))),
-    )
     const pack = packFacingsInBin({
       binWidth: actualBinWidth,
       binHeight: actualBinHeight,
@@ -127,7 +137,10 @@ export function Bin({
       quantity: facingDims.length,
       wallThick,
       lipHeight,
-      packOrder: stackable ? 'stackFirst' : 'depthFirst',
+      packOrder: binStackable ? 'stackFirst' : 'depthFirst',
+      align: packAlign,
+      stackable: binStackable,
+      visualLimit: facingDims.length,
     })
     packedPositions = pack.slots.map((slot) => ({
       x: slot.x,
@@ -241,7 +254,17 @@ export function Bin({
       occupiedFacings,
       wallThick,
       lipHeight,
-      packOrder: stackable ? 'stackFirst' : 'depthFirst',
+      packOrder:
+        Boolean(attachPreview.isStackable) ||
+        isStackableSkuId(attachPreview.skuId) ||
+        Boolean(pendingProductParams && isStackableSkuId(pendingProductParams.id))
+          ? 'stackFirst'
+          : 'depthFirst',
+      align: packAlign,
+      stackable:
+        Boolean(attachPreview.isStackable) ||
+        isStackableSkuId(attachPreview.skuId) ||
+        Boolean(pendingProductParams && isStackableSkuId(pendingProductParams.id)),
     })
     // GLB ghosts are expensive (scene clone each) — model the front slots,
     // plain ghost boxes beyond that so large quantities still fill the bin.
@@ -262,14 +285,25 @@ export function Bin({
   }
 
   const updatePlacementHover = (active: boolean) => {
-    if (!placing || !pendingProductParams) {
+    if (!placing) {
       if (!active) setProductDropHover(null)
       return
     }
+    if (isPlacingProduct) {
+      if (!active) {
+        if (productDropHover?.rowId === rowId) setProductDropHover(null)
+        return
+      }
+      // Row owns the fit preview while placing from the palette.
+      setProductDropHover({ rowId, fits: true })
+      return
+    }
+    if (!pendingProductParams && !movingInventoryFromBinId) return
     if (!active) {
       if (productDropHover?.binId === bin.id) setProductDropHover(null)
       return
     }
+    if (!pendingProductParams) return
     const fit = canProductFitInBin(bin.id, {
       width: pendingProductParams.width,
       depth: pendingProductParams.depth,
@@ -301,18 +335,44 @@ export function Bin({
       return;
     }
     if (isPlacingProduct) {
-      const res = await placeProductOnBin(bin.id);
-      if (!res.success && res.message) {
-        /* error shown via store.addProductError */
+      const racks = usePlanogramStore.getState().area.racks
+      let hostRow: { width?: number; span?: number; bins: BinType[] } | undefined
+      let hostRackWidth = actualBinWidth
+      for (const rack of racks) {
+        for (const side of rack.sides) {
+          const row = side.rows.find((r) => r.id === rowId)
+          if (row) {
+            hostRow = row
+            hostRackWidth = clampRowSpanToInner(rack, row.width)
+            break
+          }
+        }
+        if (hostRow) break
       }
-      return;
+      const local = e.object.worldToLocal(e.point.clone())
+      const rowLocalX = position[0] + local.x
+      const anchor = inferPlacementAnchor(
+        rowLocalX,
+        hostRackWidth,
+        hostRow?.bins ?? [],
+      )
+      const res = setProductPlacementTarget(rowId, { anchor })
+      if (!res.success && res.message) {
+        usePlanogramStore.setState({ addProductError: res.message })
+      }
+      return
     }
-    setSelected(bin.id, "bin");
+    const firstSku = bin.products[0]
+    if (firstSku) {
+      setSelected(resolveProductFacingId(firstSku.id), 'product')
+      return
+    }
+    setSelected(rowId, 'row')
   };
 
   return (
     <group position={position} userData={{ id: bin.id, type: 'bin' }}>
-      {/* Base – box covering the row segment, sits on shelf */}
+      {/* Invisible hit volume — bins are not a portal concept; SKUs/rows are. */}
       <mesh
         userData={{ id: bin.id, type: 'bin' }}
         ref={meshRef}
@@ -338,7 +398,7 @@ export function Bin({
           metalness={0.1}
           roughness={0.08}
           transparent
-          opacity={isSelected || isMoveSource || (placing && hovered) || dropHover ? 0.35 : 0.15}
+          opacity={isMoveSource || (placing && hovered) || dropHover ? 0.22 : 0}
           depthWrite={false}
           emissive={
             isMoveSource
@@ -347,30 +407,24 @@ export function Bin({
               ? dropFits
                 ? "#059669"
                 : "#dc2626"
-              : hovered || (placing && isSelected)
-                ? "#2C5282"
-                : placing
-                  ? "#059669"
-                  : "#000000"
+              : "#000000"
           }
-          emissiveIntensity={hovered || placing || dropHover || isMoveSource ? 0.45 : 0}
+          emissiveIntensity={placing || dropHover || isMoveSource ? 0.4 : 0}
         />
-        <Edges
-          scale={1}
-          threshold={15}
-          color={
-            dropHover || (placing && hovered)
-              ? dropFits
-                ? "#10b981"
-                : "#ef4444"
-              : isSelected
-                ? "#2C5282"
-                : hovered
-                  ? "#2C5282"
-                  : "#2c3e50"
-          }
-          lineWidth={isSelected || (placing && hovered) || dropHover ? 3 : 2}
-        />
+        {(isMoveSource || (placing && hovered) || dropHover) && (
+          <Edges
+            scale={1}
+            threshold={15}
+            color={
+              dropHover || (placing && hovered)
+                ? dropFits
+                  ? "#10b981"
+                  : "#ef4444"
+                : "#d97706"
+            }
+            lineWidth={2.5}
+          />
+        )}
       </mesh>
       {previewSlots.map((slot, index) => (
         <ProductPlacementPreview
@@ -385,14 +439,8 @@ export function Bin({
           modelStorageKey={slot.modelStorageKey}
         />
       ))}
-      {(() => {
-        // Prefer front-row slots for GLBs; everything else = cheap box (LOD).
-        let glbBudget = MAX_GLB_FACINGS_PER_BIN
-        return scaledFacings.map((product, index) => {
-          const slot = packedPositions[index]
-          const isFront = !slot || slot.depthRow === 0
-          const useGlb = isFront && glbBudget > 0
-          if (useGlb) glbBudget -= 1
+      {scaledFacings.map((product, index) => {
+          const hasPicture = Boolean(product.imageUrl || product.imageStorageKey)
           return (
             <Product
               key={`${bin.id}-${index}-${product.id}`}
@@ -400,11 +448,10 @@ export function Bin({
               binId={bin.id}
               rowId={rowId}
               position={productPositions[index] ?? [0, 0, 0]}
-              forceSimple={!useGlb}
+              forceSimple={hasPicture}
             />
           )
-        })
-      })()}
+        })}
       <RowDividerPosmMesh
         posm={bin.itemTagPosm ?? fallbackPosm}
         rowWidth={actualBinWidth}
@@ -412,7 +459,9 @@ export function Bin({
         shelfZ={-actualBinDepth / 2}
         onSelect={(e) => {
           e.stopPropagation()
-          setSelected(bin.id, 'bin')
+          const firstSku = bin.products[0]
+          if (firstSku) setSelected(resolveProductFacingId(firstSku.id), 'product')
+          else setSelected(rowId, 'row')
         }}
       />
     </group>

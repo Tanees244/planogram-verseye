@@ -12,7 +12,7 @@ function isTypingTarget(el: EventTarget | null): boolean {
   return Boolean(el.closest('[contenteditable="true"]'))
 }
 
-/** Ctrl/Cmd+C / Ctrl/Cmd+V for SKU and row clipboard · Esc cancels placement modes. */
+/** Ctrl/Cmd+C / Ctrl/Cmd+V for SKU content copy-paste · Esc cancels placement modes. */
 export function PlanogramClipboardHotkeys() {
   const copySelection = usePlanogramStore((s) => s.copySelection)
   const pasteClipboard = usePlanogramStore((s) => s.pasteClipboard)

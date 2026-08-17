@@ -11,8 +11,8 @@ export function isLegacyPlanogramJson(value: unknown): boolean {
 
 export function detectPlanogramFormat(content: string, filename?: string): PlanogramFileFormat {
   const ext = filename?.split('.').pop()?.toLowerCase();
-  if (ext === 'plm') return 'plm';
-  if (ext === 'psa') return 'psa';
+  if (ext === 'plm' || ext === 'pla') return 'plm';
+  if (ext === 'psa' || ext === 'psm') return 'psa';
 
   const trimmed = content.trim();
   if (!trimmed) return 'unknown';

@@ -559,53 +559,6 @@ export function CustomRackBuilder() {
                 step={0.01}
                 onChange={(wallThickness) => patch({ wallThickness })}
               />
-              <div className="pt-1 space-y-1.5">
-                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
-                  Facing
-                </p>
-                <div className="flex rounded-lg bg-white/10 p-0.5 border border-white/15">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      patch({
-                        isDoubleSided: false,
-                      })
-                    }
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      !draft.isDoubleSided
-                        ? 'bg-brand text-white shadow-sm'
-                        : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    One-sided
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      patch({
-                        isDoubleSided: true,
-                        walls: {
-                          ...draft.walls,
-                          back: true,
-                          frontGlass: false,
-                        },
-                      })
-                    }
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      draft.isDoubleSided
-                        ? 'bg-brand text-white shadow-sm'
-                        : 'text-gray-300 hover:text-white'
-                    }`}
-                  >
-                    Two-sided
-                  </button>
-                </div>
-                <p className="text-[10px] text-gray-400 leading-snug">
-                  {draft.isDoubleSided
-                    ? 'Shelves on both faces with a center divider. Each side gets half the depth.'
-                    : 'Single shopper-facing bay with a back wall.'}
-                </p>
-              </div>
             </div>
 
             <div className="p-2.5 rounded-lg bg-brand/15 border border-brand/30">
@@ -689,13 +642,11 @@ export function CustomRackBuilder() {
             <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 space-y-2">
               <p className="text-xs font-semibold text-white">Walls</p>
               <p className="text-[10px] text-gray-400 leading-snug">
-                {draft.isDoubleSided
-                  ? 'Two-sided bay with a center divider. Rows are created on each side.'
-                  : 'Hollow bay with back + side walls.'}
+                Hollow bay with back + side walls.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <Toggle
-                  label={draft.isDoubleSided ? 'Center divider' : 'Back wall'}
+                  label="Back wall"
                   checked={draft.walls.back}
                   onChange={(back) => patchWalls({ back })}
                 />

@@ -76,12 +76,10 @@ export function RackPosmPanel({
     }
   }
 
-  const walls = shell?.walls
-  const isCustom = rack.fixtureType === 'CUSTOM'
-  const headerEnabled = Boolean(shell?.header?.enabled) || !isCustom
-  const footerEnabled = Boolean(shell?.footer?.enabled) || !isCustom
-  const leftEnabled = walls?.left !== false
-  const rightEnabled = walls?.right !== false
+  const headerEnabled = true
+  const footerEnabled = true
+  const leftEnabled = true
+  const rightEnabled = true
   const previewFor = (id: string) => {
     const item = items.find((p) => p.id === id)
     if (!item) return null
@@ -104,7 +102,8 @@ export function RackPosmPanel({
         Rack POSM — header / footer / walls
       </p>
       <p className={cn('text-[11px] leading-snug', dark ? 'text-gray-500' : 'text-gray-400')}>
-        Assign an existing POSM to a surface, then save.
+        Pick a POSM for header, footer, or side walls, then save — or drag from the catalog onto
+        those surfaces in 3D.
       </p>
 
       {(error || saveError) && (
@@ -119,7 +118,7 @@ export function RackPosmPanel({
         loading={loading}
         disabled={!headerEnabled}
         dark={dark}
-        hint={!headerEnabled ? 'Enable header in custom rack shell first' : undefined}
+        hint={!headerEnabled ? 'Enable header in custom rack shell first' : 'Fascia across the top of the rack'}
       />
       {previewFor(headerId) && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -137,7 +136,7 @@ export function RackPosmPanel({
         loading={loading}
         disabled={!footerEnabled}
         dark={dark}
-        hint={!footerEnabled ? 'Enable footer in custom rack shell first' : undefined}
+        hint={!footerEnabled ? 'Enable footer in custom rack shell first' : 'Kick plate along the base'}
       />
       {previewFor(footerId) && (
         // eslint-disable-next-line @next/next/no-img-element

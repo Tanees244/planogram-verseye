@@ -43,17 +43,17 @@ function writeMap(map: OverrideMap) {
   }
 }
 
-/** Resolve stackable: explicit product flag → local override → default true. */
+/** Resolve stackable: explicit product flag → local override → default false (must be allowed). */
 export function resolveIsStackable(
   skuId: string | null | undefined,
   flags?: { isStackable?: boolean | null; stackable?: boolean | null },
 ): boolean {
   if (flags?.isStackable === true || flags?.stackable === true) return true
   if (flags?.isStackable === false || flags?.stackable === false) return false
-  if (!skuId) return true
+  if (!skuId) return false
   const map = readMap()
   if (Object.prototype.hasOwnProperty.call(map, skuId)) return Boolean(map[skuId])
-  return true
+  return false
 }
 
 export function isStackableSkuId(skuId: string | null | undefined): boolean {

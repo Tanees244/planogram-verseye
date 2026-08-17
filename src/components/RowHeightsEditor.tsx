@@ -197,7 +197,7 @@ export function RackRowHeightsPanel({
   const handleRemove = async (rowId: string, label: string) => {
     if (
       !window.confirm(
-        `Delete ${label}? All bins and products on it will be removed.`,
+        `Delete ${label}? All products on it will be removed.`,
       )
     ) {
       return
@@ -221,7 +221,7 @@ export function RackRowHeightsPanel({
           </p>
           {onSelectRow && (
             <p className={cn('text-[10px] mt-1 leading-snug', dark ? 'text-gray-500' : 'text-gray-400')}>
-              Click a row below, or Shift+click a bin in 3D. Front shelf lip also selects the row.
+              Click a row below, or Shift+click a shelf in 3D. Front shelf lip also selects the row.
             </p>
           )}
         </div>

@@ -21,6 +21,20 @@ import {
   snapToGrid,
 } from "@/utils/rackPlacement";
 import { buildCreateRackPayload, buildPlacementOnlyPayload, buildPlacementWithRowStubsPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, rackHasEmptyRows, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import {
+  autofillQuantityForSlot,
+  binContentWidthM,
+  binDimsForPack,
+  defaultFacingsDepthStack,
+  findRowPlacementContext,
+  maxDepthRows,
+  maxFrontFacings,
+  maxStackLayers,
+  remainingRowFillPlan,
+  packQuantityIntoCavity,
+} from "@/utils/productRowPlacement";
+import { resolveIsStackable } from "@/utils/stackableSku";
+import { heroPlacementBlockedOnRow, isHeroSkuId, setHeroSkuId } from "@/utils/heroSku";
 import { canAddRowToSide, innerFromCustomConfig, nextRowYStart, reanchorSideRows } from "@/utils/rowStack";
 import { getFixtureSeedLayout } from "@/utils/fixtureSeed";
 import { boundsFromRacks, summarizeRacks } from "@/lib/planogram-formats/serialize";
@@ -32,9 +46,10 @@ import {
   productFacingWidth,
   type CascadeException,
 } from "@/utils/layoutCascade";
-import { maxFacingsInBinVolume } from "@/utils/facingPack";
 import { formatCmPair } from "@/utils/lengthUnits";
-import { applyLocalFaceFillToRack, applySoftFaceFillClampToRack } from "@/utils/faceFill";
+import { applyLocalFaceFillToRack, applySoftFaceFillClampToRack, refitBinVolumeFacings } from "@/utils/faceFill";
+import { binHasForeignSku } from "@/utils/binSkuRules";
+import { maxFacingsInBinVolume } from "@/utils/facingPack";
 import { buildPendingRackFromFixture } from "@/utils/fixturePlacement";
 import { extractApiErrorMessage, toastApiError } from "@/utils/apiMessages";
 import type { SceneTheme } from "@/constants/sceneTheme";
@@ -96,6 +111,7 @@ export interface PendingProductParams {
   size?: string | null;
   variant?: string | null;
   imageUrl?: string | null;
+  imageStorageKey?: string | null;
   modelUrl?: string | null;
   modelStorageKey?: string | null;
   width: number;
@@ -131,6 +147,23 @@ export interface PendingBinPreview {
   height: number;
 }
 
+/** Draft while placing a SKU on a row (auto-create bin on confirm). */
+export interface ProductPlacementDraft {
+  rowId: string;
+  /** Front-face columns (across). */
+  facings: number;
+  /** Rows back into the shelf (depth). */
+  depth: number;
+  /** Vertical stack layers. */
+  stack: number;
+  /** Place the new bin against the left or right of the shelf. */
+  anchor: 'left' | 'right';
+  /** After create, widen to remaining row span and autofill front facings. */
+  fillRemaining: boolean;
+  previewFits: boolean;
+  reason?: string;
+}
+
 /** Serializable SKU snapshot for copy/paste. */
 export type ClipboardSkuPayload = {
   kind: 'sku';
@@ -147,6 +180,8 @@ export type ClipboardSkuPayload = {
     imageStorageKey?: string;
     modelUrl?: string;
     modelStorageKey?: string;
+    isHero?: boolean;
+    isStackable?: boolean;
   };
   /** Face facing count from source (paste prefers target front-fill). */
   quantity: number;
@@ -182,6 +217,8 @@ export interface Bin {
   /** Item-tag / shelf-talker POSM assigned to this bin (replaces row.dividerPosm). */
   itemTagPosmItemId?: string | null;
   itemTagPosm?: RackSurfacePosm | null;
+  /** Which shelf edge this bin sits against. */
+  anchor?: 'left' | 'right';
 }
 
 export type RowSided = "one" | "two";
@@ -324,16 +361,32 @@ export interface PlanogramState {
   fixtureDragActive: boolean;
   fixtureDragType: FixtureType | null;
   setFixtureDragActive: (active: boolean, type?: FixtureType | null) => void;
+  /** True while HTML-dragging a POSM item from the catalog. */
+  posmDragActive: boolean;
+  setPosmDragActive: (active: boolean) => void;
   pendingRackParams: PendingRackParams | null;
   placingFixtureType: FixtureType | null;
   isPlacingProduct: boolean;
   pendingProductParams: PendingProductParams | null;
   /** True while attach API / layout reload is in progress. */
   isAttachingProduct: boolean;
-  /** Bin under cursor during SKU drag-over (for highlight + slot preview). */
-  productDropHover: { binId: string; fits: boolean; reason?: string } | null;
+  /** Bin/row under cursor during SKU drag-over (highlight + slot preview). */
+  productDropHover: {
+    binId?: string;
+    rowId?: string;
+    fits: boolean;
+    reason?: string;
+    /** Side of the free span under the cursor while placing. */
+    anchor?: 'left' | 'right';
+  } | null;
   setProductDropHover: (
-    hover: { binId: string; fits: boolean; reason?: string } | null,
+    hover: {
+      binId?: string;
+      rowId?: string;
+      fits: boolean;
+      reason?: string;
+      anchor?: 'left' | 'right';
+    } | null,
   ) => void;
   /** Live facing ghosts while Attach Product modal edits quantity / dims. */
   attachFacingPreview: AttachFacingPreview | null;
@@ -341,8 +394,30 @@ export interface PlanogramState {
   /** Ghost bin on row while Add Bin modal edits dimensions. */
   pendingBinPreview: PendingBinPreview | null;
   setPendingBinPreview: (preview: PendingBinPreview | null) => void;
+  /** Confirm panel draft: row + facings/stack before auto-bin create. */
+  productPlacementDraft: ProductPlacementDraft | null;
   startProductPlacement: (product: PendingProductParams) => void;
   cancelProductPlacement: () => void;
+  /** Target a shelf/row for SKU placement (opens confirm with defaults). */
+  setProductPlacementTarget: (
+    rowId: string,
+    options?: { anchor?: 'left' | 'right' },
+  ) => { success: boolean; message?: string };
+  updateProductPlacementQty: (qty: {
+    facings?: number;
+    depth?: number;
+    stack?: number;
+    anchor?: 'left' | 'right';
+    fillRemaining?: boolean;
+  }) => void;
+  confirmProductPlacementOnRow: () => Promise<{
+    success: boolean;
+    message?: string;
+  }>;
+  /** Widen this SKU's slot to remaining row width, then autofill units that fit. */
+  fillSkuAcrossRemainingRow: (
+    binId: string,
+  ) => Promise<{ success: boolean; message?: string; quantity?: number }>;
   placeProductOnBin: (
     binId: string,
     quantity?: number,
@@ -444,8 +519,16 @@ export interface PlanogramState {
     rowHeight?: number,
     binName?: string,
     binDims?: { width?: number; depth?: number; height?: number },
-    options?: { quiet?: boolean },
+    options?: { quiet?: boolean; anchor?: 'left' | 'right'; skipReclaim?: boolean },
   ) => Promise<{ success: boolean; message: string; binId?: string }>;
+  /** Delete empty leftover slots and shrink oversized slots to SKU content width. */
+  reclaimUnusedRowWidth: (
+    rowId: string,
+  ) => Promise<{ success: boolean; message?: string }>;
+  updateBinOnServer: (
+    binId: string,
+    patch: { width?: number; depth?: number; height?: number; binName?: string },
+  ) => Promise<{ success: boolean; message?: string }>;
   /** After placing GONDOLA / FREEZER / PEGBOARD — create rows+bins via backend. */
   seedPresetFixtureShelves: (
     rackId: string,
@@ -467,6 +550,11 @@ export interface PlanogramState {
     product: Partial<Product> & { id: string },
     quantity: number
   ) => Promise<{ success: boolean; message?: string }>;
+  /** Increase or decrease facings for the SKU already in this bin (min 1). */
+  adjustBinSkuQuantity: (
+    binId: string,
+    delta: number,
+  ) => Promise<{ success: boolean; message?: string; quantity?: number }>;
   /** Re-fetch store layout from the API (preserves rack positions). */
   reloadStoreLayout: () => Promise<{ success: boolean; message?: string }>;
   /** Persist one rack's full nested layout (placement, shell, sides/rows/bins/products). */
@@ -526,7 +614,10 @@ export interface PlanogramState {
   ) => Promise<{ success: boolean; message: string }>;
   deleteProduct: (productId: string) => void;
   clearBinProductsLocally: (binId: string) => void;
-  detachBinInventory: (binId: string) => Promise<{ success: boolean; message?: string }>;
+  detachBinInventory: (
+    binId: string,
+    options?: { removeBin?: boolean },
+  ) => Promise<{ success: boolean; message?: string }>;
   /**
    * Move the SKU inventory from one bin to another.
    * Detaches source, attaches to target with front-face quantity by default.
@@ -540,7 +631,7 @@ export interface PlanogramState {
   movingInventoryFromBinId: string | null;
   startMovingBinInventory: (sourceBinId: string) => void;
   cancelMovingBinInventory: () => void;
-  /** Editor clipboard for SKU / whole-row copy-paste (Ctrl+C / Ctrl+V). */
+  /** Editor clipboard for SKU content / shelf contents copy-paste (Ctrl+C / Ctrl+V). */
   clipboard: PlanogramClipboard;
   copySelection: () => { success: boolean; message?: string };
   pasteClipboard: () => Promise<{ success: boolean; message?: string }>;
@@ -658,7 +749,7 @@ const createProduct = (overrides?: Partial<Product>): Product => ({
 });
 
 const createBin = (
-  overrides?: Partial<Pick<Bin, "width" | "depth" | "height">>,
+  overrides?: Partial<Pick<Bin, "width" | "depth" | "height" | "anchor">>,
 ): Bin => ({
   id: generateId(),
   width: DEFAULT_BIN_WIDTH,
@@ -749,6 +840,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   isPlacingRack: false,
   fixtureDragActive: false,
   fixtureDragType: null,
+  posmDragActive: false,
   setFixtureDragActive: (active, type) =>
     set((s) => ({
       fixtureDragActive: active,
@@ -758,6 +850,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           : s.fixtureDragType
         : null,
     })),
+  setPosmDragActive: (active) => set({ posmDragActive: active }),
   pendingRackParams: null,
   placingFixtureType: null,
   isPlacingProduct: false,
@@ -768,6 +861,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   clipboard: null,
   attachFacingPreview: null,
   pendingBinPreview: null,
+  productPlacementDraft: null,
   customRackBuilderOpen: false,
   customRackDraft: createBlankCustomRack(),
   editingCustomRackId: null,
@@ -815,7 +909,30 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }));
   },
   setViewMode: (mode) => set({ viewMode: mode }),
-  setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
+  setSelected: (id, type) => {
+    if (type === 'bin' && id) {
+      const state = get()
+      for (const rack of state.area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            const bin = row.bins.find((b) => b.id === id)
+            if (!bin) continue
+            const first = bin.products[0]
+            if (first) {
+              set({
+                selectedId: resolveProductFacingId(first.id),
+                selectedType: 'product',
+              })
+              return
+            }
+            set({ selectedId: row.id, selectedType: 'row' })
+            return
+          }
+        }
+      }
+    }
+    set({ selectedId: id, selectedType: type })
+  },
   setIsPlacingRack: (value) => set({ isPlacingRack: value }),
   setPendingRackParams: (params) => set({ pendingRackParams: params }),
   startFixturePlacement: (fixtureType) => {
@@ -830,6 +947,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       placingFixtureType: fixtureType,
       isPlacingProduct: false,
       pendingProductParams: null,
+      productPlacementDraft: null,
       selectedId: "area",
       selectedType: "area",
       addRackError: null,
@@ -849,6 +967,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set({
       isPlacingProduct: true,
       pendingProductParams: product,
+      productPlacementDraft: null,
       isPlacingRack: false,
       pendingRackParams: null,
       placingFixtureType: null,
@@ -862,13 +981,322 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     set({
       isPlacingProduct: false,
       pendingProductParams: null,
+      productPlacementDraft: null,
       productDropHover: null,
     }),
+  setProductPlacementTarget: (rowId, options) => {
+    const state = get();
+    const pending = state.pendingProductParams;
+    if (!pending) {
+      return { success: false, message: 'No product selected for placement' };
+    }
+    const dimsOk = [pending.width, pending.height, pending.depth].every(
+      (n) => Number.isFinite(n) && n > 0,
+    );
+    if (!dimsOk) {
+      const message = 'SKU is missing width, height, or depth';
+      set({ addProductError: message });
+      return { success: false, message };
+    }
+
+    const ctx = findRowPlacementContext(state.area.racks, rowId);
+    if (!ctx) {
+      return { success: false, message: 'Shelf not found' };
+    }
+    if (ctx.remainingWidth < pending.width - 1e-6) {
+      const message = 'This shelf is full — no free width for this SKU';
+      set({ addProductError: message, productDropHover: null });
+      return { success: false, message };
+    }
+
+    if (pending.isHero) setHeroSkuId(pending.id, true);
+    if (isHeroSkuId(pending.id) || pending.isHero) {
+      const blocked = heroPlacementBlockedOnRow(pending.id, rowId, state.area.racks, {
+        isHero: pending.isHero,
+      });
+      if (blocked) {
+        const row = state.area.racks
+          .flatMap((r) => r.sides.flatMap((s) => s.rows))
+          .find((rw) => rw.id === rowId);
+        if (row) {
+          for (const b of row.bins) {
+            if (!b.products.length) {
+              void get().deleteBinFromServer(b.id);
+            }
+          }
+        }
+        set({ addProductError: blocked, productDropHover: { rowId, fits: false, reason: blocked } });
+        return { success: false, message: blocked };
+      }
+    }
+
+    const defaults = defaultFacingsDepthStack(
+      pending,
+      ctx.remainingWidth,
+      ctx.availableDepth,
+      ctx.rowHeight,
+    );
+    if (
+      !(defaults.maxFacings >= 1) ||
+      !(defaults.maxDepth >= 1) ||
+      !(defaults.maxStack >= 1)
+    ) {
+      const message =
+        defaults.maxStack < 1
+          ? `SKU is taller than this shelf — SKU ${Math.round(pending.height * 100)} cm, shelf ${Math.round(ctx.rowHeight * 100)} cm`
+          : defaults.maxDepth < 1
+            ? `Shelf is too shallow — this SKU is ${Math.round(pending.depth * 100)} cm front-to-back, the shelf is only ${Math.round(ctx.availableDepth * 100)} cm deep`
+            : 'Shelf is full — no free width for this SKU';
+      set({ addProductError: message });
+      return { success: false, message };
+    }
+
+    const sized = binDimsForPack(
+      pending,
+      defaults.facings,
+      defaults.depth,
+      defaults.stack,
+      ctx.remainingWidth,
+      ctx.availableDepth,
+      ctx.rowHeight,
+    );
+
+    set({
+      productPlacementDraft: {
+        rowId,
+        facings: defaults.facings,
+        depth: defaults.depth,
+        stack: defaults.stack,
+        anchor: options?.anchor === 'right' ? 'right' : 'left',
+        fillRemaining: false,
+        previewFits: sized.fits,
+        reason: sized.reason,
+      },
+      addProductError: null,
+      selectedId: rowId,
+      selectedType: 'row',
+      productDropHover: {
+        rowId,
+        fits: sized.fits,
+        reason: sized.reason,
+        anchor: options?.anchor === 'right' ? 'right' : 'left',
+      },
+    });
+    return { success: true };
+  },
+  updateProductPlacementQty: ({ facings, depth, stack, anchor, fillRemaining }) => {
+    const state = get();
+    const draft = state.productPlacementDraft;
+    const pending = state.pendingProductParams;
+    if (!draft || !pending) return;
+
+    const ctx = findRowPlacementContext(state.area.racks, draft.rowId);
+    if (!ctx) return;
+
+    const stackable = resolveIsStackable(pending.id, {
+      isStackable: pending.isStackable,
+    });
+    const maxStack = maxStackLayers(ctx.rowHeight, pending.height, stackable);
+    const maxDepth = maxDepthRows(ctx.availableDepth, pending.depth);
+    const maxFacings = maxFrontFacings(ctx.remainingWidth, pending.width);
+    const nextFacings = Math.max(
+      1,
+      Math.min(Math.max(maxFacings, 1), Math.floor(facings ?? draft.facings)),
+    );
+    const nextDepth = Math.max(
+      1,
+      Math.min(Math.max(maxDepth, 1), Math.floor(depth ?? draft.depth)),
+    );
+    const nextStack = stackable
+      ? Math.max(1, Math.min(Math.max(maxStack, 1), Math.floor(stack ?? draft.stack)))
+      : 1;
+    const nextAnchor = anchor ?? draft.anchor ?? 'left';
+    const nextFillRemaining = fillRemaining ?? draft.fillRemaining === true;
+    const sized = binDimsForPack(
+      pending,
+      nextFacings,
+      nextDepth,
+      nextStack,
+      ctx.remainingWidth,
+      ctx.availableDepth,
+      ctx.rowHeight,
+    );
+    set({
+      productPlacementDraft: {
+        rowId: draft.rowId,
+        facings: nextFacings,
+        depth: nextDepth,
+        stack: nextStack,
+        anchor: nextAnchor,
+        fillRemaining: nextFillRemaining,
+        previewFits: sized.fits,
+        reason: sized.reason,
+      },
+    });
+  },
+  confirmProductPlacementOnRow: async () => {
+    const state = get();
+    const pending = state.pendingProductParams;
+    const draft = state.productPlacementDraft;
+    if (!pending || !draft) {
+      return { success: false, message: 'Nothing to place' };
+    }
+
+    const ctx = findRowPlacementContext(state.area.racks, draft.rowId);
+    if (!ctx) {
+      return { success: false, message: 'Shelf not found' };
+    }
+
+    const sized = binDimsForPack(
+      pending,
+      draft.facings,
+      draft.depth,
+      draft.stack,
+      ctx.remainingWidth,
+      ctx.availableDepth,
+      ctx.rowHeight,
+    );
+    if (!sized.fits) {
+      const message = sized.reason || 'Does not fit on this shelf';
+      set({ addProductError: message });
+      return { success: false, message };
+    }
+
+    if (pending.isHero) setHeroSkuId(pending.id, true);
+    if (isHeroSkuId(pending.id) || pending.isHero) {
+      const blocked = heroPlacementBlockedOnRow(pending.id, draft.rowId, state.area.racks, {
+        isHero: pending.isHero,
+      });
+      if (blocked) {
+        set({ addProductError: blocked });
+        return { success: false, message: blocked };
+      }
+    }
+
+    const fillRemaining = draft.fillRemaining === true;
+    const fill = remainingRowFillPlan(
+      pending,
+      { facings: draft.facings, depth: draft.depth, stack: draft.stack },
+      ctx.remainingWidth,
+      ctx.availableDepth,
+      ctx.rowHeight,
+      fillRemaining,
+    );
+    set({ isAttachingProduct: true, addProductError: null });
+
+    const binRes = await get().addBinToServer(
+      draft.rowId,
+      undefined,
+      undefined,
+      ctx.rowHeight,
+      pending.name?.trim() || undefined,
+      {
+        // Remaining-row fill uses free shelf width; otherwise exact pack size.
+        width: fill.width,
+        depth: fill.depth,
+        height: fill.height,
+      },
+      // Fill remaining occupies the free span from its left edge, not a clump on the click-end.
+      { quiet: true, anchor: fillRemaining ? 'left' : (draft.anchor ?? 'left') },
+    );
+
+    if (!binRes.success || !binRes.binId) {
+      set({ isAttachingProduct: false });
+      const message = binRes.message || 'Failed to create shelf slot';
+      set({ addProductError: message });
+      return { success: false, message };
+    }
+
+    const attachRes = await get().attachProductToBin(
+      binRes.binId,
+      {
+        id: pending.id,
+        name: pending.name,
+        brandName: pending.brandName ?? undefined,
+        categoryName: pending.categoryName ?? undefined,
+        imageUrl: pending.imageUrl ?? undefined,
+        imageStorageKey: pending.imageStorageKey ?? undefined,
+        modelUrl: pending.modelUrl ?? undefined,
+        modelStorageKey: pending.modelStorageKey ?? undefined,
+        width: pending.width,
+        height: pending.height,
+        depth: pending.depth,
+        color: pending.color,
+        isHero: pending.isHero,
+        isStackable: pending.isStackable,
+      },
+      fill.quantity,
+    );
+
+    if (!attachRes.success) {
+      const leftover = (() => {
+        for (const rack of get().area.racks) {
+          for (const side of rack.sides) {
+            for (const row of side.rows) {
+              const b = row.bins.find((x) => x.id === binRes.binId);
+              if (b) return b;
+            }
+          }
+        }
+        return null;
+      })();
+      if (!leftover || leftover.products.length === 0) {
+        await get().deleteBinFromServer(binRes.binId);
+      }
+      const message =
+        attachRes.message ||
+        'Could not place this SKU — empty shelf slot was removed';
+      set({
+        isAttachingProduct: false,
+        addProductError: message,
+        productPlacementDraft: null,
+        productDropHover: null,
+      });
+      return { success: false, message };
+    }
+
+    set({
+      isAttachingProduct: false,
+      isPlacingProduct: false,
+      pendingProductParams: null,
+      productPlacementDraft: null,
+      productDropHover: null,
+    });
+
+    return {
+      success: true,
+      message: fillRemaining
+        ? `Product placed — ${fill.quantity} unit${fill.quantity === 1 ? '' : 's'} filling width × depth × height`
+        : attachRes.message || 'Product placed',
+    };
+  },
   placeProductOnBin: async (binId, quantity) => {
     const state = get();
     const pending = state.pendingProductParams;
     if (!pending) {
       return { success: false, message: 'No product selected for placement' };
+    }
+
+    let hostBin: Bin | undefined;
+    for (const rack of state.area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const bin = row.bins.find((b) => b.id === binId);
+          if (bin) {
+            hostBin = bin;
+            break;
+          }
+        }
+        if (hostBin) break;
+      }
+      if (hostBin) break;
+    }
+    const foreign = binHasForeignSku(hostBin, pending.id);
+    if (foreign.blocked) {
+      return {
+        success: false,
+        message: `This shelf already has “${foreign.existingName || 'another SKU'}”. One SKU per slot — move or detach it first.`,
+      };
     }
 
     // Default: fill the front face (linear facings), not depth.
@@ -897,7 +1325,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         }
       }
       if (!found) {
-        return { success: false, message: 'Bin not found' };
+        return { success: false, message: 'Shelf not found' };
       }
       const { resolveIsStackable, suggestedStackableFrontFacings } = await import(
         '@/utils/stackableSku'
@@ -944,6 +1372,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         brandName: pending.brandName ?? undefined,
         categoryName: pending.categoryName ?? undefined,
         imageUrl: pending.imageUrl ?? undefined,
+        imageStorageKey: pending.imageStorageKey ?? undefined,
         modelUrl: pending.modelUrl ?? undefined,
         modelStorageKey: pending.modelStorageKey ?? undefined,
         isHero: pending.isHero,
@@ -956,6 +1385,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       set({
         isPlacingProduct: false,
         pendingProductParams: null,
+        productPlacementDraft: null,
         productDropHover: null,
         selectedId: binId,
         selectedType: 'bin',
@@ -984,17 +1414,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           outerDepth: rack.depth,
         };
       }
-      if (rack) {
-        draft = {
-          ...draft,
-          isDoubleSided:
-            draft.isDoubleSided != null
-              ? Boolean(draft.isDoubleSided)
-              : Boolean(rack.isDoubleSided) || rack.sides.length >= 2,
-        };
-      }
     }
-    draft = normalizeSectionSpans(draft);
+    draft = { ...normalizeSectionSpans(draft), isDoubleSided: false };
     set({
       customRackBuilderOpen: true,
       customRackDraft: draft,
@@ -1029,9 +1450,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         width: cfg.outerWidth,
         depth: cfg.outerDepth,
         plankType: "custom",
-        sided: cfg.isDoubleSided ? "two" : "one",
+        sided: "one",
         fixtureType: "CUSTOM",
-        customConfig: cloneCustomRackConfig(cfg),
+        customConfig: cloneCustomRackConfig({ ...cfg, isDoubleSided: false }),
         rackName: rackName?.trim() || `Custom ${String(count).padStart(2, "0")}`,
         globalLocationId: state.selectedStoreId,
       },
@@ -1603,10 +2024,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                 ...row,
                 ...(h != null ? { height: nextH } : {}),
                 ...(w != null ? { width: w } : {}),
-                bins: row.bins.map((bin) => ({
-                  ...bin,
-                  height: Math.min(bin.height, maxBinH),
-                })),
+                bins: row.bins.map((bin) =>
+                  refitBinVolumeFacings({
+                    ...bin,
+                    height: Math.min(bin.height, maxBinH),
+                  }),
+                ),
               }
             })
             return { ...side, rows: h != null ? reanchorSideRows(rows) : rows }
@@ -1650,6 +2073,102 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: true };
     }
   },
+  reclaimUnusedRowWidth: async (rowId) => {
+    const locate = () => {
+      for (const rack of get().area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            if (row.id === rowId || resolveEntityId(row.id) === resolveEntityId(rowId)) {
+              return { rack, row };
+            }
+          }
+        }
+      }
+      return null;
+    };
+
+    let found = locate();
+    if (!found) return { success: false, message: 'Shelf not found' };
+
+    for (const empty of [...found.row.bins]) {
+      if (empty.products.length > 0) continue;
+      await get().deleteBinFromServer(empty.id);
+    }
+
+    found = locate();
+    if (!found) return { success: false, message: 'Shelf not found' };
+
+    for (const bin of [...found.row.bins]) {
+      const p = bin.products[0];
+      if (!p) continue;
+      const contentW = binContentWidthM(bin);
+      if (!(contentW > 0) || Number(bin.width) <= contentW + 0.02) continue;
+      const qty = Math.max(1, Math.floor(Number(p.quantity) || 1));
+      const detached = await get().detachBinInventory(bin.id);
+      if (!detached.success) continue;
+      const deleted = await get().deleteBinFromServer(bin.id);
+      if (!deleted.success) {
+        await get().attachProductToBin(
+          bin.id,
+          {
+            id: resolveProductFacingId(p.id),
+            name: p.name,
+            width: p.width,
+            height: p.height,
+            depth: p.depth,
+            color: p.color,
+            brandName: p.brandName,
+            categoryName: p.categoryName,
+            imageUrl: p.imageUrl,
+            imageStorageKey: p.imageStorageKey,
+            modelUrl: p.modelUrl,
+            modelStorageKey: p.modelStorageKey,
+            isHero: p.isHero,
+            isStackable: p.isStackable,
+          },
+          qty,
+        );
+        continue;
+      }
+      const created = await get().addBinToServer(
+        found.row.id,
+        undefined,
+        undefined,
+        bin.height,
+        bin.binName?.trim() || p.name?.trim() || undefined,
+        { width: contentW, depth: bin.depth, height: bin.height },
+        {
+          quiet: true,
+          anchor: bin.anchor === 'right' ? 'right' : 'left',
+          skipReclaim: true,
+        },
+      );
+      if (!created.success || !created.binId) continue;
+      await get().attachProductToBin(
+        created.binId,
+        {
+          id: resolveProductFacingId(p.id),
+          name: p.name,
+          width: p.width,
+          height: p.height,
+          depth: p.depth,
+          color: p.color,
+          brandName: p.brandName,
+          categoryName: p.categoryName,
+          imageUrl: p.imageUrl,
+          imageStorageKey: p.imageStorageKey,
+          modelUrl: p.modelUrl,
+          modelStorageKey: p.modelStorageKey,
+          isHero: p.isHero,
+          isStackable: p.isStackable,
+        },
+        qty,
+      );
+      found = locate() ?? found;
+    }
+
+    return { success: true };
+  },
   addBinToServer: async (
     rowId: string,
     rowExtent1?: number,
@@ -1657,9 +2176,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     rowHeight?: number,
     binName?: string,
     binDims?: { width?: number; depth?: number; height?: number },
-    options?: { quiet?: boolean },
+    options?: { quiet?: boolean; anchor?: 'left' | 'right'; skipReclaim?: boolean },
   ) => {
     const quiet = options?.quiet === true;
+    const anchor = options?.anchor === 'right' ? 'right' : 'left';
+    const skipReclaim = options?.skipReclaim === true;
     void quiet;
     const rackRowId = resolveEntityId(rowId);
     if (!rackRowId) {
@@ -1685,38 +2206,87 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     }
     if (!foundRow || !foundRack) return { success: false, message: 'Row not found' };
 
+    if (!skipReclaim) {
+      const span0 = clampRowSpanToInner(foundRack, foundRow.width);
+      const slotUsed = foundRow.bins.reduce((s, b) => s + (Number(b.width) || 0), 0);
+      const contentUsed = foundRow.bins.reduce((s, b) => s + binContentWidthM(b), 0);
+      if (span0 - slotUsed <= 0.05 && span0 - contentUsed > 0.05) {
+        await get().reclaimUnusedRowWidth(foundRow.id);
+        foundRow = null;
+        foundRack = null;
+        for (const rack of get().area.racks) {
+          for (const side of rack.sides) {
+            for (const row of side.rows) {
+              if (resolveEntityId(row.id) === rackRowId) {
+                foundRow = row;
+                foundRack = rack;
+                break;
+              }
+            }
+            if (foundRow) break;
+          }
+          if (foundRow) break;
+        }
+        if (!foundRow || !foundRack) return { success: false, message: 'Row not found' };
+      }
+    }
+
     const existingCount = foundRow.bins.length;
-    const rowSpan = foundRow.width ?? clampRowSpanToInner(foundRack);
-    // Backend requires width/height/depth > 0 and depth ≤ inner.depth
+    const rowSpan = clampRowSpanToInner(foundRack, foundRow.width);
+    // Backend requires width/height/depth > 0
     const n = existingCount + 1;
+    const explicitDims = Boolean(
+      binDims &&
+        ((binDims.width != null && binDims.width > 0) ||
+          (binDims.depth != null && binDims.depth > 0) ||
+          (binDims.height != null && binDims.height > 0)),
+    );
     let binWidth =
       binDims?.width && binDims.width > 0
         ? binDims.width
         : rowExtent1 != null && rowExtent1 > 0
           ? rowExtent1 / n
           : Math.max(0.1, rowSpan / n);
-    let binDepth = clampBinDepthToInner(
-      foundRack,
+    let binDepth =
       binDims?.depth && binDims.depth > 0
         ? binDims.depth
-        : rowExtent2 != null && rowExtent2 > 0
-          ? rowExtent2
-          : null,
-      foundRow.id,
-    );
-    let binHeight = clampBinHeightToRow(
-      rowHeight ?? foundRow.height,
-      binDims?.height && binDims.height > 0 ? binDims.height : null,
-    );
+        : clampBinDepthToInner(
+            foundRack,
+            rowExtent2 != null && rowExtent2 > 0 ? rowExtent2 : null,
+            foundRow.id,
+          );
+    let binHeight =
+      binDims?.height && binDims.height > 0
+        ? binDims.height
+        : clampBinHeightToRow(
+            rowHeight ?? foundRow.height,
+            null,
+          );
 
-    // Clamp so sum of bin widths cannot exceed row span
+    // Clamp width so sum of bin widths cannot exceed inner row span (always).
     const usedWidth = foundRow.bins.reduce((sum, b) => sum + (b.width || 0), 0);
-    const remaining = Math.max(0.1, rowSpan - usedWidth - 0.001);
+    const remaining = rowSpan - usedWidth - 0.001;
+    if (!(remaining > 0.05)) {
+      return { success: false, message: 'Shelf is full — no free width for this SKU' };
+    }
     binWidth = Math.min(binWidth, remaining);
     // Round to 3 decimals to avoid float payloads like 0.9900000000000001
     binWidth = Math.round(binWidth * 1000) / 1000;
     binDepth = Math.round(binDepth * 1000) / 1000;
     binHeight = Math.round(binHeight * 1000) / 1000;
+    void explicitDims;
+
+    const usedLeft = foundRow.bins
+      .filter((b) => b.anchor !== 'right')
+      .reduce((sum, b) => sum + (b.width || 0), 0);
+    const usedRight = foundRow.bins
+      .filter((b) => b.anchor === 'right')
+      .reduce((sum, b) => sum + (b.width || 0), 0);
+    const xStart =
+      anchor === 'right'
+        ? Math.max(0, rowSpan - usedRight - binWidth)
+        : usedLeft;
+    const xEnd = Math.min(rowSpan, xStart + binWidth);
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
@@ -1740,6 +2310,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         depth: binDepth,
         slotIndex: existingCount,
         slotCount: n,
+        xStart: Math.round(xStart * 1000) / 1000,
+        xEnd: Math.round(xEnd * 1000) / 1000,
       };
 
       const res = await fetch('/api/bins/add-by-row', {
@@ -1756,7 +2328,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
             : null;
         return {
           success: false,
-          message: detail || data?.message || 'Failed to add bin',
+          message: detail || data?.message || 'Failed to add shelf slot',
         };
       }
 
@@ -1784,6 +2356,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                 width: binWidth,
                 depth: binDepth,
                 height: binHeight,
+                anchor,
               });
               newBin.id = returnedId;
               if (binName) newBin.binName = binName;
@@ -1794,8 +2367,103 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         return { ...s, area: { ...s.area, racks } };
       });
 
-      return { success: true, message: data?.message || 'Bin added', binId: returnedId };
+      return { success: true, message: data?.message || 'Shelf slot added', binId: returnedId };
     } catch (err) {
+      return { success: false, message: 'Network or server error' };
+    }
+  },
+  updateBinOnServer: async (binId, patch) => {
+    const serverBinId = resolveEntityId(binId);
+    if (!serverBinId || !UUID_RE.test(serverBinId)) {
+      get().updateDimensions(binId, 'bin', patch);
+      return { success: true, message: 'Bin updated locally' };
+    }
+
+    const state = get();
+    let hostRow: Row | null = null;
+    let hostRack: Rack | null = null;
+    let hostBin: Bin | null = null;
+    for (const rack of state.area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const bin = row.bins.find((b) => b.id === binId || resolveEntityId(b.id) === serverBinId);
+          if (bin) {
+            hostBin = bin;
+            hostRow = row;
+            hostRack = rack;
+            break;
+          }
+        }
+        if (hostBin) break;
+      }
+      if (hostBin) break;
+    }
+    if (!hostBin || !hostRow || !hostRack) {
+      return { success: false, message: 'Shelf not found' };
+    }
+
+    const rowSpan = hostRow.width ?? clampRowSpanToInner(hostRack);
+    const others = hostRow.bins
+      .filter((b) => b.id !== hostBin!.id)
+      .reduce((sum, b) => sum + (Number(b.width) || 0), 0);
+    const maxWidth = Math.max(0.05, rowSpan - others - 0.001);
+    const occupied = hostBin.products.reduce((sum, p) => {
+      const w = Number(p.width) || 0;
+      const q = Math.max(1, Math.floor(Number(p.quantity) || 1));
+      return sum + w * q;
+    }, 0);
+    const minWidth = Math.max(0.05, occupied > 0 ? Math.min(occupied, maxWidth) : 0.05);
+
+    const nextWidth =
+      patch.width != null && Number.isFinite(patch.width)
+        ? Math.min(maxWidth, Math.max(minWidth, patch.width))
+        : hostBin.width;
+    const nextDepth =
+      patch.depth != null && Number.isFinite(patch.depth)
+        ? Math.max(0.05, clampBinDepthToInner(hostRack, patch.depth, hostRow.id))
+        : hostBin.depth;
+    const nextHeight =
+      patch.height != null && Number.isFinite(patch.height)
+        ? Math.max(0.05, clampBinHeightToRow(hostRow.height, patch.height))
+        : hostBin.height;
+
+    const body: Record<string, unknown> = {
+      width: Math.round(nextWidth * 1000) / 1000,
+      depth: Math.round(nextDepth * 1000) / 1000,
+      height: Math.round(nextHeight * 1000) / 1000,
+    };
+    if (typeof patch.binName === 'string') body.binName = patch.binName.trim();
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers.Authorization = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const res = await fetch(`/api/bins/${encodeURIComponent(serverBinId)}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
+        return { success: false, message: data?.message || 'Failed to update bin' };
+      }
+      get().updateDimensions(binId, 'bin', {
+        width: body.width,
+        depth: body.depth,
+        height: body.height,
+        ...(typeof patch.binName === 'string' ? { binName: patch.binName.trim() } : {}),
+      });
+      return { success: true, message: data?.message || 'Shelf space updated' };
+    } catch {
       return { success: false, message: 'Network or server error' };
     }
   },
@@ -1972,75 +2640,40 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       }
       if (bin) break;
     }
-    if (!bin) return { fits: false, reason: "Bin not found" };
-    const qty = Math.max(1, Math.floor(Number(product.quantity) || 1));
-    // Treat suspiciously short bin.height as shelf thickness — use a usable cavity for fit.
-    const fitHeight =
-      bin.height > 0 && bin.height < 0.12 ? Math.max(bin.height, 0.35) : bin.height;
-    if (
-      product.width > bin.width ||
-      product.depth > bin.depth ||
-      product.height > fitHeight
-    ) {
-      return {
-        fits: false,
-        reason: `Product (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) exceeds bin (${(bin.width * 100).toFixed(0)}×${(bin.depth * 100).toFixed(0)}×${(fitHeight * 100).toFixed(0)} cm)`,
-      };
-    }
-    // Pack left→right then front→back (width × depth footprint).
-    // When `quantity` is the merged total for an existing SKU, drop that SKU's
-    // current facings so they aren't counted twice.
-    const otherProducts = excludeProductId
-      ? bin.products.filter((p) => resolveEntityId(p.id) !== resolveEntityId(excludeProductId) && p.id !== excludeProductId)
-      : bin.products;
-    const usedFacings = otherProducts.reduce(
-      (sum, p) => sum + Math.max(1, Math.floor(Number(p.quantity) || 1)),
-      0,
-    );
-    const maxTotal = maxFacingsInBinVolume(
-      bin.width,
-      bin.depth,
-      fitHeight,
-      product.width,
-      product.depth,
-      product.height,
-    );
-    const cols = Math.max(0, Math.floor(bin.width / product.width + 1e-6));
-    const depthRows = Math.max(0, Math.floor(bin.depth / product.depth + 1e-6));
-    const stackLayers = Math.max(0, Math.floor(fitHeight / product.height + 1e-6));
-    const maxNew = Math.max(0, maxTotal - usedFacings);
-    if (qty > maxNew) {
-      const mergedHint = Boolean(excludeProductId);
-      const gridLabel = `${cols} across × ${depthRows} deep × ${stackLayers} stacked`;
-      return {
-        fits: false,
-        reason:
-          maxNew > 0
-            ? mergedHint
-              ? `${qty} facing${qty === 1 ? "" : "s"} exceed bin capacity (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm · ${gridLabel} = ${maxTotal} max).`
-              : `${qty} facing${qty === 1 ? "" : "s"} exceed remaining capacity (${gridLabel}). Only ${maxNew} more can fit.`
-            : `Product facing (${(product.width * 100).toFixed(0)}×${(product.depth * 100).toFixed(0)}×${(product.height * 100).toFixed(0)} cm) does not fit remaining shelf space.`,
-      };
-    }
+    if (!bin) return { fits: false, reason: "Shelf not found" };
+    // No capacity / volume constraints — placement UX owns pack counts.
+    void product;
+    void excludeProductId;
     return { fits: true };
   },
   addProduct: (binId, productOverrides) => {
     const state = get();
     const product = createProduct(productOverrides);
     let existingQty = 0;
+    let hostBin: Bin | undefined;
     for (const rack of state.area.racks) {
       for (const side of rack.sides) {
         for (const row of side.rows) {
           const bin = row.bins.find((b) => b.id === binId);
           if (bin) {
-            const existing = bin.products.find((p) => p.id === product.id);
+            hostBin = bin;
+            const existing = bin.products.find(
+              (p) => resolveProductFacingId(p.id) === resolveProductFacingId(product.id),
+            );
             if (existing) existingQty = existing.quantity ?? 1;
             break;
           }
         }
       }
     }
-    const mergedQty = existingQty > 0 ? existingQty + (product.quantity ?? 1) : (product.quantity ?? 1);
+    const foreign = binHasForeignSku(hostBin, product.id);
+    if (foreign.blocked) {
+      const message = `This shelf already has “${foreign.existingName || 'another SKU'}”. One SKU per slot — detach or move it first.`;
+      set({ addProductError: message });
+      return { success: false, reason: message };
+    }
+    // attachProductToBin passes the intended TOTAL quantity — replace, don't add.
+    const mergedQty = Math.max(1, Math.floor(Number(product.quantity) || existingQty || 1));
     const check = get().canProductFitInBin(
       binId,
       {
@@ -2049,7 +2682,6 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         height: product.height,
         quantity: mergedQty,
       },
-      // Merged qty already includes existing facings — don't double-count them.
       product.id,
     );
     if (!check.fits) {
@@ -2068,7 +2700,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
               ...row,
               bins: row.bins.map((bin) => {
                 if (bin.id !== binId) return bin;
-                const existingIdx = bin.products.findIndex((p) => p.id === product.id);
+                const existingIdx = bin.products.findIndex(
+                  (p) => resolveProductFacingId(p.id) === resolveProductFacingId(product.id),
+                );
                 if (existingIdx >= 0) {
                   return {
                     ...bin,
@@ -2099,7 +2733,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (product.isHero) setHeroSkuId(skuId || product.id, true);
       const heroId = skuId || product.id;
       if (isHeroSkuId(heroId) || product.isHero) {
-        const blocked = heroPlacementBlocked(heroId, binId, get().area.racks);
+        const blocked = heroPlacementBlocked(heroId, binId, get().area.racks, {
+          isHero: product.isHero,
+        });
         if (blocked) return { success: false, message: blocked };
       }
     } catch {
@@ -2135,6 +2771,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const skuDimsOk = [skuW, skuH, skuD].every((n) => Number.isFinite(n) && n > 0);
     const binDimsOk = [binW, binH, binD].every((n) => Number.isFinite(n) && n > 0);
 
+    const foreign = binHasForeignSku(localBin, skuId || product.id);
+    if (foreign.blocked) {
+      return {
+        success: false,
+        message: `This shelf already has “${foreign.existingName || 'another SKU'}”. One SKU per slot — detach or move it first.`,
+      };
+    }
+
     if (skuDimsOk) {
       const fit = get().canProductFitInBin(binId, {
         width: skuW,
@@ -2162,7 +2806,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         if (!binDimsOk) {
           return {
             success: false,
-            message: 'Bin dimensions must be set before attaching a SKU. Edit the bin size and retry.',
+            message: 'Shelf size must be set before attaching a SKU. Resize the shelf space and retry.',
           };
         }
         if (!skuDimsOk) {
@@ -2180,7 +2824,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data?.isRequestSuccess === false) {
-          const attachMsg = extractApiErrorMessage(data, 'Failed to attach product to bin inventory');
+          const attachMsg = extractApiErrorMessage(data, 'Failed to attach product to shelf');
           return { success: false, message: attachMsg };
         }
       } catch {
@@ -2196,6 +2840,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       depth: skuDimsOk ? skuD : product.depth,
       quantity: qty,
       imageUrl: product.imageUrl,
+      imageStorageKey: product.imageStorageKey,
       modelUrl: product.modelUrl,
       modelStorageKey: product.modelStorageKey,
       brandName: product.brandName,
@@ -2224,6 +2869,266 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     } finally {
       set({ isAttachingProduct: false });
     }
+  },
+  adjustBinSkuQuantity: async (binId, delta) => {
+    const step = Math.trunc(Number(delta) || 0);
+    if (step === 0) return { success: false, message: 'Quantity unchanged' };
+
+    let host: Bin | undefined;
+    let product: Product | undefined;
+    for (const rack of get().area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const b = row.bins.find((x) => x.id === binId);
+          if (b) {
+            host = b;
+            product = b.products[0];
+            break;
+          }
+        }
+        if (host) break;
+      }
+      if (host) break;
+    }
+    if (!host || !product) {
+      return { success: false, message: 'This shelf has no SKU to adjust' };
+    }
+
+    const current = Math.max(1, Math.floor(Number(product.quantity) || 1));
+    const next = current + step;
+    if (next < 1) {
+      return { success: false, message: 'Quantity cannot go below 1. Detach to remove the SKU.' };
+    }
+
+    const maxVol = maxFacingsInBinVolume(
+      Number(host.width) || 0,
+      Number(host.depth) || 0,
+      Number(host.height) || 0,
+      Number(product.width) || 0,
+      Number(product.depth) || 0,
+      Number(product.height) || 0,
+    );
+    if (maxVol > 0 && next > maxVol) {
+      return {
+        success: false,
+        message: `Only ${maxVol} unit${maxVol === 1 ? '' : 's'} fit on this shelf`,
+      };
+    }
+
+    const attach = await get().attachProductToBin(
+      binId,
+      {
+        id: resolveProductFacingId(product.id),
+        name: product.name,
+        width: product.width,
+        height: product.height,
+        depth: product.depth,
+        color: product.color,
+        brandName: product.brandName,
+        categoryName: product.categoryName,
+        imageUrl: product.imageUrl,
+        imageStorageKey: product.imageStorageKey,
+        modelUrl: product.modelUrl,
+        modelStorageKey: product.modelStorageKey,
+        isHero: product.isHero,
+        isStackable: product.isStackable,
+      },
+      next,
+    );
+    if (!attach.success) return attach;
+    return { success: true, message: attach.message, quantity: next };
+  },
+  fillSkuAcrossRemainingRow: async (binId) => {
+    const locate = (id: string) => {
+      for (const rack of get().area.racks) {
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            const bin = row.bins.find((x) => x.id === id);
+            if (bin) return { rack, row, bin };
+          }
+        }
+      }
+      return null;
+    };
+
+    const found0 = locate(binId);
+    if (!found0) return { success: false, message: 'Shelf not found' };
+    const product = found0.bin.products[0];
+    if (!product) return { success: false, message: 'This shelf has no SKU to fill' };
+
+    // Empty leftover slots steal free width and pin the filled pack on one end.
+    for (const empty of [...found0.row.bins]) {
+      if (empty.id === binId || empty.products.length > 0) continue;
+      await get().deleteBinFromServer(empty.id);
+    }
+
+    const found = locate(binId) ?? found0;
+    const skuSnap = found.bin.products[0] ?? product;
+    const ctx = findRowPlacementContext(get().area.racks, found.row.id);
+    const innerSpan = clampRowSpanToInner(found.rack, found.row.width);
+    const others = found.row.bins
+      .filter((b) => b.id !== found.bin.id)
+      .reduce((sum, b) => sum + (Number(b.width) || 0), 0);
+    const targetWidth = Math.max(0.05, innerSpan - others - 0.001);
+    const targetDepth = Math.max(
+      Number(found.bin.depth) || 0.05,
+      ctx?.availableDepth ?? clampBinDepthToInner(found.rack, found.row.depth, found.row.id),
+    );
+    const targetHeight = Math.max(
+      Number(found.bin.height) || 0.05,
+      ctx?.rowHeight ?? clampBinHeightToRow(Number(found.row.height) || 0.4, null),
+    );
+
+    const widthGrows = targetWidth > Number(found.bin.width) + 0.002;
+    const needsResize =
+      widthGrows ||
+      targetDepth > Number(found.bin.depth) + 0.002 ||
+      targetHeight > Number(found.bin.height) + 0.002;
+
+    const attachSnap = (
+      targetBinId: string,
+      qty: number,
+    ) =>
+      get().attachProductToBin(
+        targetBinId,
+        {
+          id: resolveProductFacingId(skuSnap.id),
+          name: skuSnap.name,
+          width: skuSnap.width,
+          height: skuSnap.height,
+          depth: skuSnap.depth,
+          color: skuSnap.color,
+          brandName: skuSnap.brandName,
+          categoryName: skuSnap.categoryName,
+          imageUrl: skuSnap.imageUrl,
+          imageStorageKey: skuSnap.imageStorageKey,
+          modelUrl: skuSnap.modelUrl,
+          modelStorageKey: skuSnap.modelStorageKey,
+          isHero: skuSnap.isHero,
+          isStackable: skuSnap.isStackable,
+        },
+        qty,
+      );
+
+    let liveBinId = binId;
+    if (needsResize) {
+      const currentQty = Math.max(1, Math.floor(Number(skuSnap.quantity) || 1));
+      // PUT /bins/{id} does not move xStart/xEnd, so a right-end pack stays
+      // clumped even when width is "updated". Recreate across the free span.
+      const mustRecreate = widthGrows;
+      let resizedOk = false;
+      if (!mustRecreate) {
+        const resized = await get().updateBinOnServer(binId, {
+          width: targetWidth,
+          depth: targetDepth,
+          height: targetHeight,
+        });
+        resizedOk = resized.success;
+      }
+      if (!resizedOk) {
+        const detached = await get().detachBinInventory(binId);
+        if (!detached.success) {
+          return { success: false, message: detached.message || 'Could not expand shelf slot' };
+        }
+        const deleted = await get().deleteBinFromServer(binId);
+        if (!deleted.success) {
+          await attachSnap(binId, currentQty);
+          return { success: false, message: deleted.message || 'Could not expand shelf slot' };
+        }
+        const created = await get().addBinToServer(
+          found.row.id,
+          undefined,
+          undefined,
+          targetHeight,
+          found.bin.binName?.trim() || skuSnap.name?.trim() || undefined,
+          { width: targetWidth, depth: targetDepth, height: targetHeight },
+          { quiet: true, anchor: 'left' },
+        );
+        if (!created.success || !created.binId) {
+          return { success: false, message: created.message || 'Could not recreate expanded shelf slot' };
+        }
+        liveBinId = created.binId;
+        const restored = await attachSnap(liveBinId, currentQty);
+        if (!restored.success) {
+          return { success: false, message: restored.message || 'Could not restore SKU after resize' };
+        }
+      }
+    }
+
+    const after = locate(liveBinId);
+    const host = after?.bin ?? null;
+    if (!host?.products[0]) {
+      return { success: false, message: 'Shelf slot missing after resize' };
+    }
+    if (widthGrows && Number(host.width) + 0.02 < targetWidth) {
+      return { success: false, message: 'Could not expand across remaining shelf width' };
+    }
+    const sku = host.products[0];
+    const stackable = resolveIsStackable(sku.id, { isStackable: sku.isStackable });
+    const current = Math.max(1, Math.floor(Number(sku.quantity) || 1));
+    const slotW = Math.max(Number(host.width) || 0, targetWidth);
+    const slotD = Math.max(Number(host.depth) || 0, targetDepth);
+    const slotH = Math.max(Number(host.height) || 0, targetHeight);
+    let next = autofillQuantityForSlot(
+      slotW,
+      slotD,
+      slotH,
+      Number(sku.width) || 0,
+      Number(sku.depth) || 0,
+      Number(sku.height) || 0,
+      stackable,
+    );
+    const maxVol = maxFacingsInBinVolume(
+      slotW,
+      slotD,
+      slotH,
+      Number(sku.width) || 0,
+      Number(sku.depth) || 0,
+      Number(sku.height) || 0,
+    );
+    if (maxVol > 0) next = Math.min(next, maxVol);
+    next = Math.max(1, next);
+
+    if (next <= current) {
+      return {
+        success: true,
+        message: 'Remaining shelf is already filled',
+        quantity: current,
+      };
+    }
+
+    const attach = await get().attachProductToBin(
+      host.id,
+      {
+        id: resolveProductFacingId(sku.id),
+        name: sku.name,
+        width: sku.width,
+        height: sku.height,
+        depth: sku.depth,
+        color: sku.color,
+        brandName: sku.brandName,
+        categoryName: sku.categoryName,
+        imageUrl: sku.imageUrl,
+        imageStorageKey: sku.imageStorageKey,
+        modelUrl: sku.modelUrl,
+        modelStorageKey: sku.modelStorageKey,
+        isHero: sku.isHero,
+        isStackable: sku.isStackable,
+      },
+      next,
+    );
+    if (!attach.success) return attach;
+    const facings = Math.max(1, maxFrontFacings(slotW, Number(sku.width) || 0));
+    const depthRows = Math.max(1, maxDepthRows(slotD, Number(sku.depth) || 0));
+    const layers = Math.max(
+      1,
+      maxStackLayers(slotH, Number(sku.height) || 0, stackable),
+    );
+    return {
+      success: true,
+      message: `Filled remaining shelf — ${next} units (${facings}×${depthRows}×${layers})`,
+      quantity: next,
+    };
   },
   reloadStoreLayout: async () => {
     const { selectedStoreId, area } = get();
@@ -2579,7 +3484,9 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
                 rows: side.rows.map((row) => ({
                   ...row,
                   bins: row.bins.map((bin) =>
-                    bin.id === entityId ? { ...bin, ...values } : bin,
+                    bin.id === entityId
+                      ? refitBinVolumeFacings({ ...bin, ...values })
+                      : bin,
                   ),
                 })),
               })),
@@ -2905,7 +3812,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     if (!serverBinId || !UUID_RE.test(serverBinId)) {
       // Local-only bin — just drop from scene
       get().deleteBin(binId);
-      return { success: true, message: 'Bin removed locally' };
+      return { success: true, message: 'Removed locally' };
     }
 
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -2923,11 +3830,15 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         headers,
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 404) {
+        get().deleteBin(binId);
+        return { success: true, message: 'Removed' };
+      }
       if (!res.ok || data?.isRequestSuccess === false || data?.success === false) {
-        return { success: false, message: data?.message || 'Failed to delete bin' };
+        return { success: false, message: data?.message || 'Failed to delete shelf slot' };
       }
       get().deleteBin(binId);
-      return { success: true, message: data?.message || 'Bin deleted' };
+      return { success: true, message: data?.message || 'Removed' };
     } catch {
       return { success: false, message: 'Network or server error' };
     }
@@ -3007,11 +3918,16 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       selectedId: state.selectedType === 'product' ? null : state.selectedId,
       selectedType: state.selectedType === 'product' ? null : state.selectedType,
     })),
-  detachBinInventory: async (binId) => {
+  detachBinInventory: async (binId, options) => {
+    const removeBin = options?.removeBin === true;
     const serverBinId = resolveEntityId(binId);
     if (!serverBinId || !UUID_RE.test(serverBinId)) {
-      get().clearBinProductsLocally(binId);
-      return { success: true, message: 'Cleared local inventory' };
+      if (removeBin) get().deleteBin(binId);
+      else get().clearBinProductsLocally(binId);
+      return {
+        success: true,
+        message: removeBin ? 'Removed locally' : 'Cleared local inventory',
+      };
     }
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -3036,6 +3952,19 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           message: extractApiErrorMessage(data, 'Failed to detach product from inventory'),
         };
       }
+
+      if (removeBin) {
+        const del = await get().deleteBinFromServer(binId);
+        if (!del.success) {
+          get().clearBinProductsLocally(binId);
+          return {
+            success: false,
+            message: del.message ?? 'SKU detached but the shelf slot could not be deleted',
+          };
+        }
+        return { success: true, message: 'SKU and shelf slot removed' };
+      }
+
       get().clearBinProductsLocally(binId);
       return { success: true, message: data?.message || 'Inventory detached' };
     } catch {
@@ -3047,6 +3976,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       movingInventoryFromBinId: sourceBinId,
       isPlacingProduct: false,
       pendingProductParams: null,
+      productPlacementDraft: null,
       productDropHover: null,
       selectedId: sourceBinId,
       selectedType: 'bin',
@@ -3194,7 +4124,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     const state = get();
     const { selectedId, selectedType, area } = state;
     if (!selectedId || !selectedType) {
-      return { success: false, message: 'Select a bin, product, or row to copy' };
+      return { success: false, message: 'Select a product or row to copy' };
     }
 
     const snapshotProduct = (p: Product): ClipboardSkuPayload['product'] => ({
@@ -3210,6 +4140,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       imageStorageKey: p.imageStorageKey,
       modelUrl: p.modelUrl,
       modelStorageKey: p.modelStorageKey,
+      isHero: p.isHero,
+      isStackable: p.isStackable,
     });
 
     if (selectedType === 'bin' || selectedType === 'product') {
@@ -3256,7 +4188,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       });
       return {
         success: true,
-        message: `Copied SKU “${product.name}” (${qty} front facing${qty === 1 ? '' : 's'})`,
+        message: `Copied “${product.name}” — paste onto any shelf`,
       };
     }
 
@@ -3273,8 +4205,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         if (row) break;
       }
       if (!row) return { success: false, message: 'Row not found' };
-      if (!row.bins.length) {
-        return { success: false, message: 'Row has no bins to copy' };
+      if (!row.bins.some((b) => b.products.length > 0)) {
+        return { success: false, message: 'This shelf has no SKU content to copy' };
       }
       set({
         clipboard: {
@@ -3284,22 +4216,26 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           depth: row.depth,
           dividerPosmItemId: row.dividerPosmItemId ?? row.dividerPosm?.id ?? null,
           dividerPosm: row.dividerPosm ?? null,
-          bins: row.bins.map((b) => {
-            const p = b.products[0];
-            return {
-              binName: b.binName,
-              width: b.width,
-              depth: b.depth,
-              height: b.height,
-              products: p ? [snapshotProduct(p)] : [],
-              quantity: p ? Math.max(1, Math.floor(Number(p.quantity) || 1)) : 0,
-            };
-          }),
+          bins: row.bins
+            .filter((b) => b.products[0])
+            .map((b) => {
+              const p = b.products[0]!;
+              return {
+                binName: b.binName,
+                width: b.width,
+                depth: b.depth,
+                height: b.height,
+                products: [snapshotProduct(p)],
+                quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
+              };
+            }),
         },
       });
       return {
         success: true,
-        message: `Copied row (${row.bins.length} bin${row.bins.length === 1 ? '' : 's'})`,
+        message: `Copied ${row.bins.filter((b) => b.products[0]).length} SKU${
+          row.bins.filter((b) => b.products[0]).length === 1 ? '' : 's'
+        } from this shelf — paste onto any shelf`,
       };
     }
 
@@ -3308,213 +4244,221 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
   pasteClipboard: async () => {
     const state = get();
     const clip = state.clipboard;
-    if (!clip) return { success: false, message: 'Clipboard is empty — copy a SKU or row first' };
+    if (!clip) return { success: false, message: 'Clipboard is empty — copy a SKU or shelf first' };
 
-    const { suggestedFaceFacings } = await import('@/utils/faceFill');
+    const findHostRowId = (): string | null => {
+      const { selectedId, selectedType, area } = get();
+      if (!selectedId || !selectedType) return null;
+      if (selectedType === 'row') return selectedId;
+      for (const rack of area.racks) {
+        if (
+          selectedType === 'rack' &&
+          (rack.id === selectedId || rack.rackId === selectedId)
+        ) {
+          const rows = rack.sides.flatMap((s) => s.rows);
+          const withSpace = rows.find((r) => {
+            const ctx = findRowPlacementContext(area.racks, r.id);
+            return ctx != null && ctx.remainingWidth >= 0.05;
+          });
+          return withSpace?.id ?? rows[0]?.id ?? null;
+        }
+        for (const side of rack.sides) {
+          for (const row of side.rows) {
+            if (selectedType === 'bin' && row.bins.some((b) => b.id === selectedId)) {
+              return row.id;
+            }
+            if (selectedType === 'product') {
+              const hit = row.bins.some((b) =>
+                b.products.some(
+                  (p) =>
+                    p.id === selectedId ||
+                    resolveProductFacingId(p.id) === resolveProductFacingId(selectedId),
+                ),
+              );
+              if (hit) return row.id;
+            }
+          }
+        }
+      }
+      return null;
+    };
 
-    if (clip.kind === 'sku') {
-      let targetBinId: string | null = null;
-      if (state.selectedType === 'bin' && state.selectedId) {
-        targetBinId = state.selectedId;
-      } else if (state.selectedType === 'product' && state.selectedId) {
-        outer: for (const rack of state.area.racks) {
+    const attachPayload = (p: ClipboardSkuPayload['product']) => ({
+      id: p.id,
+      name: p.name,
+      width: p.width,
+      height: p.height,
+      depth: p.depth,
+      color: p.color ?? '#2C5282',
+      brandName: p.brandName,
+      categoryName: p.categoryName,
+      imageUrl: p.imageUrl,
+      imageStorageKey: p.imageStorageKey,
+      modelUrl: p.modelUrl,
+      modelStorageKey: p.modelStorageKey,
+      isHero: p.isHero,
+      isStackable: p.isStackable,
+    });
+
+    const pasteSkuOntoRow = async (
+      rowId: string,
+      product: ClipboardSkuPayload['product'],
+      quantity: number,
+      preferEmptyBinId?: string | null,
+    ): Promise<{ success: boolean; message?: string }> => {
+      const pending: PendingProductParams = {
+        id: product.id,
+        name: product.name,
+        width: product.width,
+        height: product.height,
+        depth: product.depth,
+        color: product.color,
+        isHero: product.isHero,
+        isStackable: product.isStackable,
+      };
+
+      if (product.isHero) setHeroSkuId(product.id, true);
+      if (isHeroSkuId(product.id) || product.isHero) {
+        const blocked = heroPlacementBlockedOnRow(product.id, rowId, get().area.racks, {
+          isHero: product.isHero,
+        });
+        if (blocked) return { success: false, message: blocked };
+      }
+
+      if (preferEmptyBinId) {
+        let empty: Bin | undefined;
+        outer: for (const rack of get().area.racks) {
           for (const side of rack.sides) {
             for (const row of side.rows) {
-              for (const b of row.bins) {
-                if (
-                  b.products.some(
-                    (p) =>
-                      p.id === state.selectedId ||
-                      resolveProductFacingId(p.id) ===
-                        resolveProductFacingId(state.selectedId!),
-                  )
-                ) {
-                  targetBinId = b.id;
-                  break outer;
-                }
+              const b = row.bins.find((x) => x.id === preferEmptyBinId);
+              if (b) {
+                empty = b;
+                break outer;
               }
             }
           }
         }
-      }
-      if (!targetBinId) {
-        return { success: false, message: 'Select a target bin (or product in a bin) to paste the SKU' };
-      }
-
-      let binWidth = 0;
-      let occupied = false;
-      for (const rack of get().area.racks) {
-        for (const side of rack.sides) {
-          for (const row of side.rows) {
-            const bin = row.bins.find((b) => b.id === targetBinId);
-            if (bin) {
-              binWidth = Number(bin.width) || 0;
-              occupied = bin.products.length > 0;
-              break;
+        if (empty && empty.products.length === 0) {
+          const stackable = resolveIsStackable(product.id, { isStackable: product.isStackable });
+          const maxFit = autofillQuantityForSlot(
+            Number(empty.width) || 0,
+            Number(empty.depth) || 0,
+            Number(empty.height) || 0,
+            product.width,
+            product.depth,
+            product.height,
+            stackable,
+          );
+          if (maxFit >= 1) {
+            const qty = Math.max(1, Math.min(Math.floor(quantity) || 1, maxFit));
+            const attach = await get().attachProductToBin(empty.id, attachPayload(product), qty);
+            if (attach.success) {
+              return {
+                success: true,
+                message: `Pasted “${product.name}” (${qty} unit${qty === 1 ? '' : 's'})`,
+              };
             }
           }
         }
       }
-      if (occupied) {
-        const detach = await get().detachBinInventory(targetBinId);
-        if (!detach.success) {
-          return { success: false, message: detach.message ?? 'Could not clear target bin' };
-        }
+
+      const ctx = findRowPlacementContext(get().area.racks, rowId);
+      if (!ctx) return { success: false, message: 'Shelf not found' };
+
+      const pack = packQuantityIntoCavity(
+        pending,
+        quantity,
+        ctx.remainingWidth,
+        ctx.availableDepth,
+        ctx.rowHeight,
+      );
+      if (!pack.fits) {
+        return { success: false, message: pack.reason ?? 'Does not fit on this shelf' };
       }
 
-      const qty = Math.max(
-        1,
-        suggestedFaceFacings(binWidth, clip.product.width) || clip.quantity || 1,
+      const sized = binDimsForPack(
+        pending,
+        pack.facings,
+        pack.depth,
+        pack.stack,
+        ctx.remainingWidth,
+        ctx.availableDepth,
+        ctx.rowHeight,
       );
+      if (!sized.fits) {
+        return { success: false, message: sized.reason ?? 'Does not fit on this shelf' };
+      }
+
+      const created = await get().addBinToServer(
+        rowId,
+        undefined,
+        undefined,
+        ctx.rowHeight,
+        product.name?.trim() || undefined,
+        { width: sized.width, depth: sized.depth, height: sized.height },
+        { quiet: true },
+      );
+      if (!created.success || !created.binId) {
+        return { success: false, message: created.message ?? 'Failed to create shelf slot' };
+      }
+
       const attach = await get().attachProductToBin(
-        targetBinId,
-        {
-          id: clip.product.id,
-          name: clip.product.name,
-          width: clip.product.width,
-          height: clip.product.height,
-          depth: clip.product.depth,
-          color: clip.product.color ?? '#2C5282',
-          brandName: clip.product.brandName,
-          categoryName: clip.product.categoryName,
-          imageUrl: clip.product.imageUrl,
-          modelUrl: clip.product.modelUrl,
-          modelStorageKey: clip.product.modelStorageKey,
-        },
-        qty,
+        created.binId,
+        attachPayload(product),
+        pack.quantity,
       );
       if (!attach.success) {
+        const leftover = (() => {
+          for (const rack of get().area.racks) {
+            for (const side of rack.sides) {
+              for (const row of side.rows) {
+                const b = row.bins.find((x) => x.id === created.binId);
+                if (b) return b;
+              }
+            }
+          }
+          return null;
+        })();
+        if (!leftover || leftover.products.length === 0) {
+          await get().deleteBinFromServer(created.binId);
+        }
         return { success: false, message: attach.message ?? 'Paste SKU failed' };
       }
       return {
         success: true,
-        message: `Pasted “${clip.product.name}” (${qty} front facing${qty === 1 ? '' : 's'})`,
+        message: `Pasted “${product.name}” (${pack.quantity} unit${pack.quantity === 1 ? '' : 's'})`,
       };
+    };
+
+    const hostRowId = findHostRowId();
+    if (!hostRowId) {
+      return { success: false, message: 'Select a shelf (or a SKU on a shelf) to paste onto' };
     }
 
-    // Row paste
-    if (state.selectedType !== 'row' || !state.selectedId) {
-      return { success: false, message: 'Select a target row to paste the copied row onto' };
-    }
-    const targetRowId = state.selectedId;
-    let targetRow: Row | null = null;
-    let targetRack: Rack | null = null;
-    for (const rack of get().area.racks) {
-      for (const side of rack.sides) {
-        const row = side.rows.find((r) => r.id === targetRowId);
-        if (row) {
-          targetRow = row;
-          targetRack = rack;
-          break;
-        }
-      }
-      if (targetRow) break;
-    }
-    if (!targetRow || !targetRack) {
-      return { success: false, message: 'Target row not found' };
+    const emptyBinId =
+      clip.kind === 'sku' && state.selectedType === 'bin' ? state.selectedId : null;
+
+    if (clip.kind === 'sku') {
+      return pasteSkuOntoRow(hostRowId, clip.product, clip.quantity, emptyBinId);
     }
 
-    const rowSpan =
-      Number(targetRow.width ?? targetRow.span) ||
-      Number(targetRack.inner?.width) ||
-      Number(targetRack.width) ||
-      0;
-    const clipWidthSum = clip.bins.reduce((s, b) => s + (b.width > 0 ? b.width : 0), 0) || 1;
-    const scale = rowSpan > 0 ? rowSpan / clipWidthSum : 1;
-
-    // Clear existing inventory on target bins
-    for (const b of [...targetRow.bins]) {
-      if (b.products.length > 0) {
-        await get().detachBinInventory(b.id);
-      }
+    const contents = clip.bins.filter((b) => b.products[0] && b.quantity > 0);
+    if (!contents.length) {
+      return { success: false, message: 'Clipboard has no SKU content to paste' };
     }
-
-    // Refresh row after detaches
-    const findLiveRow = () =>
-      get().area.racks.flatMap((r) => r.sides.flatMap((s) => s.rows)).find((r) => r.id === targetRowId);
-
-    let liveRow = findLiveRow();
-    if (!liveRow) return { success: false, message: 'Target row disappeared during paste' };
 
     const errors: string[] = [];
-    for (let i = 0; i < clip.bins.length; i++) {
-      liveRow = findLiveRow();
-      if (!liveRow) {
-        errors.push('Target row disappeared during paste');
-        break;
-      }
-      const src = clip.bins[i];
-      let binId = liveRow.bins[i]?.id;
-      const targetW = Math.max(
-        0.05,
-        Math.round((src.width > 0 ? src.width * scale : rowSpan / clip.bins.length) * 1000) / 1000,
-      );
-
-      if (!binId) {
-        const created = await get().addBinToServer(
-          targetRowId,
-          undefined,
-          undefined,
-          liveRow.height,
-          src.binName ?? `Bin ${i + 1}`,
-          {
-            width: targetW,
-            depth: src.depth,
-            height: src.height || liveRow.height,
-          },
-          { quiet: true },
-        );
-        if (!created.success || !created.binId) {
-          errors.push(created.message ?? `Failed to create bin ${i + 1}`);
-          continue;
-        }
-        binId = created.binId;
-      }
-
-      liveRow = findLiveRow();
-      const liveBin = liveRow?.bins.find((b) => b.id === binId) ?? liveRow?.bins[i];
-      const binWidth = Number(liveBin?.width) || targetW;
+    let pasted = 0;
+    for (const src of contents) {
       const product = src.products[0];
       if (!product) continue;
-
-      if (liveBin && liveBin.products.length > 0) {
-        await get().detachBinInventory(liveBin.id);
+      const res = await pasteSkuOntoRow(hostRowId, product, src.quantity, null);
+      if (!res.success) {
+        errors.push(res.message ?? `Could not paste “${product.name}”`);
+        if (/full/i.test(res.message ?? '')) break;
+      } else {
+        pasted += 1;
       }
-
-      const qty = Math.max(
-        1,
-        suggestedFaceFacings(binWidth, product.width) || src.quantity || 1,
-      );
-      const attach = await get().attachProductToBin(
-        binId,
-        {
-          id: product.id,
-          name: product.name,
-          width: product.width,
-          height: product.height,
-          depth: product.depth,
-          color: product.color ?? '#2C5282',
-          brandName: product.brandName,
-          categoryName: product.categoryName,
-          imageUrl: product.imageUrl,
-          modelUrl: product.modelUrl,
-          modelStorageKey: product.modelStorageKey,
-        },
-        qty,
-      );
-      if (!attach.success) {
-        errors.push(attach.message ?? `Failed to paste SKU into bin ${i + 1}`);
-      }
-    }
-
-    const posmId = clip.dividerPosmItemId ?? clip.dividerPosm?.id ?? null;
-    if (posmId && targetRack) {
-      await get().assignRowDividerPosm(
-        targetRack.id,
-        targetRowId,
-        posmId,
-        clip.dividerPosm ?? null,
-      );
     }
 
     try {
@@ -3523,15 +4467,18 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       /* non-fatal */
     }
 
+    if (!pasted && errors.length) {
+      return { success: false, message: errors[0] };
+    }
     if (errors.length) {
       return {
-        success: false,
-        message: `Row paste partial: ${errors.slice(0, 2).join(' · ')}`,
+        success: true,
+        message: `Pasted ${pasted} of ${contents.length} SKUs — ${errors[0]}`,
       };
     }
     return {
       success: true,
-      message: `Pasted row (${clip.bins.length} bin${clip.bins.length === 1 ? '' : 's'})`,
+      message: `Pasted ${pasted} SKU${pasted === 1 ? '' : 's'} onto this shelf`,
     };
   },
   moveBinInventoryToBin: async (sourceBinId, targetBinId, options) => {
@@ -3562,29 +4509,78 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: false, message: 'Source bin has no SKU to move' };
     }
 
+    let targetBin: Bin | undefined;
+    for (const rack of get().area.racks) {
+      for (const side of rack.sides) {
+        for (const row of side.rows) {
+          const bin = row.bins.find((b) => b.id === targetBinId);
+          if (bin) {
+            targetBin = bin;
+            break;
+          }
+        }
+        if (targetBin) break;
+      }
+      if (targetBin) break;
+    }
+    if (!targetBin) {
+      return { success: false, message: 'Target bin not found' };
+    }
+
+    const sourceSkuId = resolveProductFacingId(sourceProduct.id);
+    const foreign = binHasForeignSku(targetBin, sourceSkuId);
+
     const detach = await get().detachBinInventory(sourceBinId);
     if (!detach.success) {
       return { success: false, message: detach.message ?? 'Failed to detach source bin' };
     }
 
-    // Prefer explicit qty, else fill target front face.
+    if (foreign.blocked) {
+      const cleared = await get().detachBinInventory(targetBinId);
+      if (!cleared.success) {
+        await get().attachProductToBin(
+          sourceBinId,
+          {
+            id: sourceSkuId,
+            name: sourceProduct.name,
+            width: sourceProduct.width,
+            height: sourceProduct.height,
+            depth: sourceProduct.depth,
+            color: sourceProduct.color,
+            brandName: sourceProduct.brandName,
+            categoryName: sourceProduct.categoryName,
+            imageUrl: sourceProduct.imageUrl,
+            imageStorageKey: sourceProduct.imageStorageKey,
+            modelUrl: sourceProduct.modelUrl,
+            modelStorageKey: sourceProduct.modelStorageKey,
+          },
+          sourceQty,
+        );
+        return {
+          success: false,
+          message: cleared.message ?? 'Could not replace the SKU already in the target bin',
+        };
+      }
+    }
+
+    // Keep the source facing count when it still fits; otherwise fill the front face.
     let qty = options?.quantity;
     if (qty == null || !(qty >= 1)) {
-      let targetWidth = 0;
-      for (const rack of get().area.racks) {
-        for (const side of rack.sides) {
-          for (const row of side.rows) {
-            const bin = row.bins.find((b) => b.id === targetBinId);
-            if (bin) {
-              targetWidth = Number(bin.width) || 0;
-              break;
-            }
-          }
-        }
+      qty = sourceQty;
+      const maxVol = maxFacingsInBinVolume(
+        Number(targetBin.width) || 0,
+        Number(targetBin.depth) || 0,
+        Number(targetBin.height) || 0,
+        Number(sourceProduct.width) || 0,
+        Number(sourceProduct.depth) || 0,
+        Number(sourceProduct.height) || 0,
+      );
+      if (maxVol > 0 && qty > maxVol) qty = maxVol;
+      if (!(qty >= 1)) {
+        const { suggestedFaceFacings } = await import('@/utils/faceFill');
+        qty = suggestedFaceFacings(Number(targetBin.width) || 0, Number(sourceProduct.width) || 0);
+        if (!(qty >= 1)) qty = sourceQty;
       }
-      const { suggestedFaceFacings } = await import('@/utils/faceFill');
-      qty = suggestedFaceFacings(targetWidth, Number(sourceProduct.width) || 0);
-      if (!(qty >= 1)) qty = sourceQty;
     }
 
     const attach = await get().attachProductToBin(
@@ -3599,6 +4595,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         brandName: sourceProduct.brandName,
         categoryName: sourceProduct.categoryName,
         imageUrl: sourceProduct.imageUrl,
+        imageStorageKey: sourceProduct.imageStorageKey,
         modelUrl: sourceProduct.modelUrl,
         modelStorageKey: sourceProduct.modelStorageKey,
       },
@@ -3620,9 +4617,10 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
           color: sourceProduct.color,
           brandName: sourceProduct.brandName,
           categoryName: sourceProduct.categoryName,
-          imageUrl: sourceProduct.imageUrl,
-          modelUrl: sourceProduct.modelUrl,
-          modelStorageKey: sourceProduct.modelStorageKey,
+        imageUrl: sourceProduct.imageUrl,
+        imageStorageKey: sourceProduct.imageStorageKey,
+        modelUrl: sourceProduct.modelUrl,
+        modelStorageKey: sourceProduct.modelStorageKey,
         },
         sourceQty,
       );
@@ -3668,7 +4666,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: true, message: 'Product removed locally' };
     }
 
-    return get().detachBinInventory(binId);
+    return get().detachBinInventory(binId, { removeBin: true });
   },
   assignRackPosmItems: async (rackId, payload, posmCatalog = {}) => {
     const rack = get().area.racks.find((r) => r.id === rackId || r.rackId === rackId);

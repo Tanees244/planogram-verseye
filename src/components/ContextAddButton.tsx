@@ -18,21 +18,19 @@ interface Location {
 import { Button } from "@verseye/ui";
 import { FiTrash2, FiSave, FiRotateCcw, FiRotateCw, FiShare2, FiGitMerge, FiCopy, FiClipboard, FiCamera } from "react-icons/fi";
 import { getPlanogramTokenFromCookie } from "@verseye/utils";
-import AttachProductToBinModal from "./AttachProductToBinModal";
+import { resolveProductFacingId } from "@/utils/storeLayoutLoader";
 import { BinInventoryPanel } from "./BinInventoryPanel";
 import { toastApiError } from "@/utils/apiMessages";
 import toast from "react-hot-toast";
 import { Spinner } from "./Spinner";
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
-import { AddBinModal } from '@/components/forms/AddBinModal'
 import { SaveAsPlanogramModal } from '@/components/forms/SaveAsPlanogramModal'
 import { ActionBar, ActionBtn } from '@/components/ui/ActionBar'
 import { RackRowHeightsPanel, RowDimensionsField } from '@/components/RowHeightsEditor'
 import { RackPosmPanel } from '@/components/RackPosmPanel'
 import { RackSideZonesPanel } from '@/components/RackSideZonesPanel'
 import { RowDividerPosmPanel } from '@/components/RowDividerPosmPanel'
-import { BinItemTagPosmPanel } from '@/components/BinItemTagPosmPanel'
 import { RowFaceFillChip } from '@/components/RowFaceFillChip'
 import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
@@ -54,7 +52,7 @@ export function ContextAddButton({
   hidePosmPanel = false,
 }: {
   layout?: 'horizontal' | 'sidebar'
-  /** When true, rack / row / bin POSM is shown in the POSM library tab instead. */
+  /** When true, rack / row POSM is shown in the POSM library tab instead. */
   hidePosmPanel?: boolean
 }) {
   const isSidebar = layout === 'sidebar';
@@ -264,7 +262,7 @@ export function ContextAddButton({
             isSidebar ? 'w-full min-h-full' : 'items-start',
           )}
         >
-          {rack && !hidePosmPanel && <RackPosmPanel rack={rack} dark={isSidebar} />}
+          {rack && <RackPosmPanel rack={rack} dark={isSidebar} />}
           {rack && (
             <div
               className={cn(
@@ -605,65 +603,12 @@ export function ContextAddButton({
     const row = rack?.sides
       .find((s: RackSide) => s.rows.some((r: Row) => r.id === selectedId))
       ?.rows.find((r: Row) => r.id === selectedId);
-    const rowExtent1 = undefined;
-    const rowExtent2 = undefined;
-    const rowHeightForBin = row?.height;
     const rowMaxWidth =
       rack?.customConfig
         ? computeCustomRackDimensions(rack.customConfig).innerWidth
         : rack
           ? rack.width * 0.85
           : undefined;
-
-    const handleSaveBins = async (
-      bins: { name: string; widthM: number; depthM: number; heightM: number }[],
-    ) => {
-      if (!selectedId) {
-        setBinNameError('No row selected')
-        return
-      }
-      if (!bins.length) {
-        setBinNameError('Add at least one bin box')
-        return
-      }
-      setAddingBin(true)
-      setBinNameError(null)
-      try {
-        for (const bin of bins) {
-          const res = await addBinToServer(
-            selectedId,
-            rowExtent1,
-            rowExtent2,
-            rowHeightForBin,
-            bin.name,
-            { width: bin.widthM, depth: bin.depthM, height: bin.heightM },
-            { quiet: true },
-          )
-          if (!res.success) {
-            setBinNameError(res.message ?? 'Failed to add bin')
-            return
-          }
-        }
-        setShowBinModal(false)
-        setPendingBinPreview(null)
-        toast.success(
-          bins.length === 1
-            ? 'Bin created'
-            : `${bins.length} bins created on this row`,
-        )
-      } finally {
-        setAddingBin(false)
-      }
-    }
-
-    const rowWidthM =
-      (typeof row?.width === 'number' && row.width > 0
-        ? row.width
-        : typeof row?.span === 'number' && row.span > 0
-          ? row.span
-          : rowMaxWidth) || DEFAULT_RACK_WIDTH
-    const occupiedWidthM =
-      row?.bins.reduce((sum, b) => sum + (Number(b.width) || 0), 0) ?? 0
 
     return (
       <>
@@ -703,7 +648,7 @@ export function ContextAddButton({
           {row && !hidePosmPanel && <RowDividerPosmPanel row={row} dark={isSidebar} />}
           <ActionBar
             label="Row selected"
-            subtitle="Shelf row actions"
+            subtitle="Place SKUs from the product library onto this shelf"
             layout={layout}
             onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
           >
@@ -715,14 +660,14 @@ export function ContextAddButton({
               if (res.success) toast.success(res.message ?? 'Copied');
               else toast.error(res.message ?? 'Copy failed');
             }}
-            title="Ctrl+C — copy this row (bins, SKUs, shelf talker)"
+            title="Ctrl+C — copy each SKU on this shelf"
           >
-            <FiCopy /> Copy row
+            <FiCopy /> Copy SKUs
           </ActionBtn>
           <ActionBtn
             fullWidth={isSidebar}
             variant="secondary"
-            disabled={!clipboard || clipboard.kind !== 'row'}
+            disabled={!clipboard}
             onClick={() => {
               void (async () => {
                 const res = await pasteClipboard();
@@ -730,18 +675,9 @@ export function ContextAddButton({
                 else toast.error(res.message ?? 'Paste failed');
               })();
             }}
-            title="Ctrl+V — paste copied row onto this row"
+            title="Ctrl+V — paste copied SKU content onto this shelf"
           >
-            <FiClipboard /> Paste row
-          </ActionBtn>
-          <ActionBtn
-            fullWidth={isSidebar}
-            onClick={() => {
-              setBinNameError(null);
-              setShowBinModal(true);
-            }}
-          >
-            <span className="text-lg leading-none">+</span> Add Bin
+            <FiClipboard /> {clipboard?.kind === 'sku' ? 'Paste SKU' : 'Paste SKUs'}
           </ActionBtn>
           {isSidebar ? (
             <ActionBtn
@@ -750,7 +686,7 @@ export function ContextAddButton({
               onClick={async () => {
                 if (
                   !window.confirm(
-                    'Delete this row? All bins and products on it will be removed.',
+                    'Delete this row? All products on it will be removed.',
                   )
                 ) {
                   return
@@ -770,7 +706,7 @@ export function ContextAddButton({
               onClick={async () => {
                 if (
                   !window.confirm(
-                    'Delete this row? All bins and products on it will be removed.',
+                    'Delete this row? All products on it will be removed.',
                   )
                 ) {
                   return
@@ -785,118 +721,53 @@ export function ContextAddButton({
           )}
         </ActionBar>
         </div>
-
-        <AddBinModal
-          open={showBinModal}
-          onClose={() => {
-            if (!addingBin) {
-              setShowBinModal(false)
-              setPendingBinPreview(null)
-            }
-          }}
-          rowWidthM={rowWidthM}
-          rowDepthM={rack ? maxBinDepthM(rack, selectedId) : DEFAULT_RACK_DEPTH}
-          rowHeightM={Number(row?.height) > 0 ? Number(row?.height) : GROCERY_SHELF_SPACING}
-          occupiedWidthM={occupiedWidthM}
-          existingBins={(row?.bins ?? []).map((b) => ({
-            id: b.id,
-            name: b.binName || 'Bin',
-            widthM: Number(b.width) || 0.1,
-            heightM: Number(b.height) || undefined,
-          }))}
-          maxBinDepthM={rack ? maxBinDepthM(rack, selectedId) : undefined}
-          error={binNameError}
-          isSubmitting={addingBin}
-          onSaveBins={handleSaveBins}
-        />
       </>
     );
   }
 
-  // Bin selected
+  // Bins are an internal layout slot — never shown as a portal object.
   if (selectedType === "bin") {
-    let selectedBin: Bin | null = null;
-    for (const r of area.racks) {
-      for (const s of r.sides) {
-        for (const row of s.rows) {
-          const found = row.bins.find((b: Bin) => b.id === selectedId);
-          if (found) {
-            selectedBin = found;
-            break;
-          }
-        }
-        if (selectedBin) break;
-      }
-      if (selectedBin) break;
-    }
-    return (
-      <>
-        <div className="space-y-2 w-full">
-          {selectedBin && !hidePosmPanel && (
-            <BinItemTagPosmPanel bin={selectedBin} dark={isSidebar} />
-          )}
-          <BinInventoryPanel
-            binId={selectedId}
-            dark={isSidebar}
-            refreshKey={inventoryRefreshKey}
-            onInventoryChange={() => setInventoryRefreshKey((k) => k + 1)}
-          />
-          <ActionBar
-            label="Bin selected"
-            subtitle="Inventory & attach"
-            layout={layout}
-            onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
-          >
-            <ActionBtn fullWidth={isSidebar} onClick={() => setShowProductModal(true)}>
-              <span className="text-lg leading-none">+</span> Attach Product
-            </ActionBtn>
-            {isSidebar ? (
-              <ActionBtn
-                variant="danger"
-                fullWidth
-                onClick={async () => {
-                  const res = await deleteBinFromServer(selectedId)
-                  if (!res.success) alert(res.message)
-                }}
-              >
-                <FiTrash2 /> Delete bin
-              </ActionBtn>
-            ) : (
-              <Button
-                variant={"default"}
-                size={"sm"}
-                className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                onClick={async () => {
-                  const res = await deleteBinFromServer(selectedId)
-                  if (!res.success) alert(res.message)
-                }}
-              >
-                <FiTrash2 />
-              </Button>
-            )}
-          </ActionBar>
-        </div>
-
-        <AttachProductToBinModal
-          isOpen={showProductModal}
-          onClose={() => setShowProductModal(false)}
-          binId={selectedId}
-          onSuccess={handleAttachProductSuccess}
-          inventoryRefreshKey={inventoryRefreshKey}
-        />
-      </>
-    );
+    return null
   }
 
   if (selectedType === "product") {
     const deleteProductFromServer = usePlanogramStore.getState().deleteProductFromServer;
+    let hostBinId: string | null = null
+    if (selectedId) {
+      const catalogId = resolveProductFacingId(selectedId)
+      outer: for (const r of area.racks) {
+        for (const s of r.sides) {
+          for (const row of s.rows) {
+            for (const b of row.bins) {
+              if (
+                b.products.some(
+                  (p) => p.id === selectedId || resolveProductFacingId(p.id) === catalogId,
+                )
+              ) {
+                hostBinId = b.id
+                break outer
+              }
+            }
+          }
+        }
+      }
+    }
     return (
-      <ActionBar
-        label="Product selected"
-        subtitle="SKU actions"
-        layout={layout}
-        onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
-      >
+      <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
+        {hostBinId && (
+          <BinInventoryPanel
+            binId={hostBinId}
+            dark={isSidebar}
+            refreshKey={inventoryRefreshKey}
+            onInventoryChange={() => setInventoryRefreshKey((k) => k + 1)}
+          />
+        )}
+        <ActionBar
+          label="Product selected"
+          subtitle="SKU actions"
+          layout={layout}
+          onHide={isSidebar ? () => setSelected('area', 'area') : undefined}
+        >
         {isSidebar ? (
           <ActionBtn
             variant="danger"
@@ -910,7 +781,7 @@ export function ContextAddButton({
               }
             }}
           >
-            <FiTrash2 /> Detach product
+            <FiTrash2 /> Remove SKU & slot
           </ActionBtn>
         ) : (
           <Button
@@ -930,6 +801,7 @@ export function ContextAddButton({
           </Button>
         )}
       </ActionBar>
+      </div>
     );
   }
 

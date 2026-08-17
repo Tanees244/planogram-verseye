@@ -519,14 +519,8 @@ export function maxBinDepthM(rack: Rack, rowId?: string | null): number {
         const sideInnerD = Number(side.inner?.depth);
         if (Number.isFinite(sideInnerD) && sideInnerD > 0) limit = sideInnerD;
       }
-
-      // Existing bins already accepted by the API are a reliable ceiling too.
-      for (const bin of row.bins) {
-        const d = Number(bin.depth);
-        if (Number.isFinite(d) && d > 0) {
-          limit = limit > 0 ? Math.min(limit, d) : d;
-        }
-      }
+      // Do not min() with existing bin depths — those are often SKU-sized
+      // (e.g. 12 cm) and would falsely mark the shelf "too shallow" for the next SKU.
       break;
     }
   }

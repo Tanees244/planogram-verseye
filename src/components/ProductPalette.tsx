@@ -20,7 +20,8 @@ import {
 import { safeDim } from '@/utils/safeDimensions'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
-import { SkuThumb } from '@/components/SkuThumb'
+import { SkuThumb, resolveSkuVisual } from '@/components/SkuThumb'
+import { preloadGlbThumbnails } from '@/utils/glbThumbnail'
 import { PANEL_SHELL, PANEL_LIST_ITEM } from '@/lib/uiShell'
 
 export const PRODUCT_DRAG_MIME = 'application/planogram-sku'
@@ -95,6 +96,7 @@ function skuToPending(sku: CatalogSkuRow): PendingProductParams {
     size: sku.size ?? null,
     variant: sku.variant ?? null,
     imageUrl: sku.imageUrl ?? null,
+    imageStorageKey: sku.imageStorageKey ?? null,
     modelUrl: sku.modelUrl ?? null,
     modelStorageKey: skuModelStorageKey(sku),
     width: safeDim(sku.width, DEFAULT_PRODUCT_WIDTH),
@@ -216,6 +218,19 @@ export function ProductPalette({
           }
         }),
       )
+      const mapped = Array.isArray(list) ? list : []
+      preloadGlbThumbnails(
+        mapped.map((s: any) => {
+          const visual = resolveSkuVisual({
+            imageUrl: s.imageUrl ?? null,
+            imageStorageKey: s.imageStorageKey ?? null,
+            modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+            modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
+            attachments: Array.isArray(s.attachments) ? s.attachments : null,
+          })
+          return visual.imageSrc ? null : visual.modelSrc
+        }),
+      )
     } catch {
       setError('Could not connect to catalog')
       setSkus([])
@@ -238,7 +253,9 @@ export function ProductPalette({
       return
     }
     const pending = skuToPending(sku)
-    e.dataTransfer.setData(PRODUCT_DRAG_MIME, JSON.stringify(pending))
+    const raw = JSON.stringify(pending)
+    e.dataTransfer.setData(PRODUCT_DRAG_MIME, raw)
+    e.dataTransfer.setData('text/plain', raw)
     e.dataTransfer.effectAllowed = 'copy'
     setDraggingId(sku.id)
     startProductPlacement(pending)
@@ -287,7 +304,7 @@ export function ProductPalette({
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white leading-tight">Product Library</h2>
-          <p className="text-[10px] text-emerald-100/70 truncate">Drag onto a bin · hero & stack badges</p>
+          <p className="text-[10px] text-emerald-100/70 truncate">Drag onto a shelf · set facings & stack</p>
         </div>
         <button
           type="button"
@@ -315,8 +332,8 @@ export function ProductPalette({
                 {productDropHover
                   ? productDropHover.fits
                     ? 'Preview on shelf — click or release to attach'
-                    : (productDropHover.reason ?? 'Product will not fit in this bin')
-                  : 'Hover a bin to preview size on the shelf, then click to place'}
+                    : (productDropHover.reason ?? 'Product will not fit on this shelf')
+                  : 'Hover a shelf to preview size, then click to place'}
               </p>
               <p className="text-gray-500 mt-1 text-[10px]">
                 Facing {(pendingProduct.width * 100).toFixed(0)}×{(pendingProduct.depth * 100).toFixed(0)}×

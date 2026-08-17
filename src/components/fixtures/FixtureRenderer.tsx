@@ -22,6 +22,7 @@ import { CheckoutFixture } from './procedural/CheckoutFixture'
 import { PromotionalFixture } from './procedural/PromotionalFixture'
 import { CustomRackFixture } from './procedural/CustomRackFixture'
 import { RackShellPosmMarkers } from '@/components/RackShellPosmMarkers'
+import { RackPosmDropTargets } from '@/components/RackPosmDropTargets'
 import { createBlankCustomRack } from './customRackTypes'
 
 interface FixtureRendererProps {
@@ -88,7 +89,7 @@ export function FixtureRenderer({ rack, interactive = true }: FixtureRendererPro
 
   return (
     <group
-      userData={{ id: rack.id, fixtureType }}
+      userData={{ id: rack.id, type: 'rack', fixtureType }}
       position={[safePosition(rack.position.x, 0), groupY, safePosition(rack.position.z, 0)]}
       rotation={[rot.x, rot.y, rot.z]}
     >
@@ -104,7 +105,7 @@ export function FixtureRenderer({ rack, interactive = true }: FixtureRendererPro
       />
 
       {/* Custom racks render POSM inside CustomRackFixture; presets get markers here. */}
-      {fixtureType !== 'CUSTOM' && rack.shell && (
+      {fixtureType !== 'CUSTOM' && (
         <RackShellPosmMarkers
           config={{
             ...createBlankCustomRack(),
@@ -125,6 +126,9 @@ export function FixtureRenderer({ rack, interactive = true }: FixtureRendererPro
           }}
           shell={rack.shell}
         />
+      )}
+      {interactive && (
+        <RackPosmDropTargets width={rackW} height={rackHeight} depth={rackD} />
       )}
 
       {isSelected && (

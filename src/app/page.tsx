@@ -6,6 +6,7 @@ import { SceneLeftPanel } from '@/components/SceneLeftPanel'
 import { SceneTopBar } from '@/components/SceneTopBar'
 import { PlanogramClipboardHotkeys } from '@/components/PlanogramClipboardHotkeys'
 import { CustomRackBuilder } from '@/components/CustomRackBuilder'
+import { ProductPlacementConfirm } from '@/components/ProductPlacementConfirm'
 import { Spinner } from '@/components/Spinner'
 import { usePlanogramStore } from '@/store/planogramStore'
 import StoreLayout from '@/components/StoreLayout'
@@ -31,6 +32,9 @@ export default function Home() {
       <PlanogramClipboardHotkeys />
 
       <SceneTopBar className="absolute top-4 right-4 z-[100]" />
+      <div className="absolute bottom-24 right-4 z-[100]">
+        <ProductPlacementConfirm />
+      </div>
       {isAddingRack && (
         <div
           className="absolute inset-0 z-[200] flex items-center justify-center bg-black/25 backdrop-blur-[1px]"

@@ -5,6 +5,7 @@ import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { DRAG_MIME } from '@/components/FixturePalette'
+import { POSM_DRAG_MIME } from '@/components/scene/PosmDropHandler'
 import { buildPendingRackFromFixture } from '@/utils/fixturePlacement'
 import { snapRackToWall } from '@/utils/rackPlacement'
 import type { FixtureType } from '@/components/fixtures/types'
@@ -27,6 +28,7 @@ export function FloorDropHandler() {
     const hit = new THREE.Vector3()
 
     const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes(POSM_DRAG_MIME)) return
       e.preventDefault()
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
       setFixtureDragActive(true)

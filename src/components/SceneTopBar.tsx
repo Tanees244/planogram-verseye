@@ -19,6 +19,7 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 import { PANEL_SHELL } from '@/lib/uiShell'
 import { usePlanogramExport } from '@/utils/planogramExport'
+import { ImportPlanogramModal } from '@/components/forms/ImportPlanogramModal'
 
 const shell = PANEL_SHELL
 
@@ -34,7 +35,7 @@ const CONTROL_ROWS: {
   { action: 'Pan', keys: 'Right-drag', icon: 'move' },
   { action: 'Zoom', keys: 'Scroll', icon: 'zoom' },
   { action: 'Focus object', keys: 'Click', icon: 'click' },
-  { action: 'Select row', keys: 'Shift + click bin', icon: 'click' },
+  { action: 'Select row', keys: 'Shift + click shelf', icon: 'click' },
   { action: 'Copy', keys: 'Ctrl + C', icon: 'copy' },
   { action: 'Paste', keys: 'Ctrl + V', icon: 'paste' },
 ]
@@ -76,7 +77,7 @@ function ControlsPanel({ className, showTitle = true }: { className?: string; sh
         ))}
       </ul>
       <p className="px-2.5 py-1.5 text-[10px] leading-snug text-gray-500 border-t border-white/10">
-        Dense bins: up to 24 front facings render as full 3D models; deeper units stay as boxes.
+        Dense shelves: SKU pictures show on every facing.
       </p>
     </div>
   )
@@ -90,7 +91,9 @@ function StoreExportMenu() {
     exportStore,
     exportStoreCsv,
     exportStoreXlsx,
+    exportStoreJson,
     exportSceneImage,
+    exportWorkingViewPng,
     exportStorePdf,
     exportStorePptx,
   } = usePlanogramExport()
@@ -118,7 +121,7 @@ function StoreExportMenu() {
         aria-expanded={open}
         title={
           hasSelectedRack
-            ? 'Export selected rack (PNG / PDF / PowerPoint use ideal planogram image)'
+            ? 'Export selected rack — PNG 3D screenshot or working shelf view'
             : 'Export store in a chosen format'
         }
       >
@@ -135,29 +138,36 @@ function StoreExportMenu() {
         <div className="mt-1.5 flex flex-col gap-0.5 p-1 rounded-xl bg-[#1e293b] border border-slate-600 shadow-xl z-[110]">
           {hasSelectedRack && (
             <p className="px-2.5 py-1.5 text-[10px] leading-snug text-gray-400">
-              PNG, PDF &amp; PowerPoint include the ideal planogram image for this rack.
+              PNG (3D scene) is a screenshot of the rack only — floor and warehouse
+              are cropped out. PNG (working view) is the 2D shelf drawing with dimensions.
             </p>
           )}
           {(
             [
+              { label: 'JSON (structure)', onClick: () => void exportStoreJson(), visual: false },
               { label: 'PLM', onClick: () => exportStore('plm'), visual: false },
               { label: 'PSA', onClick: () => exportStore('psa'), visual: false },
               { label: 'Excel (.xlsx)', onClick: () => void exportStoreXlsx(), visual: false },
-              { label: 'CSV', onClick: () => exportStoreCsv(), visual: false },
+              { label: 'CSV', onClick: () => void exportStoreCsv(), visual: false },
               {
-                label: 'PNG',
-                onClick: () => void exportSceneImage(),
-                visual: true,
+                label: 'PNG (3D scene)',
+                onClick: () => exportSceneImage(),
+                visual: '3d' as const,
+              },
+              {
+                label: 'PNG (working view)',
+                onClick: () => void exportWorkingViewPng(),
+                visual: 'working' as const,
               },
               {
                 label: 'PDF',
                 onClick: () => void exportStorePdf(),
-                visual: true,
+                visual: 'both' as const,
               },
               {
                 label: 'PowerPoint',
                 onClick: () => void exportStorePptx(),
-                visual: true,
+                visual: 'both' as const,
               },
             ] as const
           ).map((item) => (
@@ -168,9 +178,17 @@ function StoreExportMenu() {
               className="w-full px-2.5 py-2 rounded-lg text-xs font-semibold text-left text-gray-200 hover:bg-white/10 hover:text-white transition-colors"
             >
               {item.label}
-              {hasSelectedRack && item.visual ? (
+              {item.visual === '3d' ? (
                 <span className="ml-1.5 text-[10px] font-medium text-brand-light/80">
-                  · ideal image
+                  · screenshot
+                </span>
+              ) : item.visual === 'working' ? (
+                <span className="ml-1.5 text-[10px] font-medium text-brand-light/80">
+                  · dimensions
+                </span>
+              ) : item.visual === 'both' ? (
+                <span className="ml-1.5 text-[10px] font-medium text-brand-light/80">
+                  · 3D + working
                 </span>
               ) : null}
             </button>
@@ -190,6 +208,7 @@ export function SceneTopBar({ className }: { className?: string }) {
   const setSelectedStore = usePlanogramStore((s) => s.setSelectedStore)
   const [open, setOpen] = useState(false)
   const [controlsOpen, setControlsOpen] = useState(true)
+  const [importOpen, setImportOpen] = useState(false)
 
   const toggleOpen = (next: boolean) => {
     setOpen(next)
@@ -198,7 +217,8 @@ export function SceneTopBar({ className }: { className?: string }) {
 
   if (!open) {
     return (
-      <div className={cn('flex flex-col items-end gap-2', className)}>
+      <>
+        <div className={cn('flex flex-col items-end gap-2', className)}>
         <button
           type="button"
           onClick={() => toggleOpen(true)}
@@ -225,11 +245,14 @@ export function SceneTopBar({ className }: { className?: string }) {
             <span className="w-2.5 h-2.5 rounded-full bg-brand animate-pulse shrink-0" />
           )}
         </button>
-      </div>
+        </div>
+        <ImportPlanogramModal open={importOpen} onClose={() => setImportOpen(false)} />
+      </>
     )
   }
 
   return (
+    <>
     <div className={cn('flex flex-col items-end gap-2', className)}>
       <div
         className={cn(
@@ -285,13 +308,20 @@ export function SceneTopBar({ className }: { className?: string }) {
         )}
 
         <RoofToggle dark embedded className="w-full justify-center" />
-        <Link
-          href="/import"
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
           className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors"
-          title="Import a PLM or PSA planogram"
+          title="Import a PLM/PLA or PSA/PSM file"
         >
           <FiDownload size={14} />
-          Import planogram
+          Import PLM / PSA
+        </button>
+        <Link
+          href="/import"
+          className="w-full text-center text-[10px] text-gray-400 hover:text-white"
+        >
+          Open full import page
         </Link>
 
         <div className="w-full rounded-xl border border-white/10 bg-white/[0.04] overflow-hidden">
@@ -319,5 +349,7 @@ export function SceneTopBar({ className }: { className?: string }) {
         </div>
       </div>
     </div>
+    <ImportPlanogramModal open={importOpen} onClose={() => setImportOpen(false)} />
+    </>
   )
 }

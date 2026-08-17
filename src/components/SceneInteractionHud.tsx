@@ -41,6 +41,7 @@ export function SceneInteractionHud({ className }: { className?: string }) {
   const roofVisible = usePlanogramStore((s) => s.roofVisible)
   const selectedType = usePlanogramStore((s) => s.selectedType)
   const selectedStoreId = usePlanogramStore((s) => s.selectedStoreId)
+  const productPlacementDraft = usePlanogramStore((s) => s.productPlacementDraft)
   const cancelFixturePlacement = usePlanogramStore((s) => s.cancelFixturePlacement)
   const cancelProductPlacement = usePlanogramStore((s) => s.cancelProductPlacement)
   const cancelMovingBinInventory = usePlanogramStore((s) => s.cancelMovingBinInventory)
@@ -58,6 +59,8 @@ export function SceneInteractionHud({ className }: { className?: string }) {
     isLoadingStoreLayout,
     movingInventoryFromBinId,
     productDropHover?.binId,
+    productDropHover?.rowId,
+    productPlacementDraft?.rowId,
     fixtureDragActive,
     editingRackId,
     roofVisible,
@@ -67,7 +70,7 @@ export function SceneInteractionHud({ className }: { className?: string }) {
   let tone: HudTone = 'idle'
   let icon = <FiCrosshair size={15} className="shrink-0" />
   let title = 'Store editor'
-  let detail = 'Orbit · right-drag pan · scroll zoom · click racks, rows, bins, or products'
+  let detail = 'Orbit · right-drag pan · scroll zoom · click racks, shelves, or products'
   let action: { label: string; onClick: () => void } | null = null
 
   if (!selectedStoreId) {
@@ -84,27 +87,40 @@ export function SceneInteractionHud({ className }: { className?: string }) {
     tone = 'move'
     icon = <FiMove size={15} className="shrink-0" />
     title = 'Moving SKU'
-    detail = 'Click or drop onto another bin · Esc cancels'
+    detail = 'Click or drop onto another shelf · Esc cancels'
     action = { label: 'Cancel', onClick: () => cancelMovingBinInventory() }
   } else if (isAttachingProduct) {
     tone = 'product'
     icon = <FiPackage size={15} className="shrink-0" />
     title = 'Attaching product…'
-    detail = 'Saving to inventory and refreshing the store layout'
+    detail = 'Creating shelf slot and saving inventory'
   } else if (isLoadingStoreLayout) {
     tone = 'place'
     icon = <FiLayers size={15} className="shrink-0" />
     title = 'Loading store racks…'
-    detail = 'Fetching fixtures, shelves, bins, and products'
+    detail = 'Fetching fixtures, shelves, and products'
+  } else if (productPlacementDraft && pendingProduct) {
+    tone = 'drop'
+    icon = <FiPackage size={15} className="shrink-0" />
+    title = pendingProduct.name
+      ? `Adjust ${pendingProduct.name}`
+      : 'Adjust placement'
+    detail = productPlacementDraft.previewFits
+      ? `Front ${productPlacementDraft.facings} · depth ${productPlacementDraft.depth} · stack ${productPlacementDraft.stack} — confirm in the panel`
+      : productPlacementDraft.reason || 'Does not fit — change facings, depth, or stack'
+    action = { label: 'Cancel', onClick: () => cancelProductPlacement() }
   } else if (isPlacingProduct || pendingProduct) {
     tone = productDropHover ? 'drop' : 'product'
     icon = <FiPackage size={15} className="shrink-0" />
     title = pendingProduct?.name ? `Placing ${pendingProduct.name}` : 'Placing product'
-    detail = productDropHover
-      ? productDropHover.fits
-        ? 'Looks good — click the bin or release to attach'
-        : productDropHover.reason || 'This bin cannot fit the product'
-      : 'Drag onto a bin or hover one to preview size'
+    detail =
+      selectedType === 'rack'
+        ? 'Click a shelf on this rack · Esc cancels'
+        : productDropHover
+          ? productDropHover.fits
+            ? 'Looks good — click or drop on the shelf to set facings'
+            : productDropHover.reason || 'This shelf cannot fit the product'
+          : 'Click or drop onto a shelf (row) to preview facings · Esc cancels'
     action = { label: 'Cancel', onClick: () => cancelProductPlacement() }
   } else if (editingRackId) {
     tone = 'move'
@@ -129,12 +145,12 @@ export function SceneInteractionHud({ className }: { className?: string }) {
     tone = 'idle'
     icon = <FiLayers size={15} className="shrink-0" />
     title = 'Row selected'
-    detail = 'Add bins, paste a row, or attach divider POSM from the left panel'
+    detail = 'Place SKUs from the product library onto this shelf'
   } else if (selectedType === 'bin') {
     tone = 'idle'
     icon = <FiBox size={15} className="shrink-0" />
-    title = 'Bin selected'
-    detail = 'Attach a product from the library, or drag an SKU from inventory onto another bin'
+    title = 'Shelf selected'
+    detail = 'Place SKUs from the product library onto this shelf'
   } else if (selectedType === 'product') {
     tone = 'product'
     icon = <FiPackage size={15} className="shrink-0" />

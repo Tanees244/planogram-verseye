@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiSearch, FiPlus, FiImage, FiX, FiBox } from 'react-icons/fi'
 import { Modal } from '@/components/ui/Modal'
-import { SkuThumb } from '@/components/SkuThumb'
+import { SkuThumb, resolveSkuVisual } from '@/components/SkuThumb'
+import { preloadGlbThumbnails } from '@/utils/glbThumbnail'
 import { Btn, FormField, Input } from '@/components/ui/form'
 import { Product } from '../types/product-management'
 import { Spinner } from './Spinner'
@@ -245,9 +246,21 @@ export default function AttachProductToBinModal({
           attachments: Array.isArray(s.attachments) ? s.attachments : null,
           status: s.status,
           isHero: Boolean(s.isHero ?? s.heroSku),
-          isStackable:
-            s.isStackable === false || s.stackable === false ? false : true,
+          isStackable: s.isStackable === true || s.stackable === true,
         })),
+      )
+      const mapped = Array.isArray(list) ? list : []
+      preloadGlbThumbnails(
+        mapped.map((s: any) => {
+          const visual = resolveSkuVisual({
+            imageUrl: s.imageUrl ?? null,
+            imageStorageKey: s.imageStorageKey ?? null,
+            modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+            modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
+            attachments: Array.isArray(s.attachments) ? s.attachments : null,
+          })
+          return visual.imageSrc ? null : visual.modelSrc
+        }),
       )
     } catch {
       setError('Could not connect to catalog API')
@@ -469,7 +482,7 @@ export default function AttachProductToBinModal({
     }
   }
 
-  // Default quantity to front-face fill only after a SKU (or create dims) is known.
+  // Default quantity to a single unit; Auto-fill still fills the bin on demand.
   useEffect(() => {
     if (!isOpen) return
     const hasProduct = mode === 'create' || Boolean(selectedSkuId)
@@ -477,18 +490,13 @@ export default function AttachProductToBinModal({
       if (!hasProduct) setQuantityInput('')
       return
     }
-    const q =
-      frontFaceMax != null && frontFaceMax > 0
-        ? frontFaceMax
-        : suggestedFaceFacings(binWidthM, facingWidthM)
-    if (q > 0) setQuantityInput(String(q))
+    setQuantityInput('1')
   }, [
     isOpen,
     mode,
     selectedSkuId,
     binWidthM,
     facingWidthM,
-    frontFaceMax,
     inventory?.binId,
   ])
 
@@ -505,7 +513,7 @@ export default function AttachProductToBinModal({
         : (() => {
             const maxFront = frontFaceMax ?? 0
             if (parsedQuantity > maxFront) {
-              return `Only ${maxFront} front facing${maxFront === 1 ? '' : 's'} fit across this bin (${(facingWidthM * 100).toFixed(0)} cm each). Turn on “Also fill depth” for W×D×H pack.`
+              return `Only ${maxFront} front facing${maxFront === 1 ? '' : 's'} fit across this shelf (${(facingWidthM * 100).toFixed(0)} cm each). Turn on “Also fill depth” for W×D×H pack.`
             }
             return null
           })()
@@ -560,7 +568,7 @@ export default function AttachProductToBinModal({
   const validateAttachQuantity = (skuId: string): string | null => {
     if (!quantityOk) return 'Quantity (facings) must be at least 1'
     if (inventory?.sku && inventory.sku.skuId !== skuId) {
-      return `Bin already contains "${inventory.sku.skuName}". Detach it before attaching a different SKU.`
+      return `This shelf already has "${inventory.sku.skuName}". Remove it before attaching a different SKU.`
     }
     if (capacityError) return capacityError
     return null
@@ -672,7 +680,7 @@ export default function AttachProductToBinModal({
     }
     if (inventory?.sku) {
       setError(
-        `Bin already contains "${inventory.sku.skuName}". Detach it before creating a new SKU here.`,
+        `This shelf already has "${inventory.sku.skuName}". Remove it before creating a new SKU here.`,
       )
       return
     }
@@ -681,7 +689,7 @@ export default function AttachProductToBinModal({
       return
     }
     if (shelfRemaining != null && shelfRemaining === 0) {
-      setError('This bin has no remaining facing capacity.')
+      setError('This shelf has no remaining facing capacity.')
       return
     }
     // Same W×D×H capacity math as the live hint — a width-only check here
@@ -832,7 +840,7 @@ export default function AttachProductToBinModal({
         onClose()
       }}
       title="Attach Product"
-      subtitle="Select a catalog SKU or create a new one, then attach to this bin."
+      subtitle="Select a catalog SKU or create a new one, then place it on this shelf."
       maxWidth="lg"
       footer={
         <>
@@ -878,7 +886,7 @@ export default function AttachProductToBinModal({
                 </p>
                 <p className="text-[11px] text-gray-500">
                   {submitting && !uploadingImage && !uploadingModel
-                    ? 'Saving to bin inventory and refreshing layout'
+                    ? 'Saving to shelf inventory and refreshing layout'
                     : 'Please wait'}
                 </p>
               </div>
@@ -923,7 +931,7 @@ export default function AttachProductToBinModal({
         )}
 
         <div className="rounded-xl border border-[#2C5282]/20 bg-[#2C5282]/5 px-3 py-2.5 text-sm">
-          <p className="font-semibold text-[#2C5282]">Bin capacity</p>
+          <p className="font-semibold text-[#2C5282]">Shelf capacity</p>
           {loadingInventory ? (
             <p className="text-xs text-gray-600 mt-1 flex items-center gap-2">
               <Spinner /> Loading inventory…
@@ -948,7 +956,7 @@ export default function AttachProductToBinModal({
             </p>
           ) : inventory ? (
             <p className="text-xs text-gray-700 mt-1 leading-snug">
-              Bin is empty · shelf {(inventory.width * 100).toFixed(0)}×
+              Empty shelf · {(inventory.width * 100).toFixed(0)}×
               {(inventory.depth * 100).toFixed(0)}×{(inventory.height * 100).toFixed(0)} cm
               {facingWidthM > 0 && shelfMaxTotal != null ? (
                 <>
@@ -961,7 +969,7 @@ export default function AttachProductToBinModal({
               )}
             </p>
           ) : (
-            <p className="text-xs text-gray-600 mt-1 leading-snug">Loading bin dimensions…</p>
+            <p className="text-xs text-gray-600 mt-1 leading-snug">Loading shelf dimensions…</p>
           )}
         </div>
 
@@ -981,11 +989,11 @@ export default function AttachProductToBinModal({
               ? fillDepthToo
                 ? `Depth fill: up to ${maxAttachQty ?? frontFaceMax} units (W×D×H). Front face alone fits ${frontFaceMax}.`
                 : `Front fill: ${frontFaceMax} facing${frontFaceMax === 1 ? '' : 's'}${
-                    selectedIsStackable ? ' (stackable: across × up)' : ` across the bin (${(capacityFacingWidthM * 100).toFixed(0)} cm each)`
+                    selectedIsStackable ? ' (stackable: across × up)' : ` across the shelf (${(capacityFacingWidthM * 100).toFixed(0)} cm each)`
                   }`
               : facingWidthM > 0
                 ? 'Select a SKU with dimensions to calculate capacity'
-                : 'Number of front facings left-to-right across the bin'
+                : 'Number of front facings left-to-right across the shelf'
           }
           error={capacityError ?? undefined}
         >
@@ -1055,8 +1063,8 @@ export default function AttachProductToBinModal({
               facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
               quantity={quantityOk ? parsedQuantity : 0}
               occupiedFacings={placedFacings}
-              packOrder={selectedIsStackable ? 'stackFirst' : 'depthFirst'}
-              label="3D bin preview"
+              packOrder="stackFirst"
+              label="3D shelf preview"
             />
             <FacingShelfPreview
               binWidthM={inventory.width}
@@ -1067,7 +1075,7 @@ export default function AttachProductToBinModal({
               facingDepthM={facingDepthM > 0 ? facingDepthM : facingWidthM}
               quantity={quantityOk ? parsedQuantity : 0}
               occupiedFacings={placedFacings}
-              packOrder={selectedIsStackable ? 'stackFirst' : 'depthFirst'}
+              packOrder="stackFirst"
               label="Front & top packing"
             />
           </div>

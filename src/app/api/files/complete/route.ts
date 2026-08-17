@@ -2,9 +2,9 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { proxyLayout } from '@/app/api/utils/layoutProxy'
 
-/** POST /api/files/presigned-download — Verified keys only; omit bucket. */
+/** POST /api/files/complete — verify a pre-signed PUT before the key is usable. */
 export async function POST(req: NextRequest) {
-  let body: { objectKey?: string; expiresInMinutes?: number | null }
+  let body: { objectKey?: string }
   try {
     body = await req.json()
   } catch {
@@ -22,13 +22,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  return proxyLayout(req, '/api/v1/files/presigned-download', {
+  return proxyLayout(req, '/api/v1/files/complete', {
     method: 'POST',
-    body: {
-      objectKey,
-      ...(typeof body.expiresInMinutes === 'number'
-        ? { expiresInMinutes: body.expiresInMinutes }
-        : {}),
-    },
+    body: { objectKey },
   })
 }

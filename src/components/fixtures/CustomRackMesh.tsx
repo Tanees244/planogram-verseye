@@ -124,6 +124,7 @@ export function CustomRackMesh({
       {config.footer.enabled && dims.footerH > 0 && (
         <mesh
           position={[0, footerCenterY, footerZ]}
+          userData={{ type: 'rack-wall', wall: 'footer' }}
           {...bind}
         >
           <boxGeometry args={[footerSize.width, dims.footerH, footerSize.depth]} />
@@ -152,7 +153,7 @@ export function CustomRackMesh({
 
       {/* Back wall (one-sided) or center divider (two-sided) */}
       {config.walls.back && (
-        <group position={[0, bodyCenterY, dividerZ]} {...bind}>
+        <group position={[0, bodyCenterY, dividerZ]} userData={{ type: 'rack-wall', wall: 'back' }} {...bind}>
           <mesh>
             <boxGeometry args={[innerW + wt, dims.bodyH - wt * 0.5, wt]} />
             {wallMat}
@@ -181,7 +182,11 @@ export function CustomRackMesh({
 
       {/* Left side wall */}
       {config.walls.left && (
-        <mesh position={[-w / 2 + wt / 2, bodyCenterY, 0]} {...bind}>
+        <mesh
+          position={[-w / 2 + wt / 2, bodyCenterY, 0]}
+          userData={{ type: 'rack-wall', wall: 'left' }}
+          {...bind}
+        >
           <boxGeometry args={[wt, dims.bodyH - wt * 0.5, d - wt]} />
           {wallMat}
           <Edges color={hovered ? '#2C5282' : '#bdc3c7'} lineWidth={1} />
@@ -190,7 +195,11 @@ export function CustomRackMesh({
 
       {/* Right side wall */}
       {config.walls.right && (
-        <mesh position={[w / 2 - wt / 2, bodyCenterY, 0]} {...bind}>
+        <mesh
+          position={[w / 2 - wt / 2, bodyCenterY, 0]}
+          userData={{ type: 'rack-wall', wall: 'right' }}
+          {...bind}
+        >
           <boxGeometry args={[wt, dims.bodyH - wt * 0.5, d - wt]} />
           {wallMat}
           <Edges color={hovered ? '#2C5282' : '#bdc3c7'} lineWidth={1} />
@@ -249,7 +258,11 @@ export function CustomRackMesh({
 
       {/* Header / fascia — flush on top, anchored to front face */}
       {config.header.enabled && dims.headerH > 0 && (
-        <mesh position={[0, headerCenterY, headerZ]} {...bind}>
+        <mesh
+          position={[0, headerCenterY, headerZ]}
+          userData={{ type: 'rack-wall', wall: 'header' }}
+          {...bind}
+        >
           <boxGeometry args={[headerSize.width, dims.headerH, headerSize.depth]} />
           <meshStandardMaterial
             color={config.header.color}

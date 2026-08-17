@@ -3,7 +3,6 @@
 import { Component, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Mesh, Texture } from 'three'
-import { SRGBColorSpace, TextureLoader } from 'three'
 import { Product as ProductType } from '@/store/planogramStore'
 import { usePlanogramStore } from '@/store/planogramStore'
 import {
@@ -13,8 +12,12 @@ import {
 } from '@/constants/dimensions'
 import { safeDim } from '@/utils/safeDimensions'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
-import { resolveProductModelUrl } from '@/utils/productModelUrl'
+import { canonicalFileCacheKey, resolveProductModelUrl } from '@/utils/productModelUrl'
 import { ProductGlbModel, preloadProductGlb } from '@/components/ProductGlbModel'
+import {
+  acquireProductTexture,
+  productImageProxyUrl,
+} from '@/utils/productTextureCache'
 
 class GlbLoadBoundary extends Component<
   { onError: () => void; children: ReactNode; fallback: ReactNode },
@@ -70,6 +73,42 @@ function ProductBoxFallback({
   onSelect: (e: { stopPropagation: () => void; shiftKey?: boolean }) => void
   setHovered: (v: boolean) => void
 }) {
+  const faceColor = texture ? '#ffffff' : product.color
+  const sideColor = texture ? '#e8e8e8' : product.color
+  const emissive = isSelected || hovered ? (texture ? '#ffffff' : product.color) : '#000000'
+  const emissiveIntensity = isSelected ? 0.25 : hovered ? 0.35 : 0
+
+  // Shared SKU textures must not be disposed when one facing remounts (resize
+  // remounts Product meshes; R3F would otherwise dispose material.map → magenta).
+  // boxGeometry materials: +x -x +y -y +z -z — shopper faces -Z on the shelf.
+  const materials = texture
+    ? [
+        <meshStandardMaterial key="px" color={sideColor} metalness={0.15} roughness={0.7} dispose={null} />,
+        <meshStandardMaterial key="nx" color={sideColor} metalness={0.15} roughness={0.7} dispose={null} />,
+        <meshStandardMaterial key="py" color={sideColor} metalness={0.15} roughness={0.7} dispose={null} />,
+        <meshStandardMaterial key="ny" color={sideColor} metalness={0.15} roughness={0.7} dispose={null} />,
+        <meshStandardMaterial key="pz" color={sideColor} metalness={0.15} roughness={0.7} dispose={null} />,
+        <meshStandardMaterial
+          key="nz"
+          map={texture}
+          color="#ffffff"
+          metalness={0.2}
+          roughness={0.55}
+          emissive={emissive}
+          emissiveIntensity={emissiveIntensity}
+          dispose={null}
+        />,
+      ]
+    : (
+      <meshStandardMaterial
+        color={faceColor}
+        metalness={0.2}
+        roughness={0.6}
+        emissive={emissive}
+        emissiveIntensity={emissiveIntensity}
+      />
+    )
+
   return (
     <mesh
       userData={{ id: product.id, type: 'product' }}
@@ -88,29 +127,52 @@ function ProductBoxFallback({
       receiveShadow={false}
     >
       <boxGeometry args={[width, height, depth]} />
-      <meshStandardMaterial
-        key={texture ? 'with-texture' : 'no-texture'}
-        map={texture ?? undefined}
-        color={texture ? '#ffffff' : product.color}
-        metalness={0.2}
-        roughness={0.6}
-        emissive={isSelected || hovered ? (texture ? '#ffffff' : product.color) : '#000000'}
-        emissiveIntensity={isSelected ? 0.25 : hovered ? 0.35 : 0}
-      />
+      {materials}
     </mesh>
   )
 }
 
-/** Shared across Product instances — avoid N parallel 502s for the same broken GLB. */
+/** Shared across Product instances — one probe per unique GLB, not per facing. */
 const glbPreflightCache = new Map<string, { ok: boolean; at: number }>()
+const glbPreflightInflight = new Map<string, Promise<boolean>>()
 const GLB_PREFLIGHT_TTL_MS = 60_000
+
+function preflightGlb(url: string): Promise<boolean> {
+  const key = canonicalFileCacheKey(url)
+  const cached = glbPreflightCache.get(key)
+  if (cached && Date.now() - cached.at < GLB_PREFLIGHT_TTL_MS) {
+    return Promise.resolve(cached.ok)
+  }
+  let pending = glbPreflightInflight.get(key)
+  if (!pending) {
+    pending = fetch(url, {
+      method: 'GET',
+      cache: 'force-cache',
+      headers: { Range: 'bytes=0-0' },
+    })
+      .then((res) => {
+        const ok = res.ok || res.status === 206
+        glbPreflightCache.set(key, { ok, at: Date.now() })
+        return ok
+      })
+      .catch(() => {
+        glbPreflightCache.set(key, { ok: false, at: Date.now() })
+        return false
+      })
+      .finally(() => {
+        glbPreflightInflight.delete(key)
+      })
+    glbPreflightInflight.set(key, pending)
+  }
+  return pending
+}
 
 export function Product({ product, position, rowId, binId, forceSimple = false }: ProductProps) {
   const meshRef = useRef<Mesh>(null)
   const [hovered, setHovered] = useState(false)
   const [texture, setTexture] = useState<Texture | null>(null)
   const [glbFailed, setGlbFailed] = useState(false)
-  const { selectedId, setSelected, startMovingBinInventory, movingInventoryFromBinId } =
+  const { selectedId, setSelected, startMovingBinInventory, movingInventoryFromBinId, moveBinInventoryToBin } =
     usePlanogramStore()
   const catalogId = resolveProductFacingId(product.id)
   const isSelected = selectedId === product.id || selectedId === catalogId
@@ -128,26 +190,11 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
     if (!modelUrl || forceSimple) return
     let alive = true
 
-    const cached = glbPreflightCache.get(modelUrl)
-    if (cached && Date.now() - cached.at < GLB_PREFLIGHT_TTL_MS) {
-      if (cached.ok) setGlbReady(true)
+    void preflightGlb(modelUrl).then((ok) => {
+      if (!alive) return
+      if (ok) setGlbReady(true)
       else setGlbFailed(true)
-      return
-    }
-
-    // Real GET preflight (not optimistic HEAD) — avoid mounting useGLTF on 502.
-    fetch(modelUrl, { method: 'GET', cache: 'no-store', headers: { Range: 'bytes=0-0' } })
-      .then((res) => {
-        if (!alive) return
-        const ok = res.ok || res.status === 206
-        glbPreflightCache.set(modelUrl, { ok, at: Date.now() })
-        if (ok) setGlbReady(true)
-        else setGlbFailed(true)
-      })
-      .catch(() => {
-        glbPreflightCache.set(modelUrl, { ok: false, at: Date.now() })
-        if (alive) setGlbFailed(true)
-      })
+    })
     return () => {
       alive = false
     }
@@ -162,45 +209,23 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
       setTexture(null)
       return
     }
-    const url = product.imageUrl
-    const storageKey = product.imageStorageKey
-    if (!url && !storageKey) {
+    const proxiedUrl = productImageProxyUrl(
+      product.imageUrl,
+      product.imageStorageKey,
+    )
+    if (!proxiedUrl) {
       setTexture(null)
       return
     }
     let active = true
-    const proxiedUrl = url
-      ? url.startsWith('/')
-        ? url
-        : `/api/files/image?url=${encodeURIComponent(url)}`
-      : `/api/files/image?key=${encodeURIComponent(storageKey!)}`
-    const loader = new TextureLoader()
-    loader.setCrossOrigin('anonymous')
-    loader.load(
-      proxiedUrl,
-      (tex) => {
-        if (!active) {
-          tex.dispose()
-          return
-        }
-        tex.colorSpace = SRGBColorSpace
-        setTexture(tex)
-      },
-      undefined,
-      () => {
-        if (active) setTexture(null)
-      },
-    )
+    const release = acquireProductTexture(proxiedUrl, (tex) => {
+      if (active) setTexture(tex)
+    })
     return () => {
       active = false
+      release()
     }
   }, [product.imageUrl, product.imageStorageKey, useGlb])
-
-  useEffect(() => {
-    return () => {
-      texture?.dispose()
-    }
-  }, [texture])
 
   useFrame(() => {
     // Selection pulse only — hover scale causes pointer flicker
@@ -220,13 +245,22 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
       setSelected(rowId, 'row')
       return
     }
-    // Alt/Option-click: start move-SKU-to-another-bin (then click target bin)
-    if (event.altKey && binId) {
+    if (movingInventoryFromBinId && binId) {
       if (movingInventoryFromBinId === binId) {
         usePlanogramStore.getState().cancelMovingBinInventory()
-      } else {
-        startMovingBinInventory(binId)
+        return
       }
+      void (async () => {
+        const res = await moveBinInventoryToBin(movingInventoryFromBinId, binId)
+        if (!res.success && res.message) {
+          usePlanogramStore.setState({ addProductError: res.message })
+        }
+      })()
+      return
+    }
+    // Alt/Option-click: start move-SKU-to-another-bin (then click target SKU or bin)
+    if (event.altKey && binId) {
+      startMovingBinInventory(binId)
       return
     }
     setSelected(catalogId, 'product')

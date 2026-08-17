@@ -109,26 +109,35 @@ export function RackShellPosmMarkers({
 
   const markers: React.ReactNode[] = []
 
-  if (shell.headerPosm && config.header.enabled && dims.headerH > 0) {
+  if (shell.headerPosm) {
+    const hasBand = config.header.enabled && dims.headerH > 0
     markers.push(
       <PosmSurface
         key="header"
         posm={shell.headerPosm}
-        position={[0, headerCenterY, headerZ - headerSize.depth / 2 - 0.02]}
-        size={[Math.min(headerSize.width * 0.92, w * 0.92), dims.headerH * 0.88, 0.012]}
-        // Plane fronts face +Z; turn it toward the aisle (−Z) or the art reads mirrored.
+        position={[
+          0,
+          hasBand ? headerCenterY : bodyTopY + 0.1,
+          headerZ - (hasBand ? headerSize.depth / 2 : 0) - 0.02,
+        ]}
+        size={[Math.min(headerSize.width * 0.92, w * 0.92), hasBand ? dims.headerH * 0.88 : 0.22, 0.012]}
         rotation={[0, Math.PI, 0]}
       />,
     )
   }
 
-  if (shell.footerPosm && config.footer.enabled && dims.footerH > 0) {
+  if (shell.footerPosm) {
+    const hasBand = config.footer.enabled && dims.footerH > 0
     markers.push(
       <PosmSurface
         key="footer"
         posm={shell.footerPosm}
-        position={[0, footerCenterY, footerZ - footerSize.depth / 2 - 0.02]}
-        size={[Math.min(footerSize.width * 0.92, w * 0.92), dims.footerH * 0.88, 0.012]}
+        position={[
+          0,
+          hasBand ? footerCenterY : bodyBottomY + 0.08,
+          footerZ - (hasBand ? footerSize.depth / 2 : 0) - 0.02,
+        ]}
+        size={[Math.min(footerSize.width * 0.92, w * 0.92), hasBand ? dims.footerH * 0.88 : 0.18, 0.012]}
         rotation={[0, Math.PI, 0]}
       />,
     )
