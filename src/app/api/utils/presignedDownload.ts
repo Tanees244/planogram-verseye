@@ -3,7 +3,7 @@ import { getToken } from '@/app/api/utils/getToken'
 
 const API_BASE_URL = process.env.API_BASE_URL
 const PRESIGN_CACHE_TTL_MS = 300_000
-const PRESIGN_RATE_LIMIT_COOLDOWN_MS = 30_000
+const PRESIGN_RATE_LIMIT_COOLDOWN_MS = 8_000
 const MAX_PRESIGN_CONCURRENT = 2
 const PRESIGN_MAX_RETRIES = 4
 
@@ -33,6 +33,22 @@ async function withPresignSlot<T>(fn: () => Promise<T>): Promise<T> {
 
 function sleepMs(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function markRateLimited(retryAfterHeader?: string | null) {
+  const fromHeader = retryAfterHeader ? Number(retryAfterHeader) : NaN
+  const waitMs =
+    Number.isFinite(fromHeader) && fromHeader > 0
+      ? Math.min(Math.max(fromHeader, 1) * 1000, 60_000)
+      : PRESIGN_RATE_LIMIT_COOLDOWN_MS
+  presign429Until = Math.max(presign429Until, Date.now() + waitMs)
+}
+
+async function waitIfRateLimited() {
+  const remaining = presign429Until - Date.now()
+  if (remaining > 0) {
+    await sleepMs(Math.min(remaining, 8_000))
+  }
 }
 
 export function pickPresignedDownloadUrl(payload: Record<string, unknown>): string | null {
@@ -75,18 +91,9 @@ export async function resolvePresignedDownloadUrl(
   key: string,
   logTag = 'files/presign',
 ): Promise<PresignResult> {
-  const now = Date.now()
   const cached = presignCache.get(key)
-  if (cached && cached.expiresAt > now) {
+  if (cached && cached.expiresAt > Date.now()) {
     return { ok: true, url: cached.url }
-  }
-  if (presign429Until > now) {
-    if (cached?.url) return { ok: true, url: cached.url }
-    return {
-      ok: false,
-      status: 429,
-      message: 'Presign is temporarily rate-limited; retry shortly',
-    }
   }
   const running = presignInflight.get(key)
   if (running) return running
@@ -101,9 +108,11 @@ export async function resolvePresignedDownloadUrl(
     }
 
     for (let attempt = 0; attempt < PRESIGN_MAX_RETRIES; attempt++) {
-      if (presign429Until > Date.now() && cached?.url) {
-        return { ok: true, url: cached.url }
+      const cachedNow = presignCache.get(key)
+      if (cachedNow && cachedNow.expiresAt > Date.now()) {
+        return { ok: true, url: cachedNow.url }
       }
+      await waitIfRateLimited()
 
       let presignRes: globalThis.Response
       try {
@@ -156,9 +165,8 @@ export async function resolvePresignedDownloadUrl(
       }
 
       if (presignRes.status === 429) {
-        presign429Until = Date.now() + PRESIGN_RATE_LIMIT_COOLDOWN_MS
-        if (cached?.url) return { ok: true, url: cached.url }
-        await sleepMs(350 * (attempt + 1))
+        markRateLimited(presignRes.headers.get('retry-after'))
+        if (cachedNow?.url) return { ok: true, url: cachedNow.url }
         continue
       }
 
@@ -172,7 +180,8 @@ export async function resolvePresignedDownloadUrl(
       }
     }
 
-    if (cached?.url) return { ok: true, url: cached.url }
+    const stale = presignCache.get(key)
+    if (stale?.url) return { ok: true, url: stale.url }
     return {
       ok: false,
       status: 429,

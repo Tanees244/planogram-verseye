@@ -58,15 +58,23 @@ function proxyUrlFor(src: string): string {
   return resolveProductModelUrl({ modelUrl: src }) ?? src
 }
 
+async function fetchGlbBytes(url: string): Promise<Response> {
+  let res = await fetch(url, { credentials: 'include', cache: 'force-cache' })
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After'))
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 800
+    await new Promise((r) => setTimeout(r, waitMs))
+    res = await fetch(url, { credentials: 'include', cache: 'reload' })
+  }
+  return res
+}
+
 /** One network fetch per unique GLB (shared by list thumbs and later 3D). */
 export function fetchSharedGlbBytes(src: string): Promise<ArrayBuffer> {
   const key = canonicalFileCacheKey(src)
   let pending = glbBytesCache.get(key)
   if (!pending) {
-    pending = fetch(proxyUrlFor(src), {
-      credentials: 'include',
-      cache: 'force-cache',
-    }).then(async (res) => {
+    pending = fetchGlbBytes(proxyUrlFor(src)).then(async (res) => {
       if (!res.ok) throw new Error(`glb ${res.status}`)
       return res.arrayBuffer()
     })

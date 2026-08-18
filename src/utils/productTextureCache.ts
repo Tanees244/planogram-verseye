@@ -93,11 +93,21 @@ export function acquireProductTexture(
 
 async function loadEntry(fetchUrl: string, cacheKey: string, entry: CacheEntry) {
   try {
-    const res = await fetch(fetchUrl, {
+    let res = await fetch(fetchUrl, {
       credentials: 'include',
       headers: imageAuthHeaders(),
       cache: 'force-cache',
     })
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('Retry-After'))
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 800
+      await new Promise((r) => setTimeout(r, waitMs))
+      res = await fetch(fetchUrl, {
+        credentials: 'include',
+        headers: imageAuthHeaders(),
+        cache: 'reload',
+      })
+    }
     if (!res.ok) throw new Error(`image ${res.status}`)
     const blob = await res.blob()
     if (entry.refs === 0 && entry.waiters.size === 0) {

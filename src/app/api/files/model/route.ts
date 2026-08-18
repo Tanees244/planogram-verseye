@@ -11,8 +11,15 @@ function asciiHeader(value: string, max = 200): string {
     .slice(0, max)
 }
 
-function proxyErrorHeaders(message: string): HeadersInit {
-  return { 'X-Model-Proxy-Error': asciiHeader(message) }
+function proxyErrorHeaders(message: string, status?: number): HeadersInit {
+  const headers: Record<string, string> = {
+    'X-Model-Proxy-Error': asciiHeader(message),
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  }
+  if (status === 429) headers['Retry-After'] = '8'
+  return headers
 }
 
 /**
@@ -178,9 +185,10 @@ async function fetchBinary(url: string, rangeHeader?: string | null): Promise<Re
   if (!upstream.ok && upstream.status !== 206) {
     const detail = `Upstream storage HTTP ${upstream.status}${host ? ` @ ${host}` : ''}`
     console.error('[files/model]', detail)
+    const status = upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502
     return new NextResponse(detail, {
-      status: upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502,
-      headers: proxyErrorHeaders(detail),
+      status,
+      headers: proxyErrorHeaders(detail, status),
     })
   }
   const contentType =
@@ -210,7 +218,7 @@ async function fetchViaPresignedKey(
   if (!resolved.ok) {
     return new NextResponse(resolved.message, {
       status: resolved.status,
-      headers: proxyErrorHeaders(resolved.message),
+      headers: proxyErrorHeaders(resolved.message, resolved.status),
     })
   }
   return fetchBinary(resolved.url, rangeHeader)
@@ -237,7 +245,7 @@ export async function GET(req: NextRequest) {
       if (!(url && /^https?:\/\//i.test(url))) {
         return new NextResponse(`Model proxy failed: ${asciiHeader(msg)}`, {
           status: 502,
-          headers: proxyErrorHeaders(msg),
+          headers: proxyErrorHeaders(msg, 502),
         })
       }
     }
@@ -250,12 +258,15 @@ export async function GET(req: NextRequest) {
       const msg = e instanceof Error ? e.message : 'fetch failed'
       return new NextResponse(`Fetch failed: ${asciiHeader(msg)}`, {
         status: 502,
-        headers: proxyErrorHeaders(msg),
+        headers: proxyErrorHeaders(msg, 502),
       })
     }
   }
 
-  return new NextResponse('Missing or invalid url/key', { status: 400 })
+  return new NextResponse('Missing or invalid url/key', {
+    status: 400,
+    headers: proxyErrorHeaders('Missing or invalid url/key', 400),
+  })
 }
 
 /**
@@ -274,7 +285,7 @@ export async function HEAD(req: NextRequest) {
       if (!resolved.ok) {
         return new NextResponse(null, {
           status: resolved.status,
-          headers: proxyErrorHeaders(resolved.message),
+          headers: proxyErrorHeaders(resolved.message, resolved.status),
         })
       }
       let target = maybeRewriteStorageUrl(resolved.url)
@@ -318,9 +329,10 @@ export async function HEAD(req: NextRequest) {
         }
         const detail = `Storage probe HTTP ${probe.status}${host ? ` @ ${host}` : ''}`
         console.error('[files/model] HEAD probe failed', detail)
+        const probeStatus = probe.status >= 400 && probe.status < 600 ? probe.status : 502
         return new NextResponse(null, {
-          status: probe.status >= 400 && probe.status < 600 ? probe.status : 502,
-          headers: proxyErrorHeaders(detail),
+          status: probeStatus,
+          headers: proxyErrorHeaders(detail, probeStatus),
         })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'storage probe failed'
@@ -329,7 +341,7 @@ export async function HEAD(req: NextRequest) {
         console.error('[files/model] HEAD storage unreachable', { host, msg, cause })
         return new NextResponse(null, {
           status: 502,
-          headers: proxyErrorHeaders(`${cause || msg}${host ? ` @ ${host}` : ''}`),
+          headers: proxyErrorHeaders(`${cause || msg}${host ? ` @ ${host}` : ''}`, 502),
         })
       }
     }
@@ -347,22 +359,28 @@ export async function HEAD(req: NextRequest) {
         if (probe.ok || probe.status === 206 || probe.status === 200) {
           return new NextResponse(null, { status: 200 })
         }
-        return new NextResponse(null, { status: probe.status })
+        return new NextResponse(null, {
+          status: probe.status,
+          headers: proxyErrorHeaders(`Storage probe HTTP ${probe.status}`, probe.status),
+        })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'upstream head failed'
         return new NextResponse(null, {
           status: 502,
-          headers: proxyErrorHeaders(msg),
+          headers: proxyErrorHeaders(msg, 502),
         })
       }
     }
 
-    return new NextResponse(null, { status: 400 })
+    return new NextResponse(null, {
+      status: 400,
+      headers: proxyErrorHeaders('Missing or invalid url/key', 400),
+    })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'head failed'
     return new NextResponse(null, {
       status: 502,
-      headers: proxyErrorHeaders(msg),
+      headers: proxyErrorHeaders(msg, 502),
     })
   }
 }

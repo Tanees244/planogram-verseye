@@ -34,13 +34,19 @@ function releaseSlot() {
 async function fetchWithRetry(url: string): Promise<Response> {
   let last: Response | null = null
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // No Range header — must match the useGLTF GET cache key.
+    // After a cached 429, `reload` replaces that disk entry with a fresh 200.
     last = await fetch(url, {
       method: 'GET',
-      cache: 'force-cache',
-      headers: { Range: 'bytes=0-0' },
+      cache: attempt === 0 ? 'default' : 'reload',
     })
-    if (last.status !== 429) return last
-    await sleep(BASE_RETRY_MS * (attempt + 1))
+    if (last.status !== 429 && last.status !== 503) return last
+    const retryAfter = Number(last.headers.get('Retry-After'))
+    const waitMs =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : BASE_RETRY_MS * 2 ** attempt
+    await sleep(waitMs)
   }
   return last!
 }
@@ -50,18 +56,29 @@ export function queueGlbProbe(url: string): Promise<boolean> {
   const key = canonicalFileCacheKey(url)
   return enqueueGlbTask(key, async () => {
     const res = await fetchWithRetry(url)
-    return res.ok || res.status === 206
+    const ok = res.ok || res.status === 206
+    if (!ok && (res.status === 429 || res.status === 503)) {
+      retryableKeys.add(key)
+    } else {
+      retryableKeys.delete(key)
+    }
+    return ok
   })
 }
 
 const taskCache = new Map<string, { ok: boolean; at: number }>()
 const taskInflight = new Map<string, Promise<boolean>>()
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const TASK_TTL_MS = 5 * 60_000
+const FAIL_TTL_MS = 8_000
 
 function enqueueGlbTask(key: string, task: () => Promise<boolean>): Promise<boolean> {
   const cached = taskCache.get(key)
-  if (cached && Date.now() - cached.at < TASK_TTL_MS) {
-    return Promise.resolve(cached.ok)
+  if (cached) {
+    const ttl = cached.ok ? TASK_TTL_MS : FAIL_TTL_MS
+    if (Date.now() - cached.at < ttl) {
+      return Promise.resolve(cached.ok)
+    }
   }
   const running = taskInflight.get(key)
   if (running) return running
@@ -88,6 +105,7 @@ function enqueueGlbTask(key: string, task: () => Promise<boolean>): Promise<bool
 const readyListeners = new Map<string, Set<() => void>>()
 const readyKeys = new Set<string>()
 const failedKeys = new Set<string>()
+const retryableKeys = new Set<string>()
 
 function notify(key: string) {
   const subs = readyListeners.get(key)
@@ -99,14 +117,29 @@ function notify(key: string) {
 export function ensureGlbReady(url: string): Promise<boolean> {
   const key = canonicalFileCacheKey(url)
   if (readyKeys.has(key)) return Promise.resolve(true)
-  if (failedKeys.has(key)) return Promise.resolve(false)
 
   return queueGlbProbe(url).then((ok) => {
     if (ok) {
       readyKeys.add(key)
       failedKeys.delete(key)
+      retryableKeys.delete(key)
+      const pending = retryTimers.get(key)
+      if (pending) {
+        clearTimeout(pending)
+        retryTimers.delete(key)
+      }
     } else {
       failedKeys.add(key)
+      if (retryableKeys.has(key) && !retryTimers.has(key)) {
+        const timer = setTimeout(() => {
+          retryTimers.delete(key)
+          failedKeys.delete(key)
+          taskCache.delete(key)
+          retryableKeys.delete(key)
+          void ensureGlbReady(url)
+        }, FAIL_TTL_MS)
+        retryTimers.set(key, timer)
+      }
     }
     notify(key)
     return ok

@@ -85,7 +85,6 @@ export function serverRackIdOf(rack: { rackId?: string | null; id?: string | nul
   return id && UUID_RE.test(id) ? id : null
 }
 
-/** GET /api/racks/{id}/structure — same payload as the View Planogram modal. */
 export async function fetchRackStructurePayload(
   rackId: string,
 ): Promise<{ success: boolean; data?: StructurePayload; message?: string }> {
@@ -377,10 +376,6 @@ function packLabel(face: unknown, deep: unknown, layers: unknown, qty: unknown):
   return parts.join(' · ')
 }
 
-/**
- * Hierarchical outline: Rack → Side → Row → Bin → SKU
- * Matches GET /racks/{id}/structure.
- */
 export function buildStructureOutline(data: StructurePayload): StructureOutlineItem[] {
   const items: StructureOutlineItem[] = []
   const outer =
@@ -540,7 +535,6 @@ export type StructureDrawSide = {
   rows: StructureDrawRow[]
 }
 
-/** Drawable 2D elevation model from GET /racks/{id}/structure. */
 export function extractStructureDrawSides(data: StructurePayload): StructureDrawSide[] {
   const inner =
     data.inner && typeof data.inner === 'object' ? (data.inner as Record<string, unknown>) : {}

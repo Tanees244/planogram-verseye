@@ -5,12 +5,16 @@ import {
   storageKeyFromSignedUrl,
 } from '@/app/api/utils/presignedDownload'
 
-/**
- * Staging often signs https://aisleris-staging…:32004 while images should be
- * fetched from a reachable MinIO IP.
- *
- * OBJECT_STORAGE_IMAGE_ORIGIN=http://163.61.91.156:32004
- */
+function noStoreHeaders(status?: number): HeadersInit {
+  const headers: Record<string, string> = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  }
+  if (status === 429) headers['Retry-After'] = '8'
+  return headers
+}
+
 function rewriteImageStorageUrl(url: string): string {
   const publicOrigin =
     process.env.IMAGE_STORAGE_PUBLIC_ORIGIN?.trim() ||
@@ -81,6 +85,7 @@ async function fetchBinary(url: string): Promise<Response> {
         console.error('[files/image] storage fetch failed', { host, msg })
         return new NextResponse(`Fetch failed from storage${host ? ` (${host})` : ''}`, {
           status: 502,
+          headers: noStoreHeaders(502),
         })
       }
     } else {
@@ -88,12 +93,16 @@ async function fetchBinary(url: string): Promise<Response> {
       console.error('[files/image] storage fetch failed', { host, msg })
       return new NextResponse(`Fetch failed from storage${host ? ` (${host})` : ''}`, {
         status: 502,
+        headers: noStoreHeaders(502),
       })
     }
   }
   if (!upstream.ok) {
     console.error('[files/image] upstream', upstream.status, target.slice(0, 120))
-    return new NextResponse('Upstream error', { status: upstream.status })
+    return new NextResponse('Upstream error', {
+      status: upstream.status,
+      headers: noStoreHeaders(upstream.status),
+    })
   }
   const contentType = upstream.headers.get('content-type') ?? 'image/png'
   const body = await upstream.arrayBuffer()
@@ -110,7 +119,10 @@ async function fetchBinary(url: string): Promise<Response> {
 async function fetchViaPresignedKey(req: NextRequest, key: string): Promise<Response> {
   const resolved = await resolvePresignedDownloadUrl(req, key, 'files/image')
   if (!resolved.ok) {
-    return new NextResponse(resolved.message, { status: resolved.status })
+    return new NextResponse(resolved.message, {
+      status: resolved.status,
+      headers: noStoreHeaders(resolved.status),
+    })
   }
   return fetchBinary(resolved.url)
 }
@@ -130,7 +142,7 @@ export async function GET(req: NextRequest) {
     try {
       return await fetchViaPresignedKey(req, keyParam.trim())
     } catch {
-      return new NextResponse('Image proxy failed', { status: 502 })
+      return new NextResponse('Image proxy failed', { status: 502, headers: noStoreHeaders(502) })
     }
   }
 
@@ -146,9 +158,12 @@ export async function GET(req: NextRequest) {
     try {
       return await fetchBinary(url)
     } catch {
-      return new NextResponse('Fetch failed', { status: 502 })
+      return new NextResponse('Fetch failed', { status: 502, headers: noStoreHeaders(502) })
     }
   }
 
-  return new NextResponse('Missing or invalid url/key', { status: 400 })
+  return new NextResponse('Missing or invalid url/key', {
+    status: 400,
+    headers: noStoreHeaders(400),
+  })
 }

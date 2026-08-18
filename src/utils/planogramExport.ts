@@ -88,7 +88,6 @@ export async function exportRacksAs(
   toast.success(`Exported ${format.toUpperCase()} from rack structure`)
 }
 
-/** Download the raw GET /racks/{id}/structure JSON (all shelf / planogram details). */
 export async function exportRacksStructureJson(racks: Rack[], baseName = 'planogram') {
   if (racks.length === 0) {
     toast.error('Nothing to export')
@@ -143,7 +142,6 @@ function structureRowToCsv(row: StructureExportRow) {
     .join(',')
 }
 
-/** Flat CSV for Excel — from GET /racks/{id}/structure. */
 export async function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
   if (racks.length === 0) {
     toast.error('Nothing to export')
@@ -242,7 +240,6 @@ export async function exportRacksToCsv(racks: Rack[], baseName = 'planogram') {
   toast.success('Exported CSV from rack structure')
 }
 
-/** Native Excel workbook (.xlsx) from GET /racks/{id}/structure + ideal image. */
 export async function exportRacksToXlsx(racks: Rack[], baseName = 'planogram') {
   if (racks.length === 0) {
     toast.error('Nothing to export')
@@ -1056,11 +1053,11 @@ export async function exportRacksToPdf(racks: Rack[], baseName = 'planogram') {
           ? loaded.racks[0].blueprintName || loaded.racks[0].rackCode || 'Planogram'
           : baseName
 
-    doc.setFontSize(16)
+    doc.setFontSize(16) 
     doc.text(String(title), 14, 16)
     doc.setFontSize(10)
     doc.setTextColor(100)
-    doc.text(`Exported ${new Date().toLocaleString()} · GET /racks/{id}/structure`, 14, 22)
+    doc.text(`Exported ${new Date().toLocaleString()}`, 14, 22)
     try {
       const { rackFaceUtilization } = await import('@/utils/faceFill')
       const totals = loaded.racks.reduce(
