@@ -359,18 +359,46 @@ function mapRowForApi(
   rowDepth: number,
   yStart: number,
 ) {
-  const rowWidth = row.width ?? row.span ?? innerWidth;
+  // API validates span against inner cavity (outer − walls), never outer width.
+  const maxSpan = Math.max(0.1, Number(innerWidth) > 0 ? Number(innerWidth) - 0.001 : 0.1)
+  const requested = Number(row.width ?? row.span)
+  let rowWidth =
+    Number.isFinite(requested) && requested > 0 ? Math.min(requested, maxSpan) : maxSpan
+
   const apiId = isServerUuid(row.id) ? row.id : undefined;
   const yEnd = yStart + row.height;
   const slotCount = row.bins.length;
   const dividerThickness = row.dividerThickness ?? 0.025;
 
+  const rawSum = row.bins.reduce((s, b) => s + Math.max(0, Number(b.width) || 0), 0)
+  // Keep Σ bin.width ≤ span so face-fill / outer-width bins don't fail after clamp.
+  const binScale =
+    rawSum > rowWidth + 0.001 && rawSum > 0 ? rowWidth / rawSum : 1
+
   let x = 0;
   const bins = row.bins.map((bin, slotIndex) => {
-    const mapped = mapBinForApi(bin, slotIndex, slotCount, x);
-    x += bin.width;
+    const scaledWidth =
+      binScale === 1
+        ? bin.width
+        : Math.round(Math.max(0.05, bin.width * binScale) * 1000) / 1000
+    const mapped = mapBinForApi(
+      binScale === 1 ? bin : { ...bin, width: scaledWidth },
+      slotIndex,
+      slotCount,
+      x,
+    );
+    x += Number(mapped.width) || 0;
     return mapped;
   });
+
+  // Absorb float remainder into the last bin so xEnd matches span.
+  if (bins.length > 0 && Math.abs(x - rowWidth) > 0.0005) {
+    const last = bins[bins.length - 1] as { width: number; xStart: number; xEnd: number }
+    const nextW = Math.max(0.05, Math.round((last.width + (rowWidth - x)) * 1000) / 1000)
+    last.width = nextW
+    last.xEnd = last.xStart + nextW
+    x = last.xEnd
+  }
 
   const rowPayload: Record<string, unknown> = {
     ...(apiId ? { id: apiId } : {}),

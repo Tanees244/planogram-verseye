@@ -27,6 +27,11 @@ import {
 } from '@/utils/lengthUnits'
 import { SAFE_GL } from '@/utils/webgl'
 
+function formatNumInputValue(value: number, asLength: boolean) {
+  if (!Number.isFinite(value)) return ''
+  return String(asLength ? mToCmDisplay(value, 1) : value)
+}
+
 function NumInput({
   label,
   value,
@@ -45,28 +50,62 @@ function NumInput({
   onChange: (v: number) => void
   asLength?: boolean
 }) {
-  const display = asLength ? mToCmDisplay(value, 1) : value
   const stepUi = asLength ? mToCm(step) : step
   const minUi = asLength ? mToCm(min) : min
   const maxUi = asLength ? mToCm(max) : max
+  const [draft, setDraft] = useState(() => formatNumInputValue(value, asLength))
+  const focusedRef = useRef(false)
+
+  useEffect(() => {
+    if (focusedRef.current) return
+    setDraft(formatNumInputValue(value, asLength))
+  }, [value, asLength])
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim()
+    if (trimmed === '' || trimmed === '-' || trimmed === '.' || trimmed === '-.') {
+      setDraft(formatNumInputValue(value, asLength))
+      return
+    }
+    const v = parseFloat(trimmed)
+    if (!Number.isFinite(v)) {
+      setDraft(formatNumInputValue(value, asLength))
+      return
+    }
+    const meters = asLength ? cmToM(v) : v
+    const clamped = Math.min(max, Math.max(min, meters))
+    onChange(clamped)
+    setDraft(formatNumInputValue(clamped, asLength))
+  }
 
   return (
     <label className="block">
       <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</span>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         step={stepUi}
         min={minUi}
         max={maxUi}
-        value={display}
+        value={draft}
+        onFocus={() => {
+          focusedRef.current = true
+        }}
         onChange={(e) => {
-          const v = parseFloat(e.target.value)
-          if (!Number.isFinite(v)) {
-            onChange(min <= 0 ? 0 : min)
-            return
+          const next = e.target.value
+          // Allow empty / partial number while typing so the field can be erased and rewritten.
+          if (next === '' || /^-?\d*\.?\d*$/.test(next)) {
+            setDraft(next)
           }
-          const meters = asLength ? cmToM(v) : v
-          onChange(meters <= 0 && min <= 0 ? 0 : Math.max(meters, min))
+        }}
+        onBlur={() => {
+          focusedRef.current = false
+          commit(draft)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur()
+          }
         }}
         className="mt-0.5 w-full px-2 py-1.5 text-xs rounded-lg bg-white/10 border border-white/15 text-white focus:outline-none focus:ring-1 focus:ring-brand"
       />

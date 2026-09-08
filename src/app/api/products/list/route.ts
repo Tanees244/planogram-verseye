@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { proxyLayout, extractList } from '@/app/api/utils/layoutProxy';
+import { normalizeCatalogSizeToM } from '@/utils/skuDimensions';
 
 // Products are SKUs in the new catalog API. Mapped into the { products: [...] }
 // shape the UI expects. The SKU id is what gets attached to bins (skuId).
@@ -21,15 +22,22 @@ export async function GET(req: NextRequest) {
   return proxyLayout(req, `/api/v1/catalog/skus?${qs.toString()}`, {
     method: 'GET',
     transform: (data) => ({
-      products: extractList(data).map((s: any) => ({
-        id: s.id ?? s.skuId,
-        name: s.name ?? s.skuName ?? s.title ?? s.productName,
-        categoryId: s.categoryId ?? null,
-        brandId: s.brandId ?? null,
-        brandName: s.brandName ?? null,
-        categoryName: s.categoryName ?? null,
-        ...s,
-      })),
+      products: extractList(data).map((s: any) => {
+        const size = normalizeCatalogSizeToM(s);
+        return {
+          id: s.id ?? s.skuId,
+          name: s.name ?? s.skuName ?? s.title ?? s.productName,
+          categoryId: s.categoryId ?? null,
+          brandId: s.brandId ?? null,
+          brandName: s.brandName ?? null,
+          categoryName: s.categoryName ?? null,
+          ...s,
+          // Scene + UI expect meters; catalog often returns mm (100 → 0.10).
+          width: size.width,
+          height: size.height,
+          depth: size.depth,
+        };
+      }),
     }),
   });
 }

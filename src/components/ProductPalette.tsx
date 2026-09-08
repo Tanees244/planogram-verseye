@@ -12,17 +12,14 @@ import {
 } from 'react-icons/fi'
 import { getPlanogramTokenFromCookie } from '@verseye/utils'
 import { usePlanogramStore, type PendingProductParams } from '@/store/planogramStore'
-import {
-  DEFAULT_PRODUCT_DEPTH,
-  DEFAULT_PRODUCT_HEIGHT,
-  DEFAULT_PRODUCT_WIDTH,
-} from '@/constants/dimensions'
-import { safeDim } from '@/utils/safeDimensions'
 import { cn } from '@/lib/cn'
 import { Spinner } from '@/components/Spinner'
 import { SkuThumb, resolveSkuVisual } from '@/components/SkuThumb'
 import { preloadGlbThumbnails } from '@/utils/glbThumbnail'
 import { PANEL_SHELL, PANEL_LIST_ITEM } from '@/lib/uiShell'
+import { normalizeCatalogSizeToM } from '@/utils/skuDimensions'
+import { isRasterImagePath, pickModelAttachment } from '@/utils/productModelUrl'
+import { formatCmTriple } from '@/utils/lengthUnits'
 
 export const PRODUCT_DRAG_MIME = 'application/planogram-sku'
 /** Drag an existing bin SKU to another bin (move inventory). */
@@ -40,6 +37,7 @@ interface CatalogSkuRow {
   id: string
   name: string
   code?: string | null
+  categoryId?: string | null
   brandName?: string | null
   categoryName?: string | null
   size?: string | null
@@ -72,36 +70,51 @@ function authHeaders(): Record<string, string> {
 }
 
 function skuModelStorageKey(sku: CatalogSkuRow): string | null {
-  if (sku.modelStorageKey) return sku.modelStorageKey
-  const fromAttachment = sku.attachments?.find(
-    (a) =>
-      a &&
-      (a.is3D === true ||
-        String(a.storageKey ?? '').toLowerCase().split('?')[0].endsWith('.glb')),
-  )?.storageKey
-  if (fromAttachment) return fromAttachment
+  if (sku.modelStorageKey && !isRasterImagePath(sku.modelStorageKey)) {
+    return sku.modelStorageKey
+  }
+  const fromAttachment = pickModelAttachment(sku.attachments)?.storageKey
+  if (fromAttachment && !isRasterImagePath(fromAttachment)) return fromAttachment
   if (sku.imageStorageKey?.toLowerCase().split('?')[0].endsWith('.glb')) {
     return sku.imageStorageKey
   }
   return null
 }
 
+function skuImageStorageKey(sku: CatalogSkuRow): string | null {
+  if (sku.imageStorageKey && !sku.imageStorageKey.toLowerCase().split('?')[0].endsWith('.glb')) {
+    return sku.imageStorageKey
+  }
+  if (sku.modelStorageKey && isRasterImagePath(sku.modelStorageKey)) {
+    return sku.modelStorageKey
+  }
+  const att = sku.attachments?.find(
+    (a) =>
+      a?.storageKey &&
+      !a.storageKey.toLowerCase().split('?')[0].endsWith('.glb') &&
+      (a.is3D !== true || isRasterImagePath(a.storageKey)),
+  )
+  return att?.storageKey ?? null
+}
+
 function skuToPending(sku: CatalogSkuRow): PendingProductParams {
+  const size = normalizeCatalogSizeToM(sku)
   return {
     id: sku.id,
     name: sku.name,
     code: sku.code ?? null,
+    categoryId: sku.categoryId ?? null,
     brandName: sku.brandName ?? null,
     categoryName: sku.categoryName ?? null,
     size: sku.size ?? null,
     variant: sku.variant ?? null,
     imageUrl: sku.imageUrl ?? null,
-    imageStorageKey: sku.imageStorageKey ?? null,
+    imageStorageKey: skuImageStorageKey(sku),
     modelUrl: sku.modelUrl ?? null,
     modelStorageKey: skuModelStorageKey(sku),
-    width: safeDim(sku.width, DEFAULT_PRODUCT_WIDTH),
-    height: safeDim(sku.height, DEFAULT_PRODUCT_HEIGHT),
-    depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
+    width: size.width,
+    height: size.height,
+    depth: size.depth,
     color: '#10b981',
     isHero: Boolean(sku.isHero),
     isStackable: Boolean(sku.isStackable),
@@ -198,6 +211,7 @@ export function ProductPalette({
             id,
             name: s.name ?? s.skuName ?? 'SKU',
             code: s.code ?? null,
+            categoryId: s.categoryId ?? null,
             brandName: s.brandName ?? null,
             categoryName: s.categoryName ?? null,
             size: s.size ?? null,
@@ -336,8 +350,7 @@ export function ProductPalette({
                   : 'Hover a shelf to preview size, then click to place'}
               </p>
               <p className="text-gray-500 mt-1 text-[10px]">
-                Facing {(pendingProduct.width * 100).toFixed(0)}×{(pendingProduct.depth * 100).toFixed(0)}×
-                {(pendingProduct.height * 100).toFixed(0)} cm
+                Facing {formatCmTriple(pendingProduct.width, pendingProduct.depth, pendingProduct.height)}
               </p>
             </div>
             <button

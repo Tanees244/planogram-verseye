@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { FiPackage } from 'react-icons/fi'
-import { resolveProductModelUrl, storageKeyFromSignedUrl } from '@/utils/productModelUrl'
+import { resolveProductModelUrl, storageKeyFromSignedUrl, pickImageAttachment, pickModelAttachment, isGlbRef, isRasterImagePath } from '@/utils/productModelUrl'
 import { getGlbThumbnail } from '@/utils/glbThumbnail'
 import { cn } from '@/lib/cn'
 
@@ -19,11 +19,6 @@ export interface SkuVisualFields {
   }> | null
 }
 
-function isGlbRef(value?: string | null): boolean {
-  if (!value) return false
-  return value.split('?')[0].toLowerCase().endsWith('.glb')
-}
-
 export interface SkuVisual {
   /** Same-origin URL for a regular 2D image, if the SKU has one. */
   imageSrc: string | null
@@ -34,19 +29,8 @@ export interface SkuVisual {
 /** Pick the best image / 3D-model source from a catalog SKU row. */
 export function resolveSkuVisual(sku: SkuVisualFields): SkuVisual {
   const attachments = Array.isArray(sku.attachments) ? sku.attachments : []
-  const modelAttachment = attachments.find(
-    (a) =>
-      a &&
-      (a.is3D === true || isGlbRef(a.storageKey ?? a.objectKey) || isGlbRef(a.url)),
-  )
-  const imageAttachment = attachments.find(
-    (a) =>
-      a &&
-      a.is3D !== true &&
-      (a.storageKey || a.objectKey || a.url) &&
-      !isGlbRef(a.storageKey ?? a.objectKey) &&
-      !isGlbRef(a.url),
-  )
+  const modelAttachment = pickModelAttachment(attachments)
+  const imageAttachment = pickImageAttachment(attachments)
 
   // Some backends put the GLB into imageUrl/imageStorageKey — treat those as models.
   const modelSrc = resolveProductModelUrl({
@@ -56,7 +40,9 @@ export function resolveSkuVisual(sku: SkuVisualFields): SkuVisual {
       modelAttachment?.url ??
       null,
     modelStorageKey:
-      sku.modelStorageKey ??
+      (sku.modelStorageKey && !isRasterImagePath(sku.modelStorageKey)
+        ? sku.modelStorageKey
+        : null) ??
       (isGlbRef(sku.imageStorageKey) ? sku.imageStorageKey : null) ??
       modelAttachment?.storageKey ??
       modelAttachment?.objectKey ??
@@ -64,6 +50,10 @@ export function resolveSkuVisual(sku: SkuVisualFields): SkuVisual {
   })
 
   let imageSrc: string | null = null
+  const rescuedRasterModel =
+    sku.modelStorageKey && isRasterImagePath(sku.modelStorageKey)
+      ? sku.modelStorageKey
+      : null
   const imageKey =
     (sku.imageStorageKey && !isGlbRef(sku.imageStorageKey) ? sku.imageStorageKey : null) ||
     (imageAttachment?.storageKey && !isGlbRef(imageAttachment.storageKey)
@@ -72,6 +62,7 @@ export function resolveSkuVisual(sku: SkuVisualFields): SkuVisual {
     (imageAttachment?.objectKey && !isGlbRef(imageAttachment.objectKey)
       ? imageAttachment.objectKey
       : null) ||
+    rescuedRasterModel ||
     (sku.imageUrl && !isGlbRef(sku.imageUrl) ? storageKeyFromSignedUrl(sku.imageUrl) : null) ||
     (imageAttachment?.url && !isGlbRef(imageAttachment.url)
       ? storageKeyFromSignedUrl(imageAttachment.url)

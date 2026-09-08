@@ -12,7 +12,7 @@ import {
 } from '@/constants/dimensions'
 import { safeDim } from '@/utils/safeDimensions'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
-import { resolveProductModelUrl } from '@/utils/productModelUrl'
+import { resolveProductModelUrl, isGlbPath } from '@/utils/productModelUrl'
 import {
   ensureGlbReady,
   isGlbFailed,
@@ -83,6 +83,7 @@ function ProductBoxFallback({
   const sideColor = texture ? '#e8e8e8' : product.color
   const emissive = isSelected || hovered ? (texture ? '#ffffff' : product.color) : '#000000'
   const emissiveIntensity = isSelected ? 0.25 : hovered ? 0.35 : 0
+  const catalogId = resolveProductFacingId(product.id)
 
   // Shared SKU textures must not be disposed when one facing remounts (resize
   // remounts Product meshes; R3F would otherwise dispose material.map → magenta).
@@ -117,7 +118,7 @@ function ProductBoxFallback({
 
   return (
     <mesh
-      userData={{ id: product.id, type: 'product' }}
+      userData={{ id: catalogId, type: 'product', facingId: product.id }}
       ref={meshRef}
       onClick={onSelect}
       onPointerOver={(e) => {
@@ -170,7 +171,9 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
   const width = safeDim(product.width, DEFAULT_PRODUCT_WIDTH)
   const height = safeDim(product.height, DEFAULT_PRODUCT_HEIGHT)
   const depth = safeDim(product.depth, DEFAULT_PRODUCT_DEPTH)
-  const modelUrl = resolveProductModelUrl(product)
+  const resolvedModel = resolveProductModelUrl(product)
+  const modelUrl =
+    resolvedModel && isGlbPath(resolvedModel) ? resolvedModel : null
   const glbAvailability = useGlbAvailability(modelUrl, forceSimple)
   const useGlb = Boolean(
     modelUrl && !glbFailed && !forceSimple && glbAvailability.ready && !glbAvailability.failed,
@@ -304,7 +307,7 @@ export function Product({ product, position, rowId, binId, forceSimple = false }
               width={width}
               height={height}
               depth={depth}
-              productId={product.id}
+              productId={catalogId}
               isSelected={isSelected}
               hovered={hovered}
               onSelect={handleSelect}

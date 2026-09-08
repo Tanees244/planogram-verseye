@@ -31,6 +31,7 @@ export interface Product {
     status: 'Active' | 'Archived';
     createdDate: string;
     imageUrl?: string;
+    imageStorageKey?: string;
     modelUrl?: string;
     modelStorageKey?: string;
     code?: string;

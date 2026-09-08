@@ -45,6 +45,8 @@ import {
   formatCmTriple,
   parseCmInputToM,
 } from '@/utils/lengthUnits'
+import { normalizeCatalogSizeToM, catalogDimsLookLikeCm } from '@/utils/skuDimensions'
+import { isRasterImagePath, pickImageAttachment, pickModelAttachment } from '@/utils/productModelUrl'
 
 interface AttachProductToBinModalProps {
   isOpen: boolean
@@ -99,14 +101,11 @@ function authHeaders(): Record<string, string> {
 }
 
 function skuModelStorageKey(sku: CatalogSku): string | undefined {
-  if (sku.modelStorageKey) return sku.modelStorageKey
-  const fromAttachment = sku.attachments?.find(
-    (a) =>
-      a &&
-      (a.is3D === true ||
-        String(a.storageKey ?? '').toLowerCase().split('?')[0].endsWith('.glb')),
-  )?.storageKey
-  if (fromAttachment) return fromAttachment
+  if (sku.modelStorageKey && !isRasterImagePath(sku.modelStorageKey)) {
+    return sku.modelStorageKey
+  }
+  const fromAttachment = pickModelAttachment(sku.attachments)?.storageKey
+  if (fromAttachment && !isRasterImagePath(fromAttachment)) return fromAttachment
   // Some rows carry the GLB in imageStorageKey by mistake
   if (sku.imageStorageKey?.toLowerCase().split('?')[0].endsWith('.glb')) {
     return sku.imageStorageKey
@@ -114,7 +113,23 @@ function skuModelStorageKey(sku: CatalogSku): string | undefined {
   return undefined
 }
 
+function skuImageStorageKey(sku: CatalogSku): string | undefined {
+  if (sku.imageStorageKey && !sku.imageStorageKey.toLowerCase().split('?')[0].endsWith('.glb')) {
+    return sku.imageStorageKey
+  }
+  if (sku.modelStorageKey && isRasterImagePath(sku.modelStorageKey)) {
+    return sku.modelStorageKey
+  }
+  const fromAttachment = pickImageAttachment(sku.attachments)
+  return (
+    fromAttachment?.storageKey ??
+    fromAttachment?.objectKey ??
+    undefined
+  )
+}
+
 function skuToProduct(sku: CatalogSku): Product {
+  const size = normalizeCatalogSizeToM(sku)
   return {
     id: sku.id,
     name: sku.name,
@@ -123,15 +138,16 @@ function skuToProduct(sku: CatalogSku): Product {
     brandId: sku.brandId ?? '',
     brandName: sku.brandName ?? undefined,
     price: 0,
-    height: safeDim(sku.height, DEFAULT_PRODUCT_HEIGHT),
-    width: safeDim(sku.width, DEFAULT_PRODUCT_WIDTH),
-    depth: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
-    length: safeDim(sku.depth, DEFAULT_PRODUCT_DEPTH),
+    height: size.height,
+    width: size.width,
+    depth: size.depth,
+    length: size.depth,
     color: '#2C5282',
     description: sku.code ?? '',
     status: 'Active',
     createdDate: new Date().toISOString(),
     imageUrl: sku.imageUrl ?? undefined,
+    imageStorageKey: skuImageStorageKey(sku),
     modelUrl: sku.modelUrl ?? undefined,
     modelStorageKey: skuModelStorageKey(sku),
     code: sku.code ?? undefined,
@@ -228,26 +244,38 @@ export default function AttachProductToBinModal({
       }
       const list = json?.data?.products ?? json?.data ?? []
       setSkus(
-        (Array.isArray(list) ? list : []).map((s: any) => ({
-          id: s.id ?? s.skuId,
-          name: s.name ?? s.skuName ?? 'SKU',
-          code: s.code ?? null,
-          categoryId: s.categoryId ?? null,
-          categoryName: s.categoryName ?? null,
-          brandId: s.brandId ?? null,
-          brandName: s.brandName ?? null,
-          width: s.width ?? null,
-          height: s.height ?? null,
-          depth: s.depth ?? null,
-          imageUrl: s.imageUrl ?? null,
-          imageStorageKey: s.imageStorageKey ?? null,
-          modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
-          modelStorageKey: s.modelStorageKey ?? s.glbStorageKey ?? null,
-          attachments: Array.isArray(s.attachments) ? s.attachments : null,
-          status: s.status,
-          isHero: Boolean(s.isHero ?? s.heroSku),
-          isStackable: s.isStackable === true || s.stackable === true,
-        })),
+        (Array.isArray(list) ? list : []).map((s: any) => {
+          const attachments = Array.isArray(s.attachments) ? s.attachments : null
+          const imageAtt = pickImageAttachment(attachments)
+          const modelAtt = pickModelAttachment(attachments)
+          const rawModelKey = s.modelStorageKey ?? s.glbStorageKey ?? modelAtt?.storageKey ?? null
+          const rawImageKey = s.imageStorageKey ?? imageAtt?.storageKey ?? imageAtt?.objectKey ?? null
+          return {
+            id: s.id ?? s.skuId,
+            name: s.name ?? s.skuName ?? 'SKU',
+            code: s.code ?? null,
+            categoryId: s.categoryId ?? null,
+            categoryName: s.categoryName ?? null,
+            brandId: s.brandId ?? null,
+            brandName: s.brandName ?? null,
+            width: s.width ?? null,
+            height: s.height ?? null,
+            depth: s.depth ?? null,
+            imageUrl: s.imageUrl ?? null,
+            imageStorageKey:
+              (rawImageKey && !String(rawImageKey).toLowerCase().endsWith('.glb')
+                ? rawImageKey
+                : null) ||
+              (rawModelKey && isRasterImagePath(rawModelKey) ? rawModelKey : null),
+            modelUrl: s.modelUrl ?? s.glbUrl ?? s.model3dUrl ?? null,
+            modelStorageKey:
+              rawModelKey && !isRasterImagePath(rawModelKey) ? rawModelKey : null,
+            attachments,
+            status: s.status,
+            isHero: Boolean(s.isHero ?? s.heroSku),
+            isStackable: s.isStackable === true || s.stackable === true,
+          }
+        }),
       )
       const mapped = Array.isArray(list) ? list : []
       preloadGlbThumbnails(
@@ -338,10 +366,11 @@ export default function AttachProductToBinModal({
 
   useEffect(() => {
     if (!selectedSku) return
+    const size = normalizeCatalogSizeToM(selectedSku)
     setOverrideDims({
-      width: cmInputFromM(safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)),
-      depth: cmInputFromM(safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)),
-      height: cmInputFromM(safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)),
+      width: cmInputFromM(size.width),
+      depth: cmInputFromM(size.depth),
+      height: cmInputFromM(size.height),
     })
   }, [selectedSkuId, selectedSku])
 
@@ -353,7 +382,7 @@ export default function AttachProductToBinModal({
         const m = parseCmInputToM(overrideDims.width)
         return Number.isFinite(m) && m > 0
           ? m
-          : safeDim(selectedSku.width, DEFAULT_PRODUCT_WIDTH)
+          : normalizeCatalogSizeToM(selectedSku).width
       })()
     : mode === 'create'
       ? previewWidth
@@ -364,7 +393,7 @@ export default function AttachProductToBinModal({
         const m = parseCmInputToM(overrideDims.height)
         return Number.isFinite(m) && m > 0
           ? m
-          : safeDim(selectedSku.height, DEFAULT_PRODUCT_HEIGHT)
+          : normalizeCatalogSizeToM(selectedSku).height
       })()
     : mode === 'create'
       ? previewHeight
@@ -375,7 +404,7 @@ export default function AttachProductToBinModal({
         const m = parseCmInputToM(overrideDims.depth)
         return Number.isFinite(m) && m > 0
           ? m
-          : safeDim(selectedSku.depth, DEFAULT_PRODUCT_DEPTH)
+          : normalizeCatalogSizeToM(selectedSku).depth
       })()
     : mode === 'create'
       ? previewDepth
@@ -598,11 +627,13 @@ export default function AttachProductToBinModal({
       // Persist dims onto catalog SKU when missing OR when the user edited
       // them. The layout reload after attach re-reads dims from the catalog,
       // so unsaved overrides would be silently reverted in the 3D view.
+      const catalogSize = normalizeCatalogSizeToM(selectedSku)
       const dimsDiffer =
-        Math.abs(w - safeDim(selectedSku.width, 0)) > 1e-4 ||
-        Math.abs(d - safeDim(selectedSku.depth, 0)) > 1e-4 ||
-        Math.abs(h - safeDim(selectedSku.height, 0)) > 1e-4
-      if (selectedNeedsDims || dimsDiffer) {
+        Math.abs(w - catalogSize.width) > 1e-4 ||
+        Math.abs(d - catalogSize.depth) > 1e-4 ||
+        Math.abs(h - catalogSize.height) > 1e-4
+      // Also rewrite catalog when stored values look like cm mistaken for meters (10 → 0.10).
+      if (selectedNeedsDims || dimsDiffer || catalogDimsLookLikeCm(selectedSku)) {
         const headers = { ...authHeaders(), 'Content-Type': 'application/json' }
         const patchRes = await fetch(`/api/products/${encodeURIComponent(selectedSku.id)}`, {
           method: 'PUT',
@@ -1145,7 +1176,10 @@ export default function AttachProductToBinModal({
                           <p className="text-[10px] text-gray-400 mt-0.5">
                             {missingDims
                               ? 'No catalog dims — enter size below'
-                              : formatCmTriple(Number(sku.width), Number(sku.depth), Number(sku.height))}
+                              : (() => {
+                                  const s = normalizeCatalogSizeToM(sku)
+                                  return formatCmTriple(s.width, s.depth, s.height)
+                                })()}
                           </p>
                         </div>
                         {selected && (

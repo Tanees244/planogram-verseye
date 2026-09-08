@@ -142,11 +142,13 @@ export function packFacingsInBin(options: {
 
   // Capacity grid from raw dims — must match maxFacingsInBinVolume / attach capacity.
   const grid = facingGridSize(binW, binD, binH, fw0, fd0, fh0)
-  let cols = Math.max(grid.cols, grid.maxFit > 0 ? grid.cols : 0)
-  let depthRows = Math.max(grid.depthRows, grid.maxFit > 0 ? grid.depthRows : 0)
-  let stackLayers = Math.max(grid.stackLayers, grid.maxFit > 0 ? grid.stackLayers : 0)
+  let cols = grid.cols
+  let depthRows = grid.depthRows
+  let stackLayers = grid.stackLayers
 
-  // If a single facing does not fit, scale for display and allow at most 1×1×1.
+  // If a single facing overflows any axis, scale for display — then rebuild the
+  // grid from scaled size. Do NOT collapse to 1×1×1: a tall SKU that only
+  // needs height scale can still fit multiple facings across width.
   const unitScale = Math.min(
     binH / Math.max(fh0, 0.001),
     binD / Math.max(fd0, 0.001),
@@ -157,10 +159,11 @@ export function packFacingsInBin(options: {
   let fh = fh0 * unitScale
   let fd = fd0 * unitScale
 
-  if (cols < 1 || depthRows < 1 || stackLayers < 1) {
-    cols = 1
-    depthRows = 1
-    stackLayers = 1
+  if (cols < 1 || depthRows < 1 || stackLayers < 1 || unitScale < 1 - 1e-9) {
+    const scaled = facingGridSize(binW, binD, binH, fw, fd, fh)
+    cols = Math.max(1, scaled.cols)
+    depthRows = Math.max(1, scaled.depthRows)
+    stackLayers = Math.max(1, scaled.stackLayers)
   }
   if (options.stackable === false) {
     stackLayers = 1
@@ -174,11 +177,14 @@ export function packFacingsInBin(options: {
       ? 0
       : Math.max(0, Math.min(options.usedWidthM ?? 0, binW))
   const freeW = Math.max(0.001, binW - usedW)
+  // Use the (possibly scaled) facing width so freeCols matches the visual grid.
+  const colPitch = Math.max(fw, 0.001)
   const freeCols =
     occupied > 0
       ? cols
-      : Math.max(0, Math.floor(freeW / Math.max(fw0, 0.001) + 1e-6))
-  const useCols = occupied > 0 ? cols : Math.max(1, freeCols || (freeW >= fw0 * unitScale ? 1 : 0))
+      : Math.max(0, Math.floor(freeW / colPitch + 1e-6))
+  const useCols =
+    occupied > 0 ? cols : Math.max(1, freeCols || (freeW >= colPitch ? 1 : 0))
   const freeMax =
     occupied > 0
       ? Math.max(0, maxFitAbsolute - occupied)

@@ -8,11 +8,9 @@ import {
   normalizeZoneVolume,
 } from '@/utils/rackZones'
 import { safeDim, safePosition } from '@/utils/safeDimensions'
+import { normalizeCatalogSizeToM } from '@/utils/skuDimensions'
 import {
   DEFAULT_BIN_HEIGHT,
-  DEFAULT_PRODUCT_DEPTH,
-  DEFAULT_PRODUCT_HEIGHT,
-  DEFAULT_PRODUCT_WIDTH,
 } from '@/constants/dimensions'
 import {
   parsePlacement,
@@ -26,6 +24,12 @@ import { computeCustomRackDimensions } from '@/components/fixtures/customRackTyp
 import { ensureRowAnchors } from '@/utils/rowStack'
 import { normalizeShelfFacingUtilization } from '@/types/shelfUtilization'
 import { resolveIsStackable } from '@/utils/stackableSku'
+import {
+  isGlbRef,
+  isRasterImagePath,
+  pickImageAttachment,
+  pickModelAttachment,
+} from '@/utils/productModelUrl'
 
 const generateId = () => Math.random().toString(36).substring(2, 9)
 
@@ -89,16 +93,8 @@ function normalizeProductPosition(value: unknown): { x: number | null; y: number
 export function normalizeSkus(skus: any[]): any[] {
   return asArray(skus).map((p: any) => {
     const attachments = asArray(p.attachments)
-    const imageFromAttachments = attachments.find(
-      (a: any) => a && a.is3D !== true && (a.storageKey || a.objectKey || a.url),
-    )
-    const modelFromAttachments = attachments.find(
-      (a: any) =>
-        a &&
-        (a.is3D === true ||
-          String(a.storageKey ?? a.objectKey ?? '').toLowerCase().endsWith('.glb') ||
-          String(a.url ?? '').toLowerCase().includes('.glb')),
-    )
+    const imageFromAttachments = pickImageAttachment(attachments)
+    const modelFromAttachments = pickModelAttachment(attachments)
 
     const id = String(p.skuId ?? p.id ?? p.productId ?? generateId())
     // Stable fallback color from id (avoids random rainbow boxes on every reload)
@@ -109,30 +105,58 @@ export function normalizeSkus(skus: any[]): any[] {
             .toString(16)
             .padStart(6, '0')}`
 
+    const size = normalizeCatalogSizeToM(p)
+    const imageFromKey =
+      (typeof p.imageStorageKey === 'string' &&
+      !isGlbRef(p.imageStorageKey) &&
+      p.imageStorageKey) ||
+      imageFromAttachments?.storageKey ||
+      imageFromAttachments?.objectKey ||
+      null
+    const modelFromKey =
+      (typeof p.modelStorageKey === 'string' &&
+      !isRasterImagePath(p.modelStorageKey) &&
+      p.modelStorageKey) ||
+      (typeof p.glbStorageKey === 'string' &&
+      !isRasterImagePath(p.glbStorageKey) &&
+      p.glbStorageKey) ||
+      modelFromAttachments?.storageKey ||
+      modelFromAttachments?.objectKey ||
+      null
+    // Catalog sometimes marks a PNG as is3D — rescue it as the 2D face image.
+    const rescuedImageKey =
+      (!imageFromKey &&
+        typeof p.modelStorageKey === 'string' &&
+        isRasterImagePath(p.modelStorageKey) &&
+        p.modelStorageKey) ||
+      (!imageFromKey &&
+        modelFromAttachments &&
+        isRasterImagePath(
+          modelFromAttachments.storageKey || modelFromAttachments.objectKey,
+        ) &&
+        (modelFromAttachments.storageKey || modelFromAttachments.objectKey)) ||
+      null
+    const imageStorageKey = imageFromKey || rescuedImageKey || undefined
+    const modelStorageKey = modelFromKey || undefined
+
     return {
       id,
       inventoryId: p.binInventoryId ?? p.inventoryId ?? p.id ?? undefined,
       name: p.skuName ?? p.name ?? p.productName ?? p.title ?? 'Product',
       color,
-      width: safeDim(p.width, DEFAULT_PRODUCT_WIDTH),
-      height: safeDim(p.height, DEFAULT_PRODUCT_HEIGHT),
-      depth: safeDim(p.depth, DEFAULT_PRODUCT_DEPTH),
+      width: size.width,
+      height: size.height,
+      depth: size.depth,
       quantity: Math.max(1, Math.floor(Number(p.quantity) || 1)),
       brandName: p.brandName ?? undefined,
       categoryName: p.categoryName ?? undefined,
       imageUrl: p.imageUrl ?? p.image ?? imageFromAttachments?.url ?? undefined,
-      imageStorageKey:
-        p.imageStorageKey ??
-        imageFromAttachments?.storageKey ??
-        imageFromAttachments?.objectKey ??
-        undefined,
-      modelUrl: p.modelUrl ?? p.glbUrl ?? p.model3dUrl ?? modelFromAttachments?.url ?? undefined,
-      modelStorageKey:
-        p.modelStorageKey ??
-        p.glbStorageKey ??
-        modelFromAttachments?.storageKey ??
-        modelFromAttachments?.objectKey ??
-        undefined,
+      imageStorageKey,
+      modelUrl:
+        (modelStorageKey
+          ? p.modelUrl ?? p.glbUrl ?? p.model3dUrl ?? modelFromAttachments?.url
+          : null) ?? undefined,
+      modelStorageKey,
       position: normalizeProductPosition(p.position),
       isStackable: resolveIsStackable(id, {
         isStackable:
@@ -764,32 +788,40 @@ const skuMediaCache = new Map<string, SkuMedia | null>()
 
 function extractSkuMedia(s: any): SkuMedia {
   const attachments = asArray(s?.attachments)
-  const imageAttachment = attachments.find(
-    (a: any) => a && a.is3D !== true && (a.storageKey || a.objectKey || a.url),
-  )
-  const modelAttachment = attachments.find(
-    (a: any) =>
-      a &&
-      (a.is3D === true ||
-        String(a.storageKey ?? a.objectKey ?? '').toLowerCase().endsWith('.glb') ||
-        String(a.url ?? '').toLowerCase().includes('.glb')),
-  )
+  const imageAttachment = pickImageAttachment(attachments)
+  const modelAttachment = pickModelAttachment(attachments)
+  const rawImageKey =
+    s?.imageStorageKey ?? imageAttachment?.storageKey ?? imageAttachment?.objectKey ?? undefined
+  const rawModelKey =
+    s?.modelStorageKey ??
+    s?.glbStorageKey ??
+    modelAttachment?.storageKey ??
+    modelAttachment?.objectKey ??
+    undefined
+  const imageStorageKey =
+    (rawImageKey && !isGlbRef(rawImageKey) ? rawImageKey : undefined) ||
+    (rawModelKey && isRasterImagePath(rawModelKey) ? rawModelKey : undefined)
+  const modelStorageKey =
+    rawModelKey && !isRasterImagePath(rawModelKey) ? rawModelKey : undefined
+
   return {
     imageUrl: s?.imageUrl ?? s?.image ?? imageAttachment?.url ?? undefined,
-    imageStorageKey:
-      s?.imageStorageKey ?? imageAttachment?.storageKey ?? imageAttachment?.objectKey ?? undefined,
-    modelUrl: s?.modelUrl ?? s?.glbUrl ?? s?.model3dUrl ?? modelAttachment?.url ?? undefined,
-    modelStorageKey:
-      s?.modelStorageKey ??
-      s?.glbStorageKey ??
-      modelAttachment?.storageKey ??
-      modelAttachment?.objectKey ??
-      undefined,
+    imageStorageKey,
+    modelUrl:
+      (modelStorageKey
+        ? s?.modelUrl ?? s?.glbUrl ?? s?.model3dUrl ?? modelAttachment?.url
+        : null) ?? undefined,
+    modelStorageKey,
   }
 }
 
 function productNeedsMedia(p: any): boolean {
-  return !(p?.modelUrl || p?.modelStorageKey) || !(p?.imageUrl || p?.imageStorageKey)
+  const hasImage = Boolean(p?.imageUrl || p?.imageStorageKey)
+  const hasModel = Boolean(
+    (p?.modelUrl && !isRasterImagePath(p.modelUrl)) ||
+      (p?.modelStorageKey && !isRasterImagePath(p.modelStorageKey)),
+  )
+  return !hasModel || !hasImage
 }
 
 async function fetchSkuMedia(skuId: string, headers: Record<string, string>): Promise<SkuMedia | null> {
@@ -842,12 +874,23 @@ export async function hydrateSkuMediaFromCatalog(racks: Rack[]): Promise<Rack[]>
             const skuId = String(p.id).replace(/::facing-\d+$/, '')
             const media = skuMediaCache.get(skuId)
             if (!media) return p
+            const existingModelKey = p.modelStorageKey
+            const rescuedImage =
+              (p as { imageStorageKey?: string }).imageStorageKey ??
+              (existingModelKey && isRasterImagePath(existingModelKey)
+                ? existingModelKey
+                : undefined) ??
+              media.imageStorageKey
+            const modelKey =
+              (existingModelKey && !isRasterImagePath(existingModelKey)
+                ? existingModelKey
+                : undefined) ?? media.modelStorageKey
             return {
               ...p,
               imageUrl: p.imageUrl ?? media.imageUrl,
-              imageStorageKey: (p as any).imageStorageKey ?? media.imageStorageKey,
-              modelUrl: p.modelUrl ?? media.modelUrl,
-              modelStorageKey: p.modelStorageKey ?? media.modelStorageKey,
+              imageStorageKey: rescuedImage,
+              modelUrl: modelKey ? p.modelUrl ?? media.modelUrl : undefined,
+              modelStorageKey: modelKey,
             }
           }),
         })),

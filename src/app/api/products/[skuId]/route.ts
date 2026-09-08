@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { proxyLayout } from '@/app/api/utils/layoutProxy';
+import { normalizeCatalogSizeToM } from '@/utils/skuDimensions';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,6 +21,7 @@ export async function GET(
     method: 'GET',
     transform: (data) => {
       const s = data ?? {};
+      const size = normalizeCatalogSizeToM(s);
       return {
         id: s.id ?? s.skuId,
         name: s.name ?? s.skuName ?? s.title,
@@ -28,6 +30,9 @@ export async function GET(
         brandName: s.brandName ?? null,
         categoryName: s.categoryName ?? null,
         ...s,
+        width: size.width,
+        height: size.height,
+        depth: size.depth,
       };
     },
   });
@@ -97,6 +102,9 @@ export async function PUT(
   }
   if (typeof body.name === 'string' && body.name.trim()) patch.name = body.name.trim();
   if (typeof body.code === 'string' && body.code.trim()) patch.code = body.code.trim();
+  if (typeof body.categoryId === 'string' && body.categoryId.trim()) {
+    patch.categoryId = body.categoryId.trim();
+  }
   if (typeof body.status === 'string') patch.status = body.status;
   // Nullable flags: omit = unchanged; true/false = set (server recomputes placed bin capacity).
   if (body.isHero === true || body.heroSku === true) patch.isHero = true;

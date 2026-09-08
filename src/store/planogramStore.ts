@@ -21,6 +21,7 @@ import {
   snapToGrid,
 } from "@/utils/rackPlacement";
 import { buildCreateRackPayload, buildPlacementOnlyPayload, buildPlacementWithRowStubsPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, prepareImportedRackForCreate, rackHasEmptyRows, resolveRackOuter, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { normalizeCatalogSizeToM } from "@/utils/skuDimensions";
 import {
   autofillQuantityForSlot,
   binContentWidthM,
@@ -84,6 +85,8 @@ export interface Product {
   width: number;
   height: number;
   depth: number;
+  code?: string | null;
+  categoryId?: string | null;
   brandName?: string;
   categoryName?: string;
   imageUrl?: string;
@@ -108,6 +111,7 @@ export interface PendingProductParams {
   id: string;
   name: string;
   code?: string | null;
+  categoryId?: string | null;
   brandName?: string | null;
   categoryName?: string | null;
   size?: string | null;
@@ -1255,6 +1259,8 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       {
         id: pending.id,
         name: pending.name,
+        code: pending.code ?? undefined,
+        categoryId: pending.categoryId ?? undefined,
         brandName: pending.brandName ?? undefined,
         categoryName: pending.categoryName ?? undefined,
         imageUrl: pending.imageUrl ?? undefined,
@@ -2453,7 +2459,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       return { success: false, message: 'Shelf not found' };
     }
 
-    const rowSpan = hostRow.width ?? clampRowSpanToInner(hostRack);
+    const rowSpan = clampRowSpanToInner(hostRack, hostRow.width);
     const others = hostRow.bins
       .filter((b) => b.id !== hostBin!.id)
       .reduce((sum, b) => sum + (Number(b.width) || 0), 0);
@@ -2557,7 +2563,7 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       });
 
       for (const row of newRows) {
-        const rowSpan = row.width ?? clampRowSpanToInner(fresh);
+        const rowSpan = clampRowSpanToInner(fresh, row.width);
         const binW = Math.max(0.1, (rowSpan - 0.001) / spec.bins);
         const binD = clampBinDepthToInner(fresh);
         const binH = clampBinHeightToRow(spec.height);
@@ -2812,22 +2818,27 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       if (localBin) break;
     }
 
-    const skuW = Number(product.width);
-    const skuH = Number(product.height);
-    const skuD = Number(product.depth);
-    const binW = Number(localBin?.width);
-    const binH = Number(localBin?.height);
-    const binD = Number(localBin?.depth);
+    const skuSize = normalizeCatalogSizeToM({
+      width: product.width,
+      height: product.height,
+      depth: product.depth,
+    })
+    const skuW = skuSize.width
+    const skuH = skuSize.height
+    const skuD = skuSize.depth
+    const binW = Number(localBin?.width)
+    const binH = Number(localBin?.height)
+    const binD = Number(localBin?.depth)
 
-    const skuDimsOk = [skuW, skuH, skuD].every((n) => Number.isFinite(n) && n > 0);
-    const binDimsOk = [binW, binH, binD].every((n) => Number.isFinite(n) && n > 0);
+    const skuDimsOk = [skuW, skuH, skuD].every((n) => Number.isFinite(n) && n > 0)
+    const binDimsOk = [binW, binH, binD].every((n) => Number.isFinite(n) && n > 0)
 
-    const foreign = binHasForeignSku(localBin, skuId || product.id);
+    const foreign = binHasForeignSku(localBin, skuId || product.id)
     if (foreign.blocked) {
       return {
         success: false,
         message: `This shelf already has “${foreign.existingName || 'another SKU'}”. One SKU per slot — detach or move it first.`,
-      };
+      }
     }
 
     if (skuDimsOk) {
@@ -2836,50 +2847,92 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         depth: skuD,
         height: skuH,
         quantity: qty,
-      });
+      })
       if (!fit.fits) {
-        return { success: false, message: fit.reason };
+        return { success: false, message: fit.reason }
       }
     }
 
     if (canAttachInventory && serverBinId && skuId) {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       try {
-        const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
-        const t = getPlanogramTokenFromCookie();
-        if (t) headers['Authorization'] = `Bearer ${t}`;
+        const { getPlanogramTokenFromCookie } = await import('@verseye/utils')
+        const t = getPlanogramTokenFromCookie()
+        if (t) headers['Authorization'] = `Bearer ${t}`
       } catch {
         /* ignore */
       }
 
-      // Bins and SKUs should already have dims from create flows; attach directly.
+      // Layout attach validates against catalog DB dims. UI may already show
+      // meters (0.1) while catalog still has mm placeholders (100) → 422 fit.
+      // Sync meter W×H×D with required name/code/categoryId, then attach.
       try {
         if (!binDimsOk) {
           return {
             success: false,
             message: 'Shelf size must be set before attaching a SKU. Resize the shelf space and retry.',
-          };
+          }
         }
         if (!skuDimsOk) {
           return {
             success: false,
             message:
               'This catalog SKU has no dimensions. Set width/depth/height on the SKU (or create with dims) before attaching.',
-          };
+          }
         }
 
-        const res = await fetch('/api/bins/attach-product', {
-          method: 'POST',
+        const { ensureSkuDimsOnServer } = await import('@/utils/skuDimensions')
+        const synced = await ensureSkuDimsOnServer(
+          skuId,
+          { width: skuW, height: skuH, depth: skuD },
           headers,
-          body: JSON.stringify({ binId: serverBinId, skuId, quantity: qty }),
-        });
-        const data = await res.json().catch(() => ({}));
+          {
+            name: product.name,
+            code: product.code ?? null,
+            categoryId: product.categoryId ?? null,
+          },
+        )
+        if (!synced.ok) {
+          console.warn('[attach] SKU dim sync skipped/failed:', synced.message)
+        }
+
+        const attachOnce = async () => {
+          const res = await fetch('/api/bins/attach-product', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ binId: serverBinId, skuId, quantity: qty }),
+          })
+          const data = await res.json().catch(() => ({}))
+          return { res, data }
+        }
+
+        let { res, data } = await attachOnce()
+        if (
+          (!res.ok || data?.isRequestSuccess === false) &&
+          /does not fit/i.test(String(data?.message ?? ''))
+        ) {
+          // Retry once after a forced dim sync (identity may have loaded late).
+          const retrySync = await ensureSkuDimsOnServer(
+            skuId,
+            { width: skuW, height: skuH, depth: skuD },
+            headers,
+            {
+              name: product.name,
+              code: product.code ?? null,
+              categoryId: product.categoryId ?? null,
+            },
+          )
+          if (retrySync.ok) {
+            ;({ res, data } = await attachOnce())
+          }
+        }
+
         if (!res.ok || data?.isRequestSuccess === false) {
-          const attachMsg = extractApiErrorMessage(data, 'Failed to attach product to shelf');
-          return { success: false, message: attachMsg };
+          const attachMsg = extractApiErrorMessage(data, 'Failed to attach product to shelf')
+          return { success: false, message: attachMsg }
         }
       } catch {
-        return { success: false, message: 'Network error while attaching product' };
+        return { success: false, message: 'Network error while attaching product' }
       }
     }
 
@@ -2896,9 +2949,11 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
       modelStorageKey: product.modelStorageKey,
       brandName: product.brandName,
       categoryName: product.categoryName,
-    });
+      code: product.code,
+      categoryId: product.categoryId,
+    })
     if (!local.success) {
-      return { success: false, message: local.reason ?? 'Failed to attach product locally' };
+      return { success: false, message: local.reason ?? 'Failed to attach product locally' }
     }
 
     // Refresh from server so bin/product placement matches canonical layout
@@ -4066,10 +4121,12 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     for (const side of rack.sides) {
       for (const row of side.rows) {
         if ((row.bins?.length ?? 0) > 0) continue;
-        const span =
+        const span = clampRowSpanToInner(
+          rack,
           (typeof row.width === 'number' && row.width > 0 && row.width) ||
-          (typeof row.span === 'number' && row.span > 0 && row.span) ||
-          clampRowSpanToInner(rack);
+            (typeof row.span === 'number' && row.span > 0 && row.span) ||
+            null,
+        );
         // Prefer 2–4 bins so AI facing shares have slots; single SKU can still fill one.
         const binCount = Math.min(4, Math.max(1, Math.round(span / 0.45)));
         const binW = Math.max(0.1, Math.round((span / binCount) * 1000) / 1000);

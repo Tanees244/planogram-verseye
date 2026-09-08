@@ -187,6 +187,21 @@ export function Row({
       }
       return;
     }
+    // Row cavity / floor hitboxes often sit slightly in front of SKU faces.
+    // If this ray also hits a product, select the SKU (unless Shift = select row).
+    if (!e.shiftKey) {
+      const hits = Array.isArray(e.intersections) ? e.intersections : []
+      for (const hit of hits) {
+        const ud = hit?.object?.userData
+        if (ud?.type === 'product' && ud.id) {
+          setSelected(String(ud.id), 'product')
+          return
+        }
+        // First non-row hit that isn't empty space — stop preferring products
+        // only after we've scanned nearer hits; keep scanning past other row meshes.
+        if (ud?.type && ud.type !== 'row' && ud.type !== 'bin') break
+      }
+    }
     setSelected(row.id, "row");
   };
 
@@ -264,20 +279,25 @@ export function Row({
 
   return (
     <group position={position} userData={{ id: row.id, type: 'row' }}>
-      {/* Hitbox at back – for clicks from behind the rack */}
+      {/*
+        Back-half hitbox only — a full-depth cavity box sat in front of SKU
+        faces (SHELF_BIN_FRONT_INSET) and stole every product click.
+      */}
       <mesh
         userData={{ id: row.id, type: 'row' }}
-        position={[0, 0, z]}
+        position={[0, 0, z + safeRackDepth * 0.22]}
         onClick={selectRow}
         {...rowHoverProps}
         renderOrder={8}
       >
-        <boxGeometry args={[safeRackWidth, Math.max(rowHeight * 0.92, 0.2), Math.max(safeRackDepth * 0.9, 0.2)]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0}
-          depthWrite={false}
+        <boxGeometry
+          args={[
+            safeRackWidth,
+            Math.max(rowHeight * 0.92, 0.2),
+            Math.max(safeRackDepth * 0.45, 0.08),
+          ]}
         />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
       {/* Back wall – only for one-sided rows; skip raycast so bins can be clicked */}
@@ -333,32 +353,13 @@ export function Row({
           lineWidth={isSelected || highlightPlacement ? 2.5 : 2}
         />
       </mesh>
-      {/* Visible front lip (black row) */}
+      {/* Visible front lip (black row) — not clickable; floor/back handle row select */}
       <mesh
         position={[0, -rowHeight / 2 + SHELF_FRONT_LIP_CENTER_Y, z - safeRackDepth / 2]}
         raycast={() => null}
       >
         <boxGeometry args={[safeRackWidth, SHELF_FRONT_LIP_HEIGHT, SHELF_FRONT_LIP_DEPTH]} />
         <meshStandardMaterial color="#34495e" metalness={0.5} roughness={0.4} />
-      </mesh>
-      {/*
-        Dedicated row hit strip in front of bins/products.
-        depthTest=false so the strip stays clickable even when bins fill the shelf.
-      */}
-      <mesh
-        userData={{ id: row.id, type: 'row' }}
-        position={[0, -rowHeight / 2 + 0.1, z - safeRackDepth / 2 - 0.07]}
-        onClick={selectRow}
-        {...rowHoverProps}
-        renderOrder={20}
-      >
-        <boxGeometry args={[safeRackWidth, Math.min(0.28, rowHeight * 0.45), 0.14]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0}
-          depthTest={false}
-          depthWrite={false}
-        />
       </mesh>
 
       {showBottomBorder && (
@@ -389,8 +390,12 @@ export function Row({
           const slotWidth = Math.min(safeDim(bin.width, fallbackWidth), safeRackWidth)
           const binDepth = Math.min(safeDim(bin.depth, safeRackDepth), safeRackDepth * 0.95)
           const rawBinH = safeDim(bin.height, maxBinH)
+          // Trust API/bin height when it fits in the row. Shrinking 0.30 → 0.288
+          // made facing height fail the grid (stackLayers=0 → only 1 facing drawn).
           const binHeightUse =
-            rawBinH <= SHELF_BOARD_H ? maxBinH : Math.min(rawBinH, maxBinH)
+            rawBinH <= SHELF_BOARD_H
+              ? maxBinH
+              : Math.min(rawBinH, Math.max(maxBinH, rowHeight - SHELF_BOARD_H * 0.5))
           return { slotWidth, binDepth, binHeightUse }
         }
 

@@ -387,10 +387,15 @@ export function Bin({
 
   return (
     <group position={position} userData={{ id: bin.id, type: 'bin' }}>
-      {/* Invisible hit volume — bins are not a portal concept; SKUs/rows are. */}
+      {/* Invisible hit volume — when stocked (and not placing), skip so SKU meshes get clicks. */}
       <mesh
         userData={{ id: bin.id, type: 'bin' }}
         ref={meshRef}
+        raycast={
+          bin.products.length > 0 && !placing && !movingInventoryFromBinId
+            ? () => null
+            : undefined
+        }
         onClick={handleBinClick}
         onPointerDown={(e) => {
           e.stopPropagation();
