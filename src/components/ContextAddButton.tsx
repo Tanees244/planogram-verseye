@@ -36,6 +36,7 @@ import { ShelfUtilizationMeter } from '@/components/ShelfUtilizationMeter'
 import { RackPublishModal } from '@/components/RackPublishModal'
 import { ComplianceChecklist } from '@/components/ComplianceChecklist'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { Btn } from '@/components/ui/form'
 import { MultiRackReflowModal } from '@/components/MultiRackReflowModal'
 import { computeCustomRackDimensions } from '@/components/fixtures/customRackTypes'
@@ -111,6 +112,10 @@ export function ContextAddButton({
   const [showComplianceModal, setShowComplianceModal] = useState(false);
   const [showMultiReflowModal, setShowMultiReflowModal] = useState(false);
   const [showSavePlanogramModal, setShowSavePlanogramModal] = useState(false);
+  const [confirmDeleteRack, setConfirmDeleteRack] = useState(false);
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState(false);
+  const [confirmDetachProduct, setConfirmDetachProduct] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   // Add Bin modal state
   const [showBinModal, setShowBinModal] = useState(false);
@@ -425,12 +430,7 @@ export function ContextAddButton({
               <ActionBtn
                 variant="danger"
                 fullWidth
-                onClick={async () => {
-                  const res = await deleteRackFromServer(selectedId)
-                  if (!res.success) {
-                    alert(res.message)
-                  }
-                }}
+                onClick={() => setConfirmDeleteRack(true)}
               >
                 <FiTrash2 /> Delete rack
               </ActionBtn>
@@ -439,12 +439,7 @@ export function ContextAddButton({
                 variant={"default"}
                 size={"sm"}
                 className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                onClick={async () => {
-                  const res = await deleteRackFromServer(selectedId)
-                  if (!res.success) {
-                    alert(res.message)
-                  }
-                }}
+                onClick={() => setConfirmDeleteRack(true)}
               >
                 <FiTrash2 />
               </Button>
@@ -615,6 +610,25 @@ export function ContextAddButton({
             />
           </>
         )}
+        <ConfirmModal
+          open={confirmDeleteRack}
+          title="Delete rack?"
+          description="This removes the rack and every shelf, SKU, and POSM on it. This cannot be undone."
+          confirmLabel="Delete rack"
+          danger
+          busy={confirmBusy}
+          onClose={() => setConfirmDeleteRack(false)}
+          onConfirm={async () => {
+            setConfirmBusy(true)
+            try {
+              const res = await deleteRackFromServer(selectedId)
+              if (!res.success) toastApiError(res.message)
+              else setConfirmDeleteRack(false)
+            } finally {
+              setConfirmBusy(false)
+            }
+          }}
+        />
       </>
     );
   }
@@ -709,18 +723,7 @@ export function ContextAddButton({
             <ActionBtn
               variant="danger"
               fullWidth
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Delete this row? All products on it will be removed.',
-                  )
-                ) {
-                  return
-                }
-                const res = await deleteRowFromServer(selectedId)
-                if (!res.success) toastApiError(res.message)
-                else toast.success(res.message ?? 'Row deleted')
-              }}
+              onClick={() => setConfirmDeleteRow(true)}
             >
               <FiTrash2 /> Delete row
             </ActionBtn>
@@ -729,24 +732,35 @@ export function ContextAddButton({
               variant={"default"}
               size={"sm"}
               className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Delete this row? All products on it will be removed.',
-                  )
-                ) {
-                  return
-                }
-                const res = await deleteRowFromServer(selectedId)
-                if (!res.success) toastApiError(res.message)
-                else toast.success(res.message ?? 'Row deleted')
-              }}
+              onClick={() => setConfirmDeleteRow(true)}
             >
               <FiTrash2 />
             </Button>
           )}
         </ActionBar>
         </div>
+        <ConfirmModal
+          open={confirmDeleteRow}
+          title="Delete row?"
+          description="All products on this shelf will be removed. This cannot be undone."
+          confirmLabel="Delete row"
+          danger
+          busy={confirmBusy}
+          onClose={() => setConfirmDeleteRow(false)}
+          onConfirm={async () => {
+            setConfirmBusy(true)
+            try {
+              const res = await deleteRowFromServer(selectedId)
+              if (!res.success) toastApiError(res.message)
+              else {
+                toast.success(res.message ?? 'Row deleted')
+                setConfirmDeleteRow(false)
+              }
+            } finally {
+              setConfirmBusy(false)
+            }
+          }}
+        />
       </>
     );
   }
@@ -779,6 +793,7 @@ export function ContextAddButton({
       }
     }
     return (
+      <>
       <div className={cn('flex flex-col gap-2', isSidebar ? 'w-full' : 'items-start')}>
         {hostBinId && (
           <BinInventoryPanel
@@ -798,14 +813,7 @@ export function ContextAddButton({
           <ActionBtn
             variant="danger"
             fullWidth
-            onClick={async () => {
-              const res = await deleteProductFromServer(selectedId);
-              if (!res.success) toastApiError(res.message);
-              else {
-                toast.success(res.message ?? 'Inventory detached');
-                setInventoryRefreshKey((k) => k + 1);
-              }
-            }}
+            onClick={() => setConfirmDetachProduct(true)}
           >
             <FiTrash2 /> Remove SKU & slot
           </ActionBtn>
@@ -814,20 +822,37 @@ export function ContextAddButton({
             variant={"default"}
             size={"sm"}
             className="border border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-            onClick={async () => {
-              const res = await deleteProductFromServer(selectedId);
-              if (!res.success) toastApiError(res.message);
-              else {
-                toast.success(res.message ?? 'Inventory detached');
-                setInventoryRefreshKey((k) => k + 1);
-              }
-            }}
+            onClick={() => setConfirmDetachProduct(true)}
           >
             <FiTrash2 />
           </Button>
         )}
       </ActionBar>
       </div>
+      <ConfirmModal
+        open={confirmDetachProduct}
+        title="Detach product?"
+        description="This removes the SKU from the shelf slot. The slot is deleted with it."
+        confirmLabel="Detach product"
+        danger
+        busy={confirmBusy}
+        onClose={() => setConfirmDetachProduct(false)}
+        onConfirm={async () => {
+          setConfirmBusy(true)
+          try {
+            const res = await deleteProductFromServer(selectedId)
+            if (!res.success) toastApiError(res.message)
+            else {
+              toast.success(res.message ?? 'Inventory detached')
+              setInventoryRefreshKey((k) => k + 1)
+              setConfirmDetachProduct(false)
+            }
+          } finally {
+            setConfirmBusy(false)
+          }
+        }}
+      />
+      </>
     );
   }
 

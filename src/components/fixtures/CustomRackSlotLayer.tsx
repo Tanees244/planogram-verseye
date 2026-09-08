@@ -8,6 +8,7 @@ import {
 } from '@/components/fixtures/customRackTypes'
 import { safeDim } from '@/utils/safeDimensions'
 import { ensureRowAnchors, rowCenterOffsetsFromFloor } from '@/utils/rowStack'
+import { useRackDetailVisible } from '@/components/scene/SpatialVisibility'
 
 /** Positions planogram rows (shelves) inside a hollow custom rack cavity. */
 export function CustomRackSlotLayer({
@@ -17,6 +18,10 @@ export function CustomRackSlotLayer({
   rack: Rack
   config: CustomRackConfig
 }) {
+  const detailVisible = useRackDetailVisible(rack.id)
+  // Spatial grid + frustum: skip SKU trees for far / off-screen racks.
+  if (!detailVisible) return null
+
   const dims = computeCustomRackDimensions(config)
   const { outerDepth: d, wallThickness: wt } = config
   const bottomY = -dims.totalHeight / 2

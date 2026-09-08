@@ -13,6 +13,7 @@ import {
 } from '@/utils/binInventoryApi'
 import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { usePlanogramStore } from '@/store/planogramStore'
 import { resolveProductFacingId } from '@/utils/storeLayoutLoader'
 import { PRODUCT_MOVE_MIME } from '@/components/ProductPalette'
@@ -49,6 +50,7 @@ export function BinInventoryPanel({
 
   const [loading, setLoading] = useState(false)
   const [detaching, setDetaching] = useState(false)
+  const [confirmDetach, setConfirmDetach] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
   const [filling, setFilling] = useState(false)
   const [savingSize, setSavingSize] = useState(false)
@@ -226,6 +228,7 @@ export function BinInventoryPanel({
     resolveProductFacingId(selectedId) === inventory.sku.skuId
 
   return (
+    <>
     <div className={cn('w-full rounded-xl border p-2.5 space-y-2', shell, className)}>
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
@@ -468,7 +471,7 @@ export function BinInventoryPanel({
           </button>
           <button
             type="button"
-            onClick={() => void handleDetach()}
+            onClick={() => setConfirmDetach(true)}
             disabled={detaching}
             className={cn(
               'w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
@@ -586,5 +589,21 @@ export function BinInventoryPanel({
         </button>
       </div>
     </div>
+    <ConfirmModal
+      open={confirmDetach}
+      title="Detach product?"
+      description="This removes the SKU from this shelf slot. The slot is deleted with it."
+      confirmLabel="Detach product"
+      danger
+      busy={detaching}
+      onClose={() => {
+        if (!detaching) setConfirmDetach(false)
+      }}
+      onConfirm={async () => {
+        await handleDetach()
+        setConfirmDetach(false)
+      }}
+    />
+    </>
   )
 }

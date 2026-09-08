@@ -4,6 +4,7 @@ import { Component, Suspense, useEffect, useMemo, type ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Bounds, Center, OrbitControls, useGLTF } from '@react-three/drei'
 import { fitObjectToBox } from '@/utils/fitGlbToBox'
+import { SAFE_GL_ALPHA } from '@/utils/webgl'
 
 class PreviewErrorBoundary extends Component<
   { children: ReactNode; fallback: ReactNode },
@@ -91,8 +92,8 @@ export function SkuModelPreview({
       <PreviewErrorBoundary fallback={fallback}>
         <Canvas
           camera={{ position: [0.35, 0.28, 0.45], fov: 40 }}
-          dpr={[1, 1.5]}
-          gl={{ antialias: true, alpha: true }}
+          dpr={[1, 1]}
+          gl={SAFE_GL_ALPHA}
           onCreated={({ gl }) => {
             gl.setClearColor('#000000', 0)
           }}

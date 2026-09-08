@@ -7,6 +7,7 @@ import { usePlanogramStore } from '@/store/planogramStore'
 import { cn } from '@/lib/cn'
 import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { cmInputFromM, cmToM, mToCm } from '@/utils/lengthUnits'
 
 export type RowEntry = { row: Row; label: string }
@@ -184,6 +185,7 @@ export function RackRowHeightsPanel({
   const selectedType = usePlanogramStore((s) => s.selectedType)
   const deleteRowFromServer = usePlanogramStore((s) => s.deleteRowFromServer)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [pendingRemove, setPendingRemove] = useState<{ rowId: string; label: string } | null>(null)
   const entries = collectRackRows(rack)
 
   const innerW = rack.customConfig
@@ -194,25 +196,25 @@ export function RackRowHeightsPanel({
     ? 'bg-[#111827] border-slate-600 text-gray-100'
     : 'bg-white border-gray-200 text-gray-800'
 
-  const handleRemove = async (rowId: string, label: string) => {
-    if (
-      !window.confirm(
-        `Delete ${label}? All products on it will be removed.`,
-      )
-    ) {
-      return
-    }
-    setRemovingId(rowId)
+  const handleRemove = (rowId: string, label: string) => {
+    setPendingRemove({ rowId, label })
+  }
+
+  const confirmRemove = async () => {
+    if (!pendingRemove) return
+    setRemovingId(pendingRemove.rowId)
     try {
-      const res = await deleteRowFromServer(rowId)
+      const res = await deleteRowFromServer(pendingRemove.rowId)
       if (!res.success) toastApiError(res.message)
       else toast.success(res.message ?? 'Row deleted')
+      setPendingRemove(null)
     } finally {
       setRemovingId(null)
     }
   }
 
   return (
+    <>
     <div className={cn('w-full rounded-xl border p-2.5 space-y-2', shell)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -298,5 +300,18 @@ export function RackRowHeightsPanel({
         </div>
       )}
     </div>
+    <ConfirmModal
+      open={Boolean(pendingRemove)}
+      title={`Delete ${pendingRemove?.label ?? 'row'}?`}
+      description="All products on this shelf will be removed. This cannot be undone."
+      confirmLabel="Delete row"
+      danger
+      busy={removingId != null}
+      onClose={() => {
+        if (removingId == null) setPendingRemove(null)
+      }}
+      onConfirm={() => void confirmRemove()}
+    />
+    </>
   )
 }

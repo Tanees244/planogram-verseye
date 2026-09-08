@@ -23,6 +23,7 @@ import { RowDimensionsField } from '@/components/RowHeightsEditor'
 import { resolveEntityId, totalProductFacings } from '@/utils/storeLayoutLoader'
 import { toastApiError } from '@/utils/apiMessages'
 import toast from 'react-hot-toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { AddRackModal, type RackFormState } from '@/components/forms/AddRackModal'
 import { AddRowModal } from '@/components/forms/AddRowModal'
 import { Btn } from '@/components/ui/form'
@@ -75,6 +76,9 @@ export function TraditionalView() {
   const [showProductMgmtModal, setShowProductMgmtModal] = useState(false)
   const [showAttachProductModal, setShowAttachProductModal] = useState(false)
   const [addingRow, setAddingRow] = useState(false)
+  const [pendingDeleteRowId, setPendingDeleteRowId] = useState<string | null>(null)
+  const [pendingDeleteRackId, setPendingDeleteRackId] = useState<string | null>(null)
+  const [confirmBusy, setConfirmBusy] = useState(false)
 
   const [rackForm, setRackForm] = useState<RackFormState>(defaultRackForm)
   const [rackFormErrors, setRackFormErrors] = useState<Record<string, string | null>>({})
@@ -299,12 +303,9 @@ export function TraditionalView() {
                     Row
                   </button>
                   <button
-                    onClick={async (e) => {
+                    onClick={(e) => {
                       e.stopPropagation()
-                      const res = await deleteRackFromServer(rack.id)
-                      if (!res.success) {
-                        alert(res.message)
-                      }
+                      setPendingDeleteRackId(rack.id)
                     }}
                     className="px-4 py-2 bg-[#e1e7ef] rounded-lg text-sm font-medium hover:bg-[#fff] transition-all flex items-center gap-2 shadow-sm hover:shadow-md"
                   >
@@ -349,18 +350,9 @@ export function TraditionalView() {
                             </div>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                   e.stopPropagation()
-                                  if (
-                                    !window.confirm(
-                                      'Delete this row? All products on it will be removed.',
-                                    )
-                                  ) {
-                                    return
-                                  }
-                                  const res = await deleteRowFromServer(row.id)
-                                  if (!res.success) toastApiError(res.message)
-                                  else toast.success(res.message ?? 'Row deleted')
+                                  setPendingDeleteRowId(row.id)
                                 }}
                                 className="px-3 py-1.5 bg-[#e1e7ef] text-white rounded-lg text-xs font-medium hover:bg-white transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md"
                               >
@@ -622,6 +614,54 @@ export function TraditionalView() {
           logPayload
         />
       )}
+
+      <ConfirmModal
+        open={Boolean(pendingDeleteRowId)}
+        title="Delete row?"
+        description="All products on this shelf will be removed. This cannot be undone."
+        confirmLabel="Delete row"
+        danger
+        busy={confirmBusy}
+        onClose={() => {
+          if (!confirmBusy) setPendingDeleteRowId(null)
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteRowId) return
+          setConfirmBusy(true)
+          try {
+            const res = await deleteRowFromServer(pendingDeleteRowId)
+            if (!res.success) toastApiError(res.message)
+            else {
+              toast.success(res.message ?? 'Row deleted')
+              setPendingDeleteRowId(null)
+            }
+          } finally {
+            setConfirmBusy(false)
+          }
+        }}
+      />
+      <ConfirmModal
+        open={Boolean(pendingDeleteRackId)}
+        title="Delete rack?"
+        description="This removes the rack and every shelf, SKU, and POSM on it. This cannot be undone."
+        confirmLabel="Delete rack"
+        danger
+        busy={confirmBusy}
+        onClose={() => {
+          if (!confirmBusy) setPendingDeleteRackId(null)
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteRackId) return
+          setConfirmBusy(true)
+          try {
+            const res = await deleteRackFromServer(pendingDeleteRackId)
+            if (!res.success) toastApiError(res.message)
+            else setPendingDeleteRackId(null)
+          } finally {
+            setConfirmBusy(false)
+          }
+        }}
+      />
 
     </div>
   )

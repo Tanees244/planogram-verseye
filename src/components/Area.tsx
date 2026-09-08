@@ -13,6 +13,7 @@ import { PlacementGrid } from '@/components/scene/PlacementGrid'
 import { CustomRackLivePreview } from '@/components/scene/CustomRackLivePreview'
 import { WallRackGuides } from '@/components/scene/WallRackGuides'
 import { Rack } from './Rack'
+import { SpatialVisibilityProvider } from '@/components/scene/SpatialVisibility'
 
 export function Area() {
   const meshRef = useRef<Mesh>(null)
@@ -298,11 +299,13 @@ export function Area() {
       />
 
       {/* RACKS — the one being moved is drawn as the ghost preview instead */}
-      {area.racks.map((rack: RackType) =>
-        editingRackId === rack.id && previewPos ? null : (
-          <Rack key={rack.id} rack={rack} />
-        ),
-      )}
+      <SpatialVisibilityProvider racks={area.racks}>
+        {area.racks.map((rack: RackType) =>
+          editingRackId === rack.id && previewPos ? null : (
+            <Rack key={rack.id} rack={rack} />
+          ),
+        )}
+      </SpatialVisibilityProvider>
 
       <WallRackGuides />
 

@@ -31,18 +31,31 @@ const glbBytesCache = new Map<string, Promise<ArrayBuffer>>()
 let renderer: WebGLRenderer | null = null
 let loader: GLTFLoader | null = null
 
-function getRenderer(): WebGLRenderer {
-  if (!renderer) {
+function getRenderer(): WebGLRenderer | null {
+  if (renderer) return renderer
+  try {
     renderer = new WebGLRenderer({
-      antialias: true,
+      antialias: false,
       alpha: true,
+      powerPreference: 'default',
+      failIfMajorPerformanceCaveat: false,
       preserveDrawingBuffer: true,
+      stencil: false,
     })
     renderer.setPixelRatio(1)
     renderer.setSize(THUMB_SIZE, THUMB_SIZE)
     renderer.outputColorSpace = SRGBColorSpace
+    renderer.domElement.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault()
+      renderer?.dispose()
+      renderer = null
+    })
+    return renderer
+  } catch (err) {
+    console.warn('[glbThumbnail] WebGL unavailable', err)
+    renderer = null
+    return null
   }
-  return renderer
 }
 
 function getLoader(): GLTFLoader {
@@ -119,6 +132,7 @@ async function renderThumbnail(src: string): Promise<string | null> {
     camera.lookAt(center)
 
     const r = getRenderer()
+    if (!r) return null
     r.render(scene, camera)
     const dataUrl = r.domElement.toDataURL('image/png')
 
@@ -149,14 +163,17 @@ export function getGlbThumbnail(url: string): Promise<string | null> {
   return pending
 }
 
-/** Warm unique models from a SKU list (no-op for duplicates). */
+/** Warm unique models from a SKU list after the main scene has claimed WebGL. */
 export function preloadGlbThumbnails(urls: Array<string | null | undefined>) {
-  const seen = new Set<string>()
-  for (const url of urls) {
-    if (!url) continue
-    const key = canonicalFileCacheKey(url)
-    if (seen.has(key)) continue
-    seen.add(key)
-    void getGlbThumbnail(url)
-  }
+  if (typeof window === 'undefined') return
+  window.setTimeout(() => {
+    const seen = new Set<string>()
+    for (const url of urls) {
+      if (!url) continue
+      const key = canonicalFileCacheKey(url)
+      if (seen.has(key)) continue
+      seen.add(key)
+      void getGlbThumbnail(url)
+    }
+  }, 3500)
 }

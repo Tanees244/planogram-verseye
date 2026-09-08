@@ -55,9 +55,10 @@ export function ImportPlanogramModal({
         setError(result.message ?? 'Import failed')
         return
       }
-      toast.success(
-        `Imported ${result.report.racksImported} rack${result.report.racksImported === 1 ? '' : 's'}`,
-      )
+        toast.success(
+          result.message ??
+            `Created ${result.report.racksImported} rack${result.report.racksImported === 1 ? '' : 's'} in this store`,
+        )
       reset()
       onClose()
     } catch (err) {
@@ -77,7 +78,7 @@ export function ImportPlanogramModal({
         }
       }}
       title="Import planogram"
-      subtitle="Load a PLM / PLA or PSA / PSM export to recreate racks in this scene."
+      subtitle="Creates new racks in the selected store from a PLM / PLA or PSA / PSM file."
       maxWidth="md"
       footer={
         <>

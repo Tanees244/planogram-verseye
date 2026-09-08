@@ -20,7 +20,7 @@ import {
   snapRackToWall,
   snapToGrid,
 } from "@/utils/rackPlacement";
-import { buildCreateRackPayload, buildPlacementOnlyPayload, buildPlacementWithRowStubsPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, rackHasEmptyRows, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
+import { buildCreateRackPayload, buildPlacementOnlyPayload, buildPlacementWithRowStubsPayload, buildUpdateRackPayload, buildUpdateRackPlacementPayload, clampBinDepthToInner, clampBinHeightToRow, clampRowSpanToInner, prepareImportedRackForCreate, rackHasEmptyRows, resolveRackOuter, shellToCustomConfig } from "@/utils/rackBlueprintMapper";
 import {
   autofillQuantityForSlot,
   binContentWidthM,
@@ -682,7 +682,7 @@ export interface PlanogramState {
     racks: Rack[],
     area?: { width: number; depth: number },
   ) => void;
-  /** Parse and apply .psa / .plm planogram files (legacy JSON uses loadFromJSON). */
+  /** Parse .psa / .plm and create new racks via the layout API (in the selected store). */
   importPlanogramFromContent: (
     content: string,
     filename?: string,
@@ -740,6 +740,27 @@ function extractCreatedBinId(data: any): string | undefined {
     if (nested) return extractCreatedBinId(nested);
   }
   return undefined;
+}
+
+function extractCreatedRackIds(payload: any): { rackId: string; sideIds: string[] } | null {
+  const root = payload?.data ?? payload ?? {};
+  const rackId =
+    (typeof root.rackId === 'string' && UUID_RE.test(root.rackId) && root.rackId) ||
+    (typeof root.id === 'string' && UUID_RE.test(root.id) && root.id) ||
+    null;
+  if (!rackId) return null;
+  const sideIds: string[] = [];
+  if (Array.isArray(root.sideIds)) {
+    for (const id of root.sideIds) {
+      if (typeof id === 'string' && UUID_RE.test(id)) sideIds.push(id);
+    }
+  } else if (Array.isArray(root.sides)) {
+    for (const side of root.sides) {
+      const id = side?.sideId ?? side?.id;
+      if (typeof id === 'string' && UUID_RE.test(id)) sideIds.push(id);
+    }
+  }
+  return { rackId, sideIds };
 }
 
 // Default product size — ~1 L milk when catalog dims missing (meters)
@@ -1275,6 +1296,14 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
         productDropHover: null,
       });
       return { success: false, message };
+    }
+
+    if (fillRemaining) {
+      await get().updateBinOnServer(binRes.binId, {
+        width: fill.width,
+        depth: fill.depth,
+        height: fill.height,
+      });
     }
 
     set({
@@ -5447,11 +5476,181 @@ export const usePlanogramStore = create<PlanogramState>((set, get) => ({
     });
   },
   importPlanogramFromContent: async (content, filename) => {
-    const result = importPlanogramContent(content, filename);
-    set({ lastImportReport: result.report });
-    if (result.success && result.racks.length > 0) {
-      get().applyImportedPlanogram(result.racks, result.area);
+    const parsed = importPlanogramContent(content, filename);
+    if (!parsed.success || parsed.racks.length === 0) {
+      set({ lastImportReport: parsed.report, isImporting: false });
+      return parsed;
     }
-    return result;
+
+    const storeId = get().selectedStoreId;
+    if (!storeId) {
+      const report = {
+        ...parsed.report,
+        racksImported: 0,
+        issues: [
+          ...parsed.report.issues,
+          {
+            severity: 'error' as const,
+            code: 'NoStoreSelected',
+            message: 'Select a store first. Import creates new racks through the layout API.',
+          },
+        ],
+      };
+      set({ lastImportReport: report, isImporting: false });
+      return {
+        success: false,
+        message: 'Select a store before importing PLM / PSA',
+        report,
+        racks: [],
+      };
+    }
+
+    set({ isImporting: true, importProgress: 8, addRackError: null });
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const { getPlanogramTokenFromCookie } = await import('@verseye/utils');
+      const t = getPlanogramTokenFromCookie();
+      if (t) headers.Authorization = `Bearer ${t}`;
+    } catch {
+      /* ignore */
+    }
+
+    const issues = [...parsed.report.issues];
+    let createdCount = 0;
+
+    for (let i = 0; i < parsed.racks.length; i++) {
+      const source = parsed.racks[i];
+      const fixtureType = source.fixtureType ?? 'GONDOLA';
+      const outer = resolveRackOuter(source);
+      const placement = {
+        position: { ...source.position },
+        rotation: source.rotation ? { ...source.rotation } : { x: 0, y: 0, z: 0 },
+        snapMode: source.placement?.snapMode ?? ('wall' as const),
+        quadrant: source.quadrant ?? source.placement?.quadrant ?? null,
+      };
+      const rackName =
+        source.displayName?.trim() ||
+        source.rackName?.trim() ||
+        source.blueprintName?.trim() ||
+        source.rackCode?.trim() ||
+        `Imported rack ${i + 1}`;
+
+      try {
+        const payload = buildCreateRackPayload({
+          storeId,
+          rackName,
+          fixtureType,
+          isDoubleSided: Boolean(source.isDoubleSided ?? source.sides.length > 1),
+          width: outer.width,
+          depth: outer.depth,
+          outerHeight: outer.height,
+          customConfig: source.customConfig,
+          placement,
+        });
+        const res = await fetch('/api/racks/add-by-location', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.isRequestSuccess === false) {
+          issues.push({
+            severity: 'error',
+            code: 'RackCreateFailed',
+            message: extractApiErrorMessage(data, `Failed to create rack "${rackName}"`),
+            path: `racks[${i}]`,
+          });
+          set({
+            importProgress: Math.round(10 + ((i + 1) / parsed.racks.length) * 70),
+          });
+          continue;
+        }
+
+        const ids = extractCreatedRackIds(data);
+        if (!ids) {
+          issues.push({
+            severity: 'error',
+            code: 'RackCreateFailed',
+            message: `Rack "${rackName}" was created but the API did not return a rack id`,
+            path: `racks[${i}]`,
+          });
+          continue;
+        }
+
+        const prepared = prepareImportedRackForCreate(source, ids);
+        set((s) => ({
+          area: {
+            ...s.area,
+            racks: [...s.area.racks.filter((r) => r.id !== prepared.id), prepared],
+          },
+          importProgress: Math.round(10 + ((i + 0.5) / parsed.racks.length) * 70),
+        }));
+
+        const saved = await get().saveRackLayoutToServer(prepared.id, {
+          suppressLoading: true,
+        });
+        if (!saved.success) {
+          issues.push({
+            severity: 'warning',
+            code: 'RackLayoutSaveFailed',
+            message: `Created "${rackName}" but could not save shelves/SKUs: ${saved.message ?? 'unknown error'}`,
+            path: `racks[${i}]`,
+          });
+        }
+        createdCount += 1;
+      } catch (error) {
+        issues.push({
+          severity: 'error',
+          code: 'RackCreateFailed',
+          message: error instanceof Error ? error.message : `Failed to create rack "${rackName}"`,
+          path: `racks[${i}]`,
+        });
+      }
+
+      set({
+        importProgress: Math.round(10 + ((i + 1) / parsed.racks.length) * 70),
+      });
+    }
+
+    set({ importProgress: 90 });
+    const reloaded = await get().reloadStoreLayout();
+    if (!reloaded.success) {
+      issues.push({
+        severity: 'warning',
+        code: 'ReloadFailed',
+        message: reloaded.message ?? 'Racks were created but the scene could not be refreshed',
+      });
+    }
+
+    const report = {
+      ...parsed.report,
+      racksImported: createdCount,
+      issues,
+    };
+    set({
+      lastImportReport: report,
+      isImporting: false,
+      importProgress: 100,
+    });
+
+    if (createdCount === 0) {
+      return {
+        success: false,
+        message: issues.find((i) => i.severity === 'error')?.message ?? 'Import did not create any racks',
+        report,
+        racks: get().area.racks,
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        createdCount === parsed.racks.length
+          ? `Created ${createdCount} rack${createdCount === 1 ? '' : 's'} in this store`
+          : `Created ${createdCount} of ${parsed.racks.length} racks in this store`,
+      report,
+      racks: get().area.racks,
+    };
   },
 }));

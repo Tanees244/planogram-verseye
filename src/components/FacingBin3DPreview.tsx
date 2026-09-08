@@ -4,6 +4,7 @@ import { Canvas } from '@react-three/fiber'
 import { Edges, Instance, Instances, OrbitControls } from '@react-three/drei'
 import { packFacingsInBin } from '@/utils/facingPack'
 import { cn } from '@/lib/cn'
+import { SAFE_GL_ALPHA } from '@/utils/webgl'
 
 /** Instanced boxes are cheap — render every slot so a full bin looks full. */
 const PREVIEW_SLOT_LIMIT = 5000
@@ -158,7 +159,8 @@ export function FacingBin3DPreview({
             near: 0.01,
             far: 50,
           }}
-          dpr={[1, 1.5]}
+          dpr={[1, 1]}
+          gl={SAFE_GL_ALPHA}
         >
           <BinScene
             binWidthM={binWidthM}

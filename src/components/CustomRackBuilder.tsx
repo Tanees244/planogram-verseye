@@ -25,6 +25,7 @@ import {
   mToCm,
   mToCmDisplay,
 } from '@/utils/lengthUnits'
+import { SAFE_GL } from '@/utils/webgl'
 
 function NumInput({
   label,
@@ -247,7 +248,8 @@ function BuilderPreviewCanvas({ draft }: { draft: CustomRackConfig }) {
           near: 0.01,
           far: 100,
         }}
-        dpr={[1, 1.75]}
+        dpr={[1, 1]}
+        gl={SAFE_GL}
       >
         <color attach="background" args={['#0f172a']} />
         <ambientLight intensity={0.55} />

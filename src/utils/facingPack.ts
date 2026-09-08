@@ -186,25 +186,17 @@ export function packFacingsInBin(options: {
 
   const qty = Math.max(0, Math.floor(options.quantity) || 0)
 
-  // Expand extra quantity into depth, never extra stack layers — stacks must
-  // stay within the shelf opening.
-  let visCols = Math.max(1, useCols)
+  // Keep the visual grid at native SKU size. Expanding extra quantity into
+  // extra depth rows, then scaling the whole pack down, makes every facing
+  // tiny (the "fill remaining shelf" bug).
+  let visCols = Math.max(1, Math.min(useCols, Math.max(1, cols)))
   let visDepth = Math.max(1, depthRows)
   let visStack = Math.max(1, stackLayers)
   if (options.stackable === false) visStack = 1
-  if (qty > 0) {
-    const stackFirstExpand = options.packOrder === 'stackFirst' && options.stackable !== false
-    if (stackFirstExpand) {
-      const frontCap = Math.max(1, visCols * visStack)
-      visDepth = Math.max(visDepth, Math.ceil(qty / frontCap))
-    } else {
-      const plane = Math.max(1, visCols * visStack)
-      visDepth = Math.max(visDepth, Math.ceil(qty / plane))
-    }
-  }
 
   // How many vertical layers this quantity will actually occupy (for visual scale).
   const stackFirst = options.packOrder === 'stackFirst'
+  const nativeCap = Math.max(1, visCols * visDepth * visStack)
   const layersForQty = stackFirst
     ? Math.min(
         visStack,
@@ -217,7 +209,7 @@ export function packFacingsInBin(options: {
         visStack,
         Math.max(
           1,
-          Math.ceil((qty || 1) / Math.max(1, visCols * visDepth)),
+          Math.ceil(Math.min(qty || 1, nativeCap) / Math.max(1, visCols * visDepth)),
         ),
       )
 
@@ -244,12 +236,12 @@ export function packFacingsInBin(options: {
   const frontZ = -binD / 2 + inset
 
   const slots: FacingPackSlot[] = []
-  // No silent truncation — materialize every facing (callers may pass a lower visualLimit).
+  // Draw only units that fit at native size — extra quantity stays in data, not shrunk.
   const limit = Math.max(
     0,
     options.visualLimit ?? Math.max(qty, FACING_PACK_VISUAL_LIMIT),
   )
-  const renderCount = Math.min(qty, limit)
+  const renderCount = Math.min(qty, limit, nativeCap)
   for (let i = 0; i < renderCount; i++) {
     const globalIndex = occupied + i
     const overflow = i >= freeMax

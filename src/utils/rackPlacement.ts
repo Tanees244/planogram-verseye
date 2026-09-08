@@ -1,4 +1,5 @@
 import { WALL_SNAP_THRESHOLD } from '@/constants/warehouse'
+import { rackOverlapsOthersSpatial } from '@/utils/spatialGrid'
 
 export interface RackPlacement {
   x: number
@@ -78,6 +79,10 @@ export function rackOverlapsOthers(
     rotation?: { y?: number } | null
   }>,
 ): boolean {
+  // Large stores: spatial hash broad-phase instead of O(n) footprint scans.
+  if (racks.length >= 12) {
+    return rackOverlapsOthersSpatial(candidate, racks)
+  }
   const a = rackFootprintRect(
     candidate.x,
     candidate.z,

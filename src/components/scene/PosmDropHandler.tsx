@@ -146,6 +146,21 @@ function findDropTargetFromIntersects(
   return null
 }
 
+function findRowIdForBin(state: ReturnType<typeof usePlanogramStore.getState>, binId: string): string | null {
+  for (const rack of state.area.racks) {
+    for (const side of rack.sides) {
+      for (const row of side.rows) {
+        if (row.bins.some((b) => b.id === binId)) return row.id
+      }
+    }
+  }
+  return null
+}
+
+function isPosmNotAttachedToRow(message?: string | null): boolean {
+  return /posm\s+not\s+attached\s+to\s+row/i.test(message ?? '')
+}
+
 function hasPosmDragType(dt: DataTransfer | null): boolean {
   if (!dt) return false
   return dt.types.includes(POSM_DRAG_MIME) || dt.types.includes('text/plain')
@@ -233,6 +248,13 @@ export function PosmDropHandler() {
       if (ctx.kind === 'bin') {
         res = await assignBinItemTagPosm(ctx.rackId, ctx.binId, payload.id, hydrated)
         label = 'POSM attached to this bin'
+        if (!res.success && isPosmNotAttachedToRow(res.message)) {
+          const rowId = findRowIdForBin(usePlanogramStore.getState(), ctx.binId)
+          if (rowId) {
+            res = await assignRowDividerPosm(ctx.rackId, rowId, payload.id, hydrated)
+            label = 'POSM attached to this shelf'
+          }
+        }
       } else if (ctx.kind === 'row') {
         res = await assignRowDividerPosm(ctx.rackId, ctx.rowId, payload.id, hydrated)
         label = 'POSM attached to this shelf'
@@ -258,9 +280,13 @@ export function PosmDropHandler() {
         label = `POSM attached to ${wallName}`
       }
       if (!res.success) {
-        toast.error(res.message ?? 'Failed to assign POSM')
+        if (!isPosmNotAttachedToRow(res.message)) {
+          toast.error(res.message ?? 'Failed to assign POSM')
+        }
         usePlanogramStore.setState({
-          addProductError: res.message ?? 'Failed to assign POSM',
+          addProductError: isPosmNotAttachedToRow(res.message)
+            ? null
+            : (res.message ?? 'Failed to assign POSM'),
         })
       } else {
         toast.success(label)

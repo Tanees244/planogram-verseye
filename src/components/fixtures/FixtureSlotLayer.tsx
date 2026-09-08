@@ -4,6 +4,7 @@
 import type { Rack } from '@/store/planogramStore'
 import { Row } from '@/components/Row'
 import { ensureRowAnchors, rowCenterOffsetsFromFloor } from '@/utils/rowStack'
+import { useRackDetailVisible } from '@/components/scene/SpatialVisibility'
 
 interface FixtureSlotLayerProps {
   rack: Rack
@@ -13,6 +14,10 @@ interface FixtureSlotLayerProps {
 
 /** Shared row → bin → product slot graph for all fixture types. */
 export function FixtureSlotLayer({ rack, rackHeight, isDoubleSided }: FixtureSlotLayerProps) {
+  const detailVisible = useRackDetailVisible(rack.id)
+  // Spatial grid + frustum: skip SKU trees for far / off-screen racks.
+  if (!detailVisible) return null
+
   const sideOffset = rack.sides.length === 2 ? rack.width / 4 : 0
   const baseTopY = -rackHeight / 2 + 0.2
   const innerW = rack.inner?.width && rack.inner.width > 0 ? rack.inner.width : null
@@ -79,3 +84,4 @@ export function FixtureSlotLayer({ rack, rackHeight, isDoubleSided }: FixtureSlo
     </>
   )
 }
+

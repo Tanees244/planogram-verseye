@@ -674,3 +674,39 @@ export function buildPlacementOnlyPayload(rack: Rack): Record<string, unknown> {
 export function rackHasEmptyRows(rack: Rack): boolean {
   return rack.sides.some((side) => side.rows.some((row) => row.bins.length === 0));
 }
+
+function localEntityId(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Rebind an imported rack onto a newly created server rack.
+ * Drops old row/bin UUIDs so PUT creates new nested data instead of
+ * updating fixtures that belong to another store.
+ */
+export function prepareImportedRackForCreate(
+  source: Rack,
+  server: { rackId: string; sideIds: string[] },
+): Rack {
+  return {
+    ...source,
+    id: server.rackId,
+    rackId: server.rackId,
+    sides: source.sides.map((side, idx) => {
+      const sideId = server.sideIds[idx] || localEntityId('side');
+      return {
+        ...side,
+        id: sideId,
+        sideId,
+        rows: side.rows.map((row) => ({
+          ...row,
+          id: localEntityId('row'),
+          bins: row.bins.map((bin) => ({
+            ...bin,
+            id: localEntityId('bin'),
+          })),
+        })),
+      };
+    }),
+  };
+}

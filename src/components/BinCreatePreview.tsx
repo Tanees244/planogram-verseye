@@ -3,6 +3,7 @@
 import { Canvas } from '@react-three/fiber'
 import { Edges, OrbitControls } from '@react-three/drei'
 import { cn } from '@/lib/cn'
+import { SAFE_GL_ALPHA } from '@/utils/webgl'
 
 function RowScene({
   rowW,
@@ -155,7 +156,8 @@ export function BinCreatePreview({
             near: 0.01,
             far: 60,
           }}
-          dpr={[1, 1.5]}
+          dpr={[1, 1]}
+          gl={SAFE_GL_ALPHA}
         >
           <RowScene
             rowW={rowW}
