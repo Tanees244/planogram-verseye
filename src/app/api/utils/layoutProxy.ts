@@ -67,7 +67,11 @@ export async function proxyLayout(
         }
 
         const headers: Record<string, string> = { Accept: 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+            // Backend in cookie mode validates the accessToken cookie.
+            headers['Cookie'] = `accessToken=${token}`;
+        }
 
         let payload: string | undefined;
         if (options.body !== undefined) {

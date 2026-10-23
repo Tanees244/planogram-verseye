@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-    const token = request.cookies.get('planogram_token')?.value;
+    const token = request.cookies.get('accessToken')?.value ?? request.cookies.get('planogram_token')?.value;
     const { pathname } = request.nextUrl;
 
     // Paths that don't require authentication

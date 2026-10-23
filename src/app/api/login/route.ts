@@ -75,7 +75,15 @@ export async function POST(req: NextRequest) {
         const token = extractToken(body);
 
         const res = NextResponse.json(body);
-        if (token) {
+
+        // Cookie mode: the backend returns the tokens as HttpOnly Set-Cookie headers
+        // (accessToken, refreshToken, aisleris_user) rather than in the body. Relay them.
+        const upstreamCookies = backendRes.headers.getSetCookie();
+        for (const c of upstreamCookies) {
+            res.headers.append('Set-Cookie', c);
+        }
+
+        if (!upstreamCookies.length && token) {
             const isProduction = process.env.NODE_ENV === 'production';
             const isHttps = req.url.startsWith('https://');
 
@@ -86,8 +94,8 @@ export async function POST(req: NextRequest) {
                 secure: isProduction && isHttps,
                 maxAge: 60 * 60 * 24 * 7, // 7 days
             });
-        } else {
-            console.warn('[login] No token found in auth response body');
+        } else if (!upstreamCookies.length) {
+            console.warn('[login] No auth cookies or token found in auth response');
         }
 
         return res;
