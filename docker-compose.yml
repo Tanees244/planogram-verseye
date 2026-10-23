@@ -1,0 +1,48 @@
+# Dokploy: Create a Compose service, set Compose Path to ./docker-compose.yml
+# Prefer Domains in the Dokploy UI (recommended) over Traefik labels below.
+# Do not set container_name — it breaks Dokploy logs/metrics.
+
+services:
+  planogram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* are inlined at build time — set these in Dokploy → Environment
+        NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL}
+        API_BASE_URL: ${API_BASE_URL}
+    restart: unless-stopped
+    # Publish container port only (no host bind). Dokploy / Traefik routes via dokploy-network.
+    ports:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      API_BASE_URL: ${API_BASE_URL}
+      NEXT_PUBLIC_AUTH_URL: ${NEXT_PUBLIC_AUTH_URL}
+    networks:
+      - dokploy-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    # Optional: manual Traefik routing if not using Dokploy Domains UI
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.http.routers.planogram.rule=Host(`planogram.example.com`)"
+    #   - "traefik.http.routers.planogram.entrypoints=websecure"
+    #   - "traefik.http.routers.planogram.tls.certResolver=letsencrypt"
+    #   - "traefik.http.services.planogram.loadbalancer.server.port=3000"
+
+networks:
+  dokploy-network:
+    external: true
